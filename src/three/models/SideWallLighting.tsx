@@ -1,0 +1,5303 @@
+import React, { useEffect, useMemo } from 'react';
+import * as THREE from 'three';
+import { TheaterConfiguration } from '../../types/cinema';
+import {
+  applyScreenBounceToMaterial,
+  ScreenBounceUniforms,
+} from '../lighting/screenBounceShader';
+import { createJaliLatticeTexture } from '../materials/proceduralTextures';
+import { getIceTheaterLayout } from './iceLayoutUtils';
+
+interface SideWallLightingProps {
+  config: TheaterConfiguration;
+  wallBayZs: number[];
+  topTierY: number;
+  lightFactor: number;
+  trimMetalMat: THREE.Material;
+  acousticPanelMat: THREE.Material;
+  wallMat?: THREE.Material;
+  screenBounceUniforms?: ScreenBounceUniforms;
+}
+
+interface DiagonalSegmentProps {
+  start: [number, number, number];
+  end: [number, number, number];
+  thickness: number;
+  depth: number;
+  material: THREE.Material;
+  housingMaterial?: THREE.Material;
+  interiorFocusY?: number;
+}
+
+/**
+ * Renders an exact architectural linear LED channel bar from 3D point A to point B
+ * with its recessed anodized aluminum housing sitting behind the interior-facing diffuser.
+ */
+const ArchitecturalChannelBar: React.FC<DiagonalSegmentProps> = ({
+  start,
+  end,
+  thickness,
+  depth,
+  material,
+  housingMaterial,
+  interiorFocusY = 3.5,
+}) => {
+  const { mid, length, quaternion } = useMemo(() => {
+    const a = new THREE.Vector3(...start);
+    const b = new THREE.Vector3(...end);
+    const dir = new THREE.Vector3().subVectors(b, a);
+    const len = dir.length();
+    const m = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    const yAxis = len > 1e-4 ? dir.clone().normalize() : new THREE.Vector3(0, 1, 0);
+
+    // Compute vector pointing cleanly into the auditorium interior orthogonal to yAxis
+    const toInterior = new THREE.Vector3(0, interiorFocusY, m.z).sub(m);
+    toInterior.sub(yAxis.clone().multiplyScalar(toInterior.dot(yAxis)));
+    if (toInterior.lengthSq() < 1e-5) {
+      toInterior.set(0, 1, 0).sub(yAxis.clone().multiplyScalar(yAxis.y));
+    }
+    if (toInterior.lengthSq() < 1e-5) {
+      toInterior.set(1, 0, 0);
+    }
+    const xAxis = toInterior.normalize();
+    const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
+    xAxis.crossVectors(yAxis, zAxis).normalize();
+
+    const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    const q = new THREE.Quaternion().setFromRotationMatrix(basis);
+    return { mid: m, length: Math.max(0.05, len), quaternion: q };
+  }, [start, end, interiorFocusY]);
+
+  return (
+    <group position={[mid.x, mid.y, mid.z]} quaternion={quaternion}>
+      {housingMaterial && (
+        <mesh position={[-depth * 0.22, 0, 0]} material={housingMaterial}>
+          <boxGeometry args={[depth * 0.9, length + thickness * 0.4, thickness * 1.65]} />
+        </mesh>
+      )}
+      <mesh position={[depth * 0.35, 0, 0]} material={material}>
+        <boxGeometry args={[depth * 0.85, length + 0.01, thickness]} />
+      </mesh>
+    </group>
+  );
+};
+
+/**
+ * Builds a crisp beveled 3D polygonal acoustic wall panel in world (Z, Y) coordinates extruded along X.
+ */
+function buildWallPolygonGeo(
+  ptsZY: [number, number][],
+  thickness: number,
+  bevel = 0.012,
+): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(-ptsZY[0][0], ptsZY[0][1]);
+  for (let i = 1; i < ptsZY.length; i++) {
+    shape.lineTo(-ptsZY[i][0], ptsZY[i][1]);
+  }
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.02, thickness - bevel * 2),
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+  });
+  geo.translate(0, 0, -thickness * 0.5);
+  geo.rotateY(Math.PI / 2);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Builds a smooth horizontal wave-contoured architectural wall band extruded along Y.
+ * Local +X projects into the auditorium when placed cleanly on the left wall (or rotated Math.PI around Y on the right wall).
+ */
+function buildHorizontalWaveBandGeo(
+  zStart: number,
+  zEnd: number,
+  bandHeight: number,
+  baseThickness: number,
+  waveAmp: number,
+  waveCycles: number,
+  phase: number,
+  segments = 64,
+): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, -zStart);
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const z = THREE.MathUtils.lerp(zStart, zEnd, t);
+    const waveX =
+      baseThickness +
+      waveAmp * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 * waveCycles + phase));
+    shape.lineTo(waveX, -z);
+  }
+  shape.lineTo(0, -zEnd);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.04, bandHeight - 0.016),
+    bevelEnabled: true,
+    bevelThickness: 0.008,
+    bevelSize: 0.008,
+    bevelSegments: 2,
+    curveSegments: 12,
+  });
+  geo.translate(0, 0, -(bandHeight - 0.016) * 0.5);
+  geo.rotateX(-Math.PI / 2);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Builds a subtle 3D origami-folded triangular or trapezoidal acoustic fabric panel in local wall coordinates.
+ * Each vertex has [z, y, depthX] where depthX >= 0.02 projects into the auditorium along +X,
+ * creating crisp, flat-shaded origami creases separated by clean shadow gaps.
+ */
+function buildOrigamiFacetGeo(ptsZYX: [number, number, number][]): THREE.BufferGeometry {
+  const n = ptsZYX.length;
+  const positions: number[] = [];
+
+  // Triangulate front folded face (facing +X interior) from vertex 0 fan
+  for (let i = 1; i < n - 1; i++) {
+    const [z0, y0, x0] = ptsZYX[0];
+    const [z1, y1, x1] = ptsZYX[i];
+    const [z2, y2, x2] = ptsZYX[i + 1];
+    positions.push(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+  }
+
+  // Side bevel walls back to x = 0 mounting plane for solid 3D origami thickness
+  for (let i = 0; i < n; i++) {
+    const [zA, yA, xA] = ptsZYX[i];
+    const [zB, yB, xB] = ptsZYX[(i + 1) % n];
+    positions.push(xA, yA, zA, 0, yA, zA, 0, yB, zB);
+    positions.push(xA, yA, zA, 0, yB, zB, xB, yB, zB);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Builds a beveled 3D polygonal acoustic wall panel in rear-wall (X, Y) coordinates extruded along Z.
+ */
+function buildRearWallPolygonGeo(
+  ptsXY: [number, number][],
+  thickness: number,
+  bevel = 0.014,
+): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(ptsXY[0][0], ptsXY[0][1]);
+  for (let i = 1; i < ptsXY.length; i++) {
+    shape.lineTo(ptsXY[i][0], ptsXY[i][1]);
+  }
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(0.02, thickness - bevel * 2),
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 2,
+  });
+  geo.translate(0, 0, -thickness * 0.5);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export const SideWallLighting: React.FC<SideWallLightingProps> = ({
+  config,
+  wallBayZs,
+  topTierY,
+  lightFactor,
+  trimMetalMat,
+  acousticPanelMat,
+  wallMat,
+  screenBounceUniforms,
+}) => {
+  const {
+    auditoriumWidth: W,
+    auditoriumLength: L,
+    auditoriumHeight: H,
+    firstRowZ,
+    rowSpacing,
+    rowElevationStep,
+    seatingRows,
+    sideLightStyle,
+    lightingProfile,
+    environmentProfile,
+  } = config;
+
+  const isPrivate = environmentProfile.architectureStyle === 'private';
+  const isIce = environmentProfile.architectureStyle === 'ice';
+  const iceLayout = useMemo(() => (isIce ? getIceTheaterLayout(config) : null), [isIce, config]);
+
+  // Shared realistic architectural fixture materials (wired to live screen-bounce shader so walls reflect movie light)
+  const mats = useMemo(() => {
+    const channelMetalMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#181b22',
+        roughness: 0.34,
+        metalness: 0.82,
+      }),
+      screenBounceUniforms,
+    );
+    const brassHardwareMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d4af37',
+        roughness: 0.24,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+    const warmBronzeMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#9c6b3b',
+        roughness: 0.28,
+        metalness: 0.84,
+      }),
+      screenBounceUniforms,
+    );
+    const walnutWoodMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#422718',
+        roughness: 0.52,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+    const primaryEmitterMat = new THREE.MeshStandardMaterial({
+      color: '#101218',
+      emissive: lightingProfile.wallColor,
+      emissiveIntensity: 1.5,
+      roughness: 0.18,
+      metalness: 0.05,
+    });
+    const secondaryEmitterMat = new THREE.MeshStandardMaterial({
+      color: '#101218',
+      emissive: lightingProfile.accentColor,
+      emissiveIntensity: 1.3,
+      roughness: 0.2,
+      metalness: 0.05,
+    });
+    const alabasterGlassMat = new THREE.MeshStandardMaterial({
+      color: '#f2e4cb',
+      emissive: lightingProfile.wallColor,
+      emissiveIntensity: 1.2,
+      roughness: 0.42,
+      metalness: 0.02,
+    });
+    const charcoalAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#282d38',
+        roughness: 0.88,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const midnightBlueAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#16294f',
+        roughness: 0.88,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const imaxObsidianMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0e1118',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const imaxCharcoalMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#171c27',
+        roughness: 0.88,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const carbonBlackAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#111319',
+        roughness: 0.9,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const gunmetalAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#252a34',
+        roughness: 0.72,
+        metalness: 0.22,
+      }),
+      screenBounceUniforms,
+    );
+    const nozzleBrassMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#94a3b8',
+        roughness: 0.28,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+    const slateAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#384152',
+        roughness: 0.86,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const indigoAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1e1b4b',
+        roughness: 0.88,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const pitchBlackAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0b0d12',
+        roughness: 0.92,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const titaniumGreyAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2a303a',
+        roughness: 0.84,
+        metalness: 0.12,
+      }),
+      screenBounceUniforms,
+    );
+    const burntOrangeAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#c2410c',
+        roughness: 0.82,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const jetBlackAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0d0f13',
+        roughness: 0.92,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const deepNavyAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#132347',
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const darkGunmetalAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2c3342',
+        roughness: 0.86,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+    const obsidianGeoMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0b0d12',
+        roughness: 0.92,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const charcoalSlateAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#272d3a',
+        roughness: 0.86,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const deepRoyalBlueAcousticMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#16357d',
+        roughness: 0.86,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const titaniumFinMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#525864',
+        roughness: 0.82,
+        metalness: 0.16,
+      }),
+      screenBounceUniforms,
+    );
+    const espressoBronzeFinMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#432e23',
+        roughness: 0.8,
+        metalness: 0.12,
+      }),
+      screenBounceUniforms,
+    );
+    const auroraCharcoalPanelMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#14171f',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const auroraCharcoalAltMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#191d27',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const deepNavySlateMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#162238',
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const darkWalnutCharcoalMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2a211d',
+        roughness: 0.86,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const obsidianFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#181b22',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const midnightSlateFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#17233b',
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const brushedGunmetalMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#525a68',
+        roughness: 0.28,
+        metalness: 0.86,
+      }),
+      screenBounceUniforms,
+    );
+    const charcoalSlatePanelMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#222731',
+        roughness: 0.88,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const walnutBronzeWoodMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#4a2e1f',
+        roughness: 0.56,
+        metalness: 0.1,
+      }),
+      screenBounceUniforms,
+    );
+    const satinBlackTrimMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#101217',
+        roughness: 0.44,
+        metalness: 0.45,
+      }),
+      screenBounceUniforms,
+    );
+    const auroraSlateGreyMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#384152',
+        roughness: 0.86,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const auroraIndigoCharcoalMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1b2136',
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const brushedDarkAluminumMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#404856',
+        roughness: 0.3,
+        metalness: 0.84,
+      }),
+      screenBounceUniforms,
+    );
+    const graphiteBlackFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#171a21',
+        roughness: 0.9,
+        metalness: 0.03,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+    const oceanTealFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#113f4b',
+        roughness: 0.86,
+        metalness: 0.05,
+        flatShading: true,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+    const satinBlackShadowMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#080a0e',
+        roughness: 0.52,
+        metalness: 0.36,
+      }),
+      screenBounceUniforms,
+    );
+    const volcanicBasaltMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#262a33',
+        roughness: 0.88,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const terracottaCopperMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#9a533e',
+        roughness: 0.84,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const darkBronzeRevealMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2d2118',
+        roughness: 0.44,
+        metalness: 0.48,
+      }),
+      screenBounceUniforms,
+    );
+    const terracottaCopperSuedeMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#9a533e',
+        roughness: 0.92,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const smokedOakMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#3a291e',
+        roughness: 0.56,
+        metalness: 0.07,
+      }),
+      screenBounceUniforms,
+    );
+    const warmAlabasterPlasterMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d8cfbe',
+        roughness: 0.84,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const sageSlateFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#4c5e58',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const champagneGoldInlayMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d9bf86',
+        roughness: 0.24,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+    const concealedGrilleMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1e222a',
+        roughness: 0.94,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const iceBrushedAlumMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#8e98a8',
+        roughness: 0.25,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+    const iceTaupePlasterMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#6e6155',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const iceRibbedBronzeMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#6c4e36',
+        roughness: 0.34,
+        metalness: 0.74,
+      }),
+      screenBounceUniforms,
+    );
+    const iceShouSugiBanMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#151110',
+        roughness: 0.84,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const iceBasaltFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1a1e25',
+        roughness: 0.92,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const americanWalnutMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#5a3620',
+        roughness: 0.46,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const oatmealBoucleMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d8ccba',
+        roughness: 0.92,
+        metalness: 0.01,
+      }),
+      screenBounceUniforms,
+    );
+    const saddleCognacSuedeMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#9d522b',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const champagneBrassInlayMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d6bd7d',
+        roughness: 0.24,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+    const espressoFeltBackingMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#17110e',
+        roughness: 0.96,
+        metalness: 0.01,
+      }),
+      screenBounceUniforms,
+    );
+    const alabasterShadeMat = new THREE.MeshStandardMaterial({
+      color: '#f6eedc',
+      emissive: '#f5b041',
+      emissiveIntensity: 0.85,
+      roughness: 0.36,
+      metalness: 0.02,
+    });
+    const mandapTerracottaFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#843623',
+        roughness: 0.96,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const mandapCrimsonFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#63111c',
+        roughness: 0.96,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const mandapArchSandstoneMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#6d4129',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const mandapEspressoBackingMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#150d0a',
+        roughness: 0.97,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const mandapAntiquedGoldMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#94743b',
+        roughness: 0.88,
+        metalness: 0.12,
+      }),
+      screenBounceUniforms,
+    );
+    const obsidianParametricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0c0e13',
+        roughness: 0.92,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const carbonGreyParametricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#282d38',
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const sandBeigeMossMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#b8a484',
+        roughness: 0.95,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const sageGreenMossMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#5a7252',
+        roughness: 0.96,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const softMossMidMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#41553c',
+        roughness: 0.96,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const deepCharcoalMossMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#232726',
+        roughness: 0.95,
+        metalness: 0.01,
+      }),
+      screenBounceUniforms,
+    );
+    const biophilicRecessBoxMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#151819',
+        roughness: 0.93,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const warmGoldHaloMat = new THREE.MeshStandardMaterial({
+      color: '#d97706',
+      emissive: '#fbbf24',
+      emissiveIntensity: 1.2,
+      toneMapped: false,
+      roughness: 0.34,
+      metalness: 0.04,
+    });
+    const matteBlackVeilMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#07090e',
+        roughness: 0.94,
+        metalness: 0.01,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+    const deepCobaltVeilMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0e1f4a',
+        roughness: 0.93,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+    const cobaltVeilShadowMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#030407',
+        roughness: 0.97,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+
+    return {
+      channelMetalMat,
+      brassHardwareMat,
+      warmBronzeMat,
+      walnutWoodMat,
+      primaryEmitterMat,
+      secondaryEmitterMat,
+      alabasterGlassMat,
+      charcoalAcousticMat,
+      midnightBlueAcousticMat,
+      imaxObsidianMat,
+      imaxCharcoalMat,
+      carbonBlackAcousticMat,
+      gunmetalAcousticMat,
+      nozzleBrassMat,
+      slateAcousticMat,
+      indigoAcousticMat,
+      pitchBlackAcousticMat,
+      titaniumGreyAcousticMat,
+      burntOrangeAcousticMat,
+      jetBlackAcousticMat,
+      deepNavyAcousticMat,
+      darkGunmetalAcousticMat,
+      obsidianGeoMat,
+      charcoalSlateAcousticMat,
+      deepRoyalBlueAcousticMat,
+      titaniumFinMat,
+      espressoBronzeFinMat,
+      auroraCharcoalPanelMat,
+      auroraCharcoalAltMat,
+      deepNavySlateMat,
+      darkWalnutCharcoalMat,
+      obsidianFabricMat,
+      midnightSlateFabricMat,
+      brushedGunmetalMat,
+      charcoalSlatePanelMat,
+      walnutBronzeWoodMat,
+      satinBlackTrimMat,
+      auroraSlateGreyMat,
+      auroraIndigoCharcoalMat,
+      brushedDarkAluminumMat,
+      graphiteBlackFabricMat,
+      oceanTealFabricMat,
+      satinBlackShadowMat,
+      volcanicBasaltMat,
+      terracottaCopperMat,
+      darkBronzeRevealMat,
+      terracottaCopperSuedeMat,
+      smokedOakMat,
+      warmAlabasterPlasterMat,
+      sageSlateFabricMat,
+      champagneGoldInlayMat,
+      concealedGrilleMat,
+      iceBrushedAlumMat,
+      iceTaupePlasterMat,
+      iceRibbedBronzeMat,
+      iceShouSugiBanMat,
+      iceBasaltFabricMat,
+      americanWalnutMat,
+      oatmealBoucleMat,
+      saddleCognacSuedeMat,
+      champagneBrassInlayMat,
+      espressoFeltBackingMat,
+      alabasterShadeMat,
+      mandapTerracottaFabricMat,
+      mandapCrimsonFabricMat,
+      mandapArchSandstoneMat,
+      mandapEspressoBackingMat,
+      mandapAntiquedGoldMat,
+      obsidianParametricMat,
+      carbonGreyParametricMat,
+      sandBeigeMossMat,
+      sageGreenMossMat,
+      softMossMidMat,
+      deepCharcoalMossMat,
+      biophilicRecessBoxMat,
+      warmGoldHaloMat,
+      matteBlackVeilMat,
+      deepCobaltVeilMat,
+      cobaltVeilShadowMat,
+    };
+  }, [lightingProfile.wallColor, lightingProfile.accentColor, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(mats).forEach((m) => m.dispose());
+    };
+  }, [mats]);
+
+  // Dedicated non-reflective matte antiqued-gold pierced Jali lattice texture & material
+  const jaliResources = useMemo(() => {
+    if (sideLightStyle !== 'indian_mandap_jali') return null;
+    const jaliTex = createJaliLatticeTexture();
+    const jaliMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: jaliTex.map,
+        alphaMap: jaliTex.alphaMap,
+        alphaTest: 0.45,
+        roughness: 0.89,
+        metalness: 0.12,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+    return { jaliTex, jaliMat };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      jaliResources?.jaliMat.dispose();
+      jaliResources?.jaliTex.dispose();
+    };
+  }, [jaliResources]);
+
+  // Smooth dim control (house lighting off cleanly while movie plays)
+  const wallAccentIntensity = lightFactor * 1.65;
+  mats.primaryEmitterMat.emissiveIntensity = wallAccentIntensity;
+  mats.secondaryEmitterMat.emissiveIntensity = wallAccentIntensity * 0.9;
+  mats.alabasterGlassMat.emissiveIntensity = wallAccentIntensity * 0.95;
+  mats.alabasterShadeMat.emissiveIntensity = wallAccentIntensity * 0.88;
+  mats.warmGoldHaloMat.emissiveIntensity = 0.16 + lightFactor * 1.35;
+
+  const sconceY = isPrivate ? Math.min(H * 0.58, 2.55) : Math.min(H * 0.56, topTierY + 2.05);
+  const wallInnerX = W / 2 - 0.22;
+  const frontZ = -L / 2;
+  const backZ = L / 2;
+
+  // Continuous crisscross geometric LED lattice coordinates inspired by architectural cinema halls
+  const crisscrossSegments = useMemo(() => {
+    if (sideLightStyle !== 'crisscross_geometric') return [];
+    const wx = W / 2 - 0.26;
+    const ceilY = H - 0.235;
+    const frontFloorY = 0.04;
+    const tierEdgeZ = firstRowZ - rowSpacing * 0.5;
+    const skirtYAt = (z: number) => {
+      if (z <= tierEdgeZ) return frontFloorY;
+      const tierFrac = Math.min(seatingRows - 1, Math.max(0, (z - tierEdgeZ) / rowSpacing));
+      return Math.min(topTierY, tierFrac * rowElevationStep) + 0.08;
+    };
+
+    const zFront = -L * 0.42;
+    const zMid1 = -L * 0.15;
+    const zMid2 = L * 0.14;
+    const zBack = L * 0.41;
+
+    const segs: { start: [number, number, number]; end: [number, number, number]; accent?: boolean }[] = [];
+
+    [-1, 1].forEach((side) => {
+      const sx = side * wx;
+      const ceilInX = side * (W * 0.16);
+      const floorInX = side * (W * 0.34);
+
+      // Front flat apron + sloped skirting perimeter channels tracking cleanly above seating risers
+      segs.push({ start: [sx, frontFloorY, zFront], end: [sx, frontFloorY, tierEdgeZ] });
+      segs.push({ start: [sx, frontFloorY, tierEdgeZ], end: [sx, skirtYAt(zBack), zBack] });
+      segs.push({ start: [floorInX, frontFloorY, zFront], end: [floorInX, frontFloorY, tierEdgeZ], accent: true });
+      segs.push({ start: [sx, frontFloorY, zFront], end: [floorInX, frontFloorY, zFront + 1.4] });
+      segs.push({ start: [sx, frontFloorY, tierEdgeZ], end: [floorInX, frontFloorY, tierEdgeZ] });
+
+      // Bold crisscrossing wall-to-ceiling diagonal channels starting cleanly above skirting tiers
+      segs.push({ start: [sx, skirtYAt(zBack), zBack], end: [sx, ceilY, zMid2] });
+      segs.push({ start: [sx, skirtYAt(zMid2 - 0.4), zMid2 - 0.4], end: [sx, ceilY, zBack - 0.6] });
+
+      segs.push({ start: [sx, skirtYAt(zMid2 + 1.1), zMid2 + 1.1], end: [sx, ceilY, zMid1 - 0.6] });
+      segs.push({ start: [sx, skirtYAt(zMid1 - 1.2), zMid1 - 1.2], end: [sx, ceilY, zMid2 + 0.5] });
+
+      segs.push({ start: [sx, skirtYAt(zMid1 + 0.4), zMid1 + 0.4], end: [sx, ceilY, zFront + 0.9] });
+      segs.push({ start: [sx, skirtYAt(zFront), zFront], end: [sx, ceilY, zMid1 + 0.2] });
+
+      // Ceiling continuation lines tying left & right wall diagonals across the dark ceiling plane
+      segs.push({ start: [sx, ceilY, zBack - 0.6], end: [ceilInX, ceilY, zMid1], accent: true });
+      segs.push({ start: [sx, ceilY, zMid2], end: [-side * W * 0.12, ceilY, zMid1 - 1.2] });
+      segs.push({ start: [sx, ceilY, zFront + 0.9], end: [ceilInX, ceilY, zMid1 - 1.4] });
+    });
+
+    // Cross-hall ceiling connector ribs bridging left/right architectural channels
+    segs.push({ start: [-wx, ceilY, zFront + 0.9], end: [wx, ceilY, zMid1 - 1.4] });
+    segs.push({ start: [wx, ceilY, zFront + 0.9], end: [-wx, ceilY, zMid1 - 1.4] });
+
+    return segs;
+  }, [sideLightStyle, W, L, H, firstRowZ, rowSpacing, rowElevationStep, seatingRows, topTierY]);
+
+  // Contemporary commercial multiplex angled charcoal grey & deep midnight blue acoustic wall polygons + linear LED seams
+  const modernDiagonalWall = useMemo(() => {
+    if (sideLightStyle !== 'modern_charcoal_navy_diagonal') return null;
+    const zMin = -L * 0.43;
+    const zMax = L * 0.43;
+    const yBot = 0.28;
+    const yTop = H - 0.34;
+    const totalLen = zMax - zMin;
+    const bayCount = 5;
+    const bayLen = totalLen / bayCount;
+    const gap = 0.055;
+
+    const panels: { geo: THREE.BufferGeometry; tone: 'charcoal' | 'navy'; depthOffset: number }[] = [];
+    const ledSeamSegments: {
+      startZY: [number, number];
+      endZY: [number, number];
+      isAmber: boolean;
+    }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + gap * 0.5;
+      const z1 = zMin + (i + 1) * bayLen - gap * 0.5;
+      const zMidA = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.36 : 0.64);
+      const zMidB = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.68 : 0.32);
+      const yLowerBreak = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.38 : 0.48);
+      const yUpperBreak = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.72 : 0.62);
+
+      // Upper-front trapezoid panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yLowerBreak + 0.03],
+            [zMidB, yUpperBreak + 0.03],
+            [zMidA, yTop],
+            [z0, yTop],
+          ],
+          i % 2 === 0 ? 0.075 : 0.055,
+        ),
+        tone: i % 2 === 0 ? 'navy' : 'charcoal',
+        depthOffset: i % 2 === 0 ? 0.055 : 0.04,
+      });
+
+      // Upper-rear triangle/wedge panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMidA + 0.04, yTop],
+            [zMidB + 0.03, yUpperBreak + 0.03],
+            [z1, yUpperBreak - 0.65],
+            [z1, yTop],
+          ],
+          i % 2 === 0 ? 0.055 : 0.075,
+        ),
+        tone: i % 2 === 0 ? 'charcoal' : 'navy',
+        depthOffset: i % 2 === 0 ? 0.04 : 0.055,
+      });
+
+      // Lower angled geometric polygon panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [z1, yBot],
+            [z1, yUpperBreak - 0.71],
+            [zMidB, yUpperBreak - 0.03],
+            [z0, yLowerBreak - 0.03],
+          ],
+          i % 2 === 0 ? 0.068 : 0.052,
+        ),
+        tone: i % 2 === 0 ? 'charcoal' : 'navy',
+        depthOffset: i % 2 === 0 ? 0.05 : 0.038,
+      });
+
+      // Clean minimal linear diagonal LED light strips tucked into key architectural seams
+      ledSeamSegments.push({
+        startZY: [z0 + 0.06, yLowerBreak],
+        endZY: [zMidB, yUpperBreak],
+        isAmber: i % 2 === 1,
+      });
+      ledSeamSegments.push({
+        startZY: [zMidB, yUpperBreak],
+        endZY: [zMidA + 0.02, yTop - 0.08],
+        isAmber: false,
+      });
+      if (i < bayCount - 1) {
+        ledSeamSegments.push({
+          startZY: [zMidB, yUpperBreak],
+          endZY: [z1 - 0.04, yUpperBreak - 0.68],
+          isAmber: i % 2 === 0,
+        });
+      }
+    }
+
+    return { panels, ledSeamSegments };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      modernDiagonalWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [modernDiagonalWall]);
+
+  // Grand Crimson Palace (2D Multiplex): Broad Gently Angled Interlocking Ribbon Bands of Volcanic-Basalt Fabric & Muted Terracotta-Copper Panels + Dark-Bronze Shadow Reveals + Warm-Gold & Soft Ivory LED Seams
+  const volcanicRibbonsWall = useMemo(() => {
+    if (sideLightStyle !== 'volcanic_copper_ribbons') return null;
+    const zMin = -L * 0.44;
+    const zMax = L * 0.44;
+    const yBot = 0.22;
+    const yTop = H - 1.32; // Clean horizontal upper wall band for symmetrical black surround speakers
+    const segCount = 6;
+    const segLen = (zMax - zMin) / segCount;
+    const seamGap = 0.055; // Dark-bronze shadow reveal gap between interlocking ribbon bands
+
+    // Continuous gently angled ribbon seam profile rising smoothly across the auditorium
+    const upperSeamKnots = [0.64, 0.72, 0.62, 0.74, 0.65, 0.76, 0.68];
+    const lowerSeamKnots = [0.32, 0.42, 0.34, 0.46, 0.38, 0.48, 0.41];
+
+    const panels: { geo: THREE.BufferGeometry; tone: 'basalt' | 'terracotta'; depthOffset: number }[] = [];
+    const bronzeReveals: { startZY: [number, number]; endZY: [number, number] }[] = [];
+    const ledSeams: { startZY: [number, number]; endZY: [number, number]; isIvory: boolean }[] = [];
+
+    for (let i = 0; i < segCount; i++) {
+      const z0 = zMin + i * segLen + 0.018;
+      const z1 = zMin + (i + 1) * segLen - 0.018;
+      const yU0 = THREE.MathUtils.lerp(yBot, yTop, upperSeamKnots[i]);
+      const yU1 = THREE.MathUtils.lerp(yBot, yTop, upperSeamKnots[i + 1]);
+      const yL0 = THREE.MathUtils.lerp(yBot, yTop, lowerSeamKnots[i]);
+      const yL1 = THREE.MathUtils.lerp(yBot, yTop, lowerSeamKnots[i + 1]);
+
+      // Upper Matte Volcanic-Basalt Ribbon Band
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yU0 + seamGap * 0.65],
+            [z1, yU1 + seamGap * 0.65],
+            [z1, yTop],
+            [z0, yTop],
+          ],
+          0.056,
+          0.011,
+        ),
+        tone: 'basalt',
+        depthOffset: 0.044,
+      });
+
+      // Center Sweeping Interlocking Terracotta-Copper Ribbon Band (projects slightly forward for crisp relief)
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yL0 + seamGap * 0.65],
+            [z1, yL1 + seamGap * 0.65],
+            [z1, yU1 - seamGap * 0.65],
+            [z0, yU0 - seamGap * 0.65],
+          ],
+          0.072,
+          0.012,
+        ),
+        tone: i % 3 === 1 ? 'basalt' : 'terracotta',
+        depthOffset: 0.058,
+      });
+
+      // Lower Interlocking Ribbon Band (alternates basalt & warm terracotta-copper for balanced rhythm)
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [z1, yBot],
+            [z1, yL1 - seamGap * 0.65],
+            [z0, yL0 - seamGap * 0.65],
+          ],
+          0.054,
+          0.01,
+        ),
+        tone: i % 3 === 1 ? 'terracotta' : 'basalt',
+        depthOffset: 0.042,
+      });
+
+      // Dark-Bronze Shadow-Reveal Trim Lines Along Interlocking Ribbon Joints
+      bronzeReveals.push(
+        { startZY: [z0, yU0], endZY: [z1, yU1] },
+        { startZY: [z0, yL0], endZY: [z1, yL1] },
+      );
+
+      // Sleek Recessed Warm-Gold & Soft Ivory-White Linear LED Strips Tracing Ribbon Seams
+      ledSeams.push({
+        startZY: [z0 + 0.04, yU0],
+        endZY: [z1 - 0.04, yU1],
+        isIvory: i % 2 === 1,
+      });
+      if (i % 2 === 0) {
+        ledSeams.push({
+          startZY: [z0 + 0.08, yL0],
+          endZY: [z1 - 0.08, yL1],
+          isIvory: true,
+        });
+      }
+    }
+
+    // Top & Bottom Dark-Bronze Dado/Soffit Reveal Rails
+    bronzeReveals.push(
+      { startZY: [zMin, yBot], endZY: [zMax, yBot] },
+      { startZY: [zMin, yTop], endZY: [zMax, yTop] },
+    );
+
+    return { panels, bronzeReveals, ledSeams };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      volcanicRibbonsWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [volcanicRibbonsWall]);
+
+  // Mandap Heritage 2D: Deeply recessed matte terracotta & deep crimson acoustic fabric bays framed by intricate matte antiqued-gold Jali lattice screens & softly curved monolithic Mandap structural arches concealing all surround speakers
+  const mandapJaliWall = useMemo(() => {
+    if (sideLightStyle !== 'indian_mandap_jali') return null;
+    const bayCount = 5;
+    const zMin = -L * 0.415;
+    const zMax = L * 0.415;
+    const baySpan = (zMax - zMin) / bayCount;
+    const archWallH = H - 0.56;
+    const archDepthX = 0.62; // Deeply recessed acoustic bays + speaker-concealing monolithic arch piers
+
+    // Outer boundary rect minus softly curved Mandap cusped-arch void
+    const halfBay = baySpan * 0.5;
+    const pillarW = 0.86;
+    const innerHalf = Math.max(1.2, halfBay - pillarW);
+    const springY = archWallH * 0.62;
+    const crownY = archWallH - 0.48;
+
+    const archShape = new THREE.Shape();
+    archShape.moveTo(-halfBay, 0);
+    archShape.lineTo(halfBay, 0);
+    archShape.lineTo(halfBay, archWallH);
+    archShape.lineTo(-halfBay, archWallH);
+    archShape.closePath();
+
+    const voidHole = new THREE.Path();
+    voidHole.moveTo(-innerHalf, 0);
+    voidHole.lineTo(innerHalf, 0);
+    voidHole.lineTo(innerHalf, springY);
+    voidHole.quadraticCurveTo(innerHalf * 0.88, crownY * 0.94, innerHalf * 0.34, crownY * 0.96);
+    voidHole.quadraticCurveTo(0, crownY + 0.16, -innerHalf * 0.34, crownY * 0.96);
+    voidHole.quadraticCurveTo(-innerHalf * 0.88, crownY * 0.94, -innerHalf, springY);
+    voidHole.closePath();
+    archShape.holes.push(voidHole);
+
+    const archBayGeo = new THREE.ExtrudeGeometry(archShape, {
+      depth: archDepthX,
+      bevelEnabled: true,
+      bevelThickness: 0.03,
+      bevelSize: 0.025,
+      bevelSegments: 2,
+      curveSegments: 20,
+    });
+    // Rotate so width runs along Z and extrusion thickness projects inward along +X
+    archBayGeo.rotateY(Math.PI / 2);
+    archBayGeo.computeVertexNormals();
+
+    // Inner bevel molding rim hugging the softly curved Mandap arch curve
+    const rimShape = new THREE.Shape();
+    rimShape.moveTo(-innerHalf - 0.11, 0);
+    rimShape.lineTo(innerHalf + 0.11, 0);
+    rimShape.lineTo(innerHalf + 0.11, springY);
+    rimShape.quadraticCurveTo((innerHalf + 0.11) * 0.88, (crownY + 0.11) * 0.94, (innerHalf + 0.11) * 0.34, (crownY + 0.11) * 0.96);
+    rimShape.quadraticCurveTo(0, crownY + 0.27, -(innerHalf + 0.11) * 0.34, (crownY + 0.11) * 0.96);
+    rimShape.quadraticCurveTo(-(innerHalf + 0.11) * 0.88, (crownY + 0.11) * 0.94, -innerHalf - 0.11, springY);
+    rimShape.closePath();
+    rimShape.holes.push(voidHole);
+
+    const archTrimGeo = new THREE.ExtrudeGeometry(rimShape, {
+      depth: archDepthX + 0.08,
+      bevelEnabled: true,
+      bevelThickness: 0.018,
+      bevelSize: 0.016,
+      bevelSegments: 2,
+      curveSegments: 20,
+    });
+    archTrimGeo.rotateY(Math.PI / 2);
+    archTrimGeo.computeVertexNormals();
+
+    const bays = Array.from({ length: bayCount }, (_, i) => ({
+      zMid: zMin + (i + 0.5) * baySpan,
+      isTerracottaPrimary: i % 2 === 0,
+    }));
+
+    return {
+      archBayGeo,
+      archTrimGeo,
+      bays,
+      baySpan,
+      archWallH,
+      archDepthX,
+      innerHalf,
+      springY,
+      crownY,
+    };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      mandapJaliWall?.archBayGeo.dispose();
+      mandapJaliWall?.archTrimGeo.dispose();
+    };
+  }, [mandapJaliWall]);
+
+  // Walnut Reserve Salon (Private Luxury): Vertical fluted American walnut acoustic panels alternating with softly curved upholstered bays in warm oatmeal bouclé & rich saddle-cognac suede, precision champagne-brass inlays, concealed warm-amber vertical cove grazers, minimalist alabaster wall sconces, and concealed flush surrounds behind acoustically transparent bays
+  const privateVolcanicWall = useMemo(() => {
+    if (sideLightStyle !== 'private_volcanic_copper_ribbons') return null;
+    const zMin = -L * 0.41;
+    const zMax = L * 0.41;
+    const span = zMax - zMin;
+    const bayCount = 3; // 3 softly curved upholstered bays flanked by 4 vertical fluted American walnut acoustic piers
+    const baySpan = span / bayCount;
+    const pierW = 0.92;
+    const bayW = Math.max(1.25, baySpan - pierW - 0.16);
+    const yBot = 0.28;
+    const yTop = H - 0.34;
+    const bayH = yTop - yBot - 0.26;
+    const bayCenterY = (yBot + yTop) * 0.5;
+
+    const buildCurvedUpholsteryGeo = (width: number, height: number, maxBulge: number) => {
+      const hw = width * 0.5;
+      const shape = new THREE.Shape();
+      shape.moveTo(0, hw);
+      const segs = 28;
+      for (let i = 0; i <= segs; i++) {
+        const t = i / segs;
+        const z = THREE.MathUtils.lerp(-hw, hw, t);
+        const bulge = 0.016 + maxBulge * Math.sin(t * Math.PI);
+        shape.lineTo(bulge, -z);
+      }
+      shape.lineTo(0, -hw);
+      shape.closePath();
+
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: Math.max(0.2, height - 0.02),
+        bevelEnabled: true,
+        bevelThickness: 0.01,
+        bevelSize: 0.01,
+        bevelSegments: 2,
+        curveSegments: 10,
+      });
+      geo.translate(0, 0, -(height - 0.02) * 0.5);
+      geo.rotateX(-Math.PI / 2);
+      geo.computeVertexNormals();
+      return geo;
+    };
+
+    const mainBayH = bayH * 0.68;
+    const lowerBandH = bayH * 0.24;
+    const curvedMainGeo = buildCurvedUpholsteryGeo(bayW - 0.12, mainBayH, 0.072);
+    const curvedLowerBandGeo = buildCurvedUpholsteryGeo(bayW - 0.12, lowerBandH, 0.062);
+
+    const pierZs = Array.from({ length: bayCount + 1 }, (_, i) => zMin + i * baySpan);
+    const bayZs = Array.from({ length: bayCount }, (_, i) => zMin + (i + 0.5) * baySpan);
+
+    return {
+      pierZs,
+      bayZs,
+      pierW,
+      bayW,
+      bayH,
+      mainBayH,
+      lowerBandH,
+      bayCenterY,
+      yBot,
+      yTop,
+      curvedMainGeo,
+      curvedLowerBandGeo,
+    };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      privateVolcanicWall?.curvedMainGeo.dispose();
+      privateVolcanicWall?.curvedLowerBandGeo.dispose();
+    };
+  }, [privateVolcanicWall]);
+
+  // Champagne Ivory Lounge: Rhythmic vertical fluted smoked-oak acoustic slats alternating with gently curved warm alabaster plaster niches & muted sage-slate fabric panels + hairline champagne-gold metallic inlays + indirect warm-amber cove uplighting + slim vertical brass wall sconces
+  const champagneFlutedWall = useMemo(() => {
+    if (sideLightStyle !== 'champagne_fluted_oak_alcoves') return null;
+    const zMin = -L * 0.41;
+    const zMax = L * 0.41;
+    const span = zMax - zMin;
+    const bayCount = 3; // 3 curved plaster niches flanked by 4 fluted smoked-oak piers
+    const baySpan = span / bayCount;
+    const pierW = 0.96;
+    const nicheW = Math.max(1.2, baySpan - pierW - 0.14);
+    const yBot = 0.28;
+    const yTop = H - 0.36;
+    const nicheH = yTop - yBot - 0.34;
+    const nicheCenterY = (yBot + yTop) * 0.5;
+
+    // Gently curved concave alabaster plaster surround frame geometry
+    const curvedFrameGeo = (() => {
+      const outer = new THREE.Shape();
+      const hw = nicheW / 2;
+      const hh = nicheH / 2;
+      const r = Math.min(0.42, hw * 0.45);
+      outer.moveTo(-hw, -hh);
+      outer.lineTo(hw, -hh);
+      outer.lineTo(hw, hh - r);
+      outer.quadraticCurveTo(hw, hh, hw - r, hh);
+      outer.lineTo(-hw + r, hh);
+      outer.quadraticCurveTo(-hw, hh, -hw, hh - r);
+      outer.closePath();
+
+      const inner = new THREE.Path();
+      const ihw = hw - 0.18;
+      const ihh = hh - 0.16;
+      const ir = Math.max(0.14, r - 0.14);
+      inner.moveTo(-ihw, -ihh);
+      inner.lineTo(-ihw, ihh - ir);
+      inner.quadraticCurveTo(-ihw, ihh, -ihw + ir, ihh);
+      inner.lineTo(ihw - ir, ihh);
+      inner.quadraticCurveTo(ihw, ihh, ihw, ihh - ir);
+      inner.lineTo(ihw, -ihh);
+      inner.closePath();
+      outer.holes.push(inner);
+
+      const geo = new THREE.ExtrudeGeometry(outer, {
+        depth: 0.085,
+        bevelEnabled: true,
+        bevelThickness: 0.015,
+        bevelSize: 0.012,
+        bevelSegments: 2,
+        curveSegments: 14,
+      });
+      geo.rotateY(Math.PI / 2);
+      geo.computeVertexNormals();
+      return geo;
+    })();
+
+    const curvedFabricGeo = (() => {
+      const shape = new THREE.Shape();
+      const ihw = nicheW / 2 - 0.19;
+      const ihh = nicheH / 2 - 0.17;
+      const ir = Math.min(0.28, ihw * 0.35);
+      shape.moveTo(-ihw, -ihh);
+      shape.lineTo(ihw, -ihh);
+      shape.lineTo(ihw, ihh - ir);
+      shape.quadraticCurveTo(ihw, ihh, ihw - ir, ihh);
+      shape.lineTo(-ihw + ir, ihh);
+      shape.quadraticCurveTo(-ihw, ihh, -ihw, ihh - ir);
+      shape.closePath();
+
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: 0.04,
+        bevelEnabled: true,
+        bevelThickness: 0.008,
+        bevelSize: 0.008,
+        bevelSegments: 2,
+        curveSegments: 14,
+      });
+      geo.rotateY(Math.PI / 2);
+      geo.computeVertexNormals();
+      return geo;
+    })();
+
+    const pierZs = Array.from({ length: bayCount + 1 }, (_, i) => zMin + i * baySpan);
+    const nicheZs = Array.from({ length: bayCount }, (_, i) => zMin + (i + 0.5) * baySpan);
+
+    return {
+      pierZs,
+      nicheZs,
+      pierW,
+      nicheW,
+      nicheH,
+      nicheCenterY,
+      yBot,
+      yTop,
+      curvedFrameGeo,
+      curvedFabricGeo,
+    };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      champagneFlutedWall?.curvedFrameGeo.dispose();
+      champagneFlutedWall?.curvedFabricGeo.dispose();
+    };
+  }, [champagneFlutedWall]);
+
+  // IMAX with Laser: Matte Obsidian Black & Deep Charcoal Acoustic Wave Panels + Vertical/Diagonal Cobalt & Cyan Grazing Strips
+  const imaxWaveWall = useMemo(() => {
+    if (sideLightStyle !== 'imax_cobalt_wave') return null;
+    const zMin = -L * 0.455;
+    const zMax = L * 0.455;
+    const yBot = 0.25;
+    const yTop = H - 0.34;
+    const bayCount = 7;
+    const bayLen = (zMax - zMin) / bayCount;
+    const gap = 0.06;
+
+    const panels: {
+      geo: THREE.BufferGeometry;
+      tone: 'obsidian' | 'charcoal';
+      depthOffset: number;
+    }[] = [];
+    const grooveRibs: { z: number; tilt: number; height: number; y: number }[] = [];
+    const ledSeamSegments: {
+      startZY: [number, number];
+      endZY: [number, number];
+      isCyan: boolean;
+    }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + gap * 0.5;
+      const z1 = zMin + (i + 1) * bayLen - gap * 0.5;
+      const zWaveMid = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.58 : 0.42);
+      const yMidLow = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.34 : 0.44);
+      const yMidHigh = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.72 : 0.64);
+
+      // Upper undulating wave panel (obsidian / deep charcoal alternating)
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yMidHigh + 0.04],
+            [zWaveMid, yMidHigh + 0.55],
+            [z1, yMidHigh - 0.12],
+            [z1, yTop],
+            [z0, yTop],
+          ],
+          i % 2 === 0 ? 0.085 : 0.06,
+          0.015,
+        ),
+        tone: i % 2 === 0 ? 'obsidian' : 'charcoal',
+        depthOffset: i % 2 === 0 ? 0.065 : 0.045,
+      });
+
+      // Center swept acoustic wave panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yMidLow + 0.04],
+            [zWaveMid, yMidLow + 0.42],
+            [z1, yMidLow - 0.08],
+            [z1, yMidHigh - 0.18],
+            [zWaveMid, yMidHigh + 0.49],
+            [z0, yMidHigh - 0.02],
+          ],
+          i % 2 === 0 ? 0.065 : 0.095,
+          0.015,
+        ),
+        tone: i % 2 === 0 ? 'charcoal' : 'obsidian',
+        depthOffset: i % 2 === 0 ? 0.048 : 0.072,
+      });
+
+      // Lower stadium-contour wave base panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [z1, yBot],
+            [z1, yMidLow - 0.14],
+            [zWaveMid, yMidLow + 0.36],
+            [z0, yMidLow - 0.02],
+          ],
+          i % 2 === 0 ? 0.08 : 0.058,
+          0.014,
+        ),
+        tone: 'obsidian',
+        depthOffset: i % 2 === 0 ? 0.06 : 0.042,
+      });
+
+      // Subtle angled geometric wave groove baffles sculpted inside each bay
+      grooveRibs.push({
+        z: zWaveMid,
+        tilt: i % 2 === 0 ? 0.18 : -0.18,
+        height: (yTop - yBot) * 0.88,
+        y: (yBot + yTop) * 0.5,
+      });
+
+      // Vertical electric cobalt-blue LED grazing strip running full height along bay seam
+      ledSeamSegments.push({
+        startZY: [z0 - gap * 0.45, yBot + 0.12],
+        endZY: [z0 - gap * 0.45, yTop - 0.12],
+        isCyan: false,
+      });
+
+      // Diagonal cyan / cobalt grazing strips tracing the acoustic wave seam lines
+      ledSeamSegments.push({
+        startZY: [z0 + 0.05, yMidHigh],
+        endZY: [zWaveMid, yMidHigh + 0.52],
+        isCyan: true,
+      });
+      ledSeamSegments.push({
+        startZY: [zWaveMid, yMidHigh + 0.52],
+        endZY: [z1 - 0.05, yMidHigh - 0.15],
+        isCyan: i % 2 === 0,
+      });
+      ledSeamSegments.push({
+        startZY: [z0 + 0.05, yMidLow],
+        endZY: [zWaveMid, yMidLow + 0.39],
+        isCyan: i % 2 === 1,
+      });
+    }
+
+    // Final closing vertical cobalt seam at rear of auditorium
+    ledSeamSegments.push({
+      startZY: [zMax, yBot + 0.12],
+      endZY: [zMax, yTop - 0.12],
+      isCyan: false,
+    });
+
+    return { panels, grooveRibs, ledSeamSegments };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      imaxWaveWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [imaxWaveWall]);
+
+  // 4DX Crimson Velocity: Matte Carbon-Black & Dark Gunmetal-Grey Angular Acoustic Panels + Recessed Crimson-Red & Electric-Blue Linear LED Strips
+  const crimson4dxWall = useMemo(() => {
+    if (sideLightStyle !== 'crimson_velocity_4dx') return null;
+    const zMin = -L * 0.445;
+    const zMax = L * 0.445;
+    const yBot = 0.25;
+    const yTop = H - 0.34;
+    const bayCount = 6;
+    const bayLen = (zMax - zMin) / bayCount;
+    const gap = 0.055;
+
+    const panels: {
+      geo: THREE.BufferGeometry;
+      tone: 'carbon' | 'gunmetal';
+      depthOffset: number;
+    }[] = [];
+    const ledSeamSegments: {
+      startZY: [number, number];
+      endZY: [number, number];
+      isBlue: boolean;
+    }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + gap * 0.5;
+      const z1 = zMin + (i + 1) * bayLen - gap * 0.5;
+      const zMidA = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.38 : 0.62);
+      const zMidB = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.68 : 0.32);
+      const yLowerBreak = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.36 : 0.46);
+      const yUpperBreak = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.72 : 0.62);
+
+      // Upper-front angular gunmetal/carbon acoustic polygon
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yLowerBreak + 0.03],
+            [zMidB, yUpperBreak + 0.03],
+            [zMidA, yTop],
+            [z0, yTop],
+          ],
+          i % 2 === 0 ? 0.08 : 0.058,
+          0.014,
+        ),
+        tone: i % 2 === 0 ? 'gunmetal' : 'carbon',
+        depthOffset: i % 2 === 0 ? 0.06 : 0.042,
+      });
+
+      // Upper-rear sharp wedge panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMidA + 0.04, yTop],
+            [zMidB + 0.03, yUpperBreak + 0.03],
+            [z1, yUpperBreak - 0.62],
+            [z1, yTop],
+          ],
+          i % 2 === 0 ? 0.058 : 0.08,
+          0.014,
+        ),
+        tone: i % 2 === 0 ? 'carbon' : 'gunmetal',
+        depthOffset: i % 2 === 0 ? 0.042 : 0.06,
+      });
+
+      // Lower angular carbon-black & gunmetal acoustic polygon
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [z1, yBot],
+            [z1, yUpperBreak - 0.68],
+            [zMidB, yUpperBreak - 0.03],
+            [z0, yLowerBreak - 0.03],
+          ],
+          i % 2 === 0 ? 0.072 : 0.056,
+          0.014,
+        ),
+        tone: i % 2 === 0 ? 'carbon' : 'gunmetal',
+        depthOffset: i % 2 === 0 ? 0.052 : 0.04,
+      });
+
+      // Recessed crimson-red & electric-blue linear LED light strips tracing the angular panel channels
+      ledSeamSegments.push({
+        startZY: [z0 + 0.06, yLowerBreak],
+        endZY: [zMidB, yUpperBreak],
+        isBlue: false,
+      });
+      ledSeamSegments.push({
+        startZY: [zMidB, yUpperBreak],
+        endZY: [zMidA + 0.02, yTop - 0.08],
+        isBlue: i % 2 === 0,
+      });
+      ledSeamSegments.push({
+        startZY: [zMidB, yUpperBreak],
+        endZY: [z1 - 0.05, yUpperBreak - 0.65],
+        isBlue: i % 2 === 1,
+      });
+      // Vertical recessed seam LED bar at bay boundary
+      ledSeamSegments.push({
+        startZY: [z0 - gap * 0.45, yBot + 0.14],
+        endZY: [z0 - gap * 0.45, yTop - 0.14],
+        isBlue: i % 2 === 1,
+      });
+    }
+
+    // Closing vertical recessed LED strip at rear wall boundary
+    ledSeamSegments.push({
+      startZY: [zMax, yBot + 0.14],
+      endZY: [zMax, yTop - 0.14],
+      isBlue: true,
+    });
+
+    return { panels, ledSeamSegments };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      crimson4dxWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [crimson4dxWall]);
+
+  // 4DX Arctic Storm: Interlocking Diamond & Diagonal-Cut Acoustic Panels in Matte Slate-Grey, Deep Indigo & Pitch-Black + Electric-Violet & Bright Cyan LED Strips
+  const arctic4dxWall = useMemo(() => {
+    if (sideLightStyle !== 'arctic_parametric_fins') return null;
+    const zMin = -L * 0.445;
+    const zMax = L * 0.445;
+    const yBot = 0.25;
+    const yTop = H - 0.34;
+    const yMid = (yBot + yTop) * 0.52;
+    const bayCount = 6;
+    const bayLen = (zMax - zMin) / bayCount;
+    const gap = 0.05;
+
+    const panels: {
+      geo: THREE.BufferGeometry;
+      tone: 'slate' | 'indigo' | 'pitch';
+      depthOffset: number;
+    }[] = [];
+    const ledSeamSegments: {
+      startZY: [number, number];
+      endZY: [number, number];
+      isCyan: boolean;
+    }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + gap * 0.5;
+      const z1 = zMin + (i + 1) * bayLen - gap * 0.5;
+      const zMid = (z0 + z1) * 0.5;
+
+      // Central interlocking diamond acoustic panel
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMid, yTop - 0.06],
+            [z1 - 0.06, yMid],
+            [zMid, yBot + 0.06],
+            [z0 + 0.06, yMid],
+          ],
+          0.082,
+          0.014,
+        ),
+        tone: i % 2 === 0 ? 'indigo' : 'slate',
+        depthOffset: 0.064,
+      });
+
+      // Upper-front diagonal-cut triangular facet
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot + 0.06],
+            [z0, yMid - 0.04],
+            [zMid - 0.04, yTop],
+            [z0, yTop],
+          ],
+          0.06,
+          0.012,
+        ),
+        tone: i % 2 === 0 ? 'slate' : 'pitch',
+        depthOffset: 0.042,
+      });
+
+      // Upper-rear diagonal-cut wedge
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMid + 0.04, yTop],
+            [z1, yMid + 0.04],
+            [z1, yTop],
+          ],
+          0.065,
+          0.012,
+        ),
+        tone: i % 2 === 0 ? 'pitch' : 'indigo',
+        depthOffset: 0.046,
+      });
+
+      // Lower-front diagonal-cut wedge
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [zMid - 0.04, yBot],
+            [z0, yMid - 0.05],
+          ],
+          0.064,
+          0.012,
+        ),
+        tone: 'pitch',
+        depthOffset: 0.045,
+      });
+
+      // Lower-rear diagonal-cut wedge
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMid + 0.04, yBot],
+            [z1, yBot],
+            [z1, yMid - 0.04],
+          ],
+          0.07,
+          0.012,
+        ),
+        tone: i % 2 === 0 ? 'slate' : 'pitch',
+        depthOffset: 0.05,
+      });
+
+      // Electric-violet and bright cyan recessed linear LEDs tracing every interlocking diamond & diagonal edge
+      ledSeamSegments.push({ startZY: [z0 + 0.04, yMid], endZY: [zMid, yTop - 0.04], isCyan: false });
+      ledSeamSegments.push({ startZY: [zMid, yTop - 0.04], endZY: [z1 - 0.04, yMid], isCyan: true });
+      ledSeamSegments.push({ startZY: [z1 - 0.04, yMid], endZY: [zMid, yBot + 0.04], isCyan: false });
+      ledSeamSegments.push({ startZY: [zMid, yBot + 0.04], endZY: [z0 + 0.04, yMid], isCyan: true });
+    }
+
+    return { panels, ledSeamSegments };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      arctic4dxWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [arctic4dxWall]);
+
+  // 4DX Thunder Arena: 3D Parametric Ribbed Acoustic Fins in Matte Titanium Grey & Deep Espresso-Bronze + Warm Golden-Amber & Crisp Ice-White Inner LEDs
+  const thunderWaveWall = useMemo(() => {
+    if (sideLightStyle !== 'thunder_emerald_waves') return null;
+    const zMin = -L * 0.445;
+    const zMax = L * 0.445;
+    const yBot = 0.22;
+    const yTop = H - 0.34;
+    const finCount = 28;
+    const pitch = (zMax - zMin) / finCount;
+    const finThickZ = pitch * 0.36;
+    const ySteps = 22;
+
+    const fins: {
+      geo: THREE.BufferGeometry;
+      z: number;
+      tone: 'titanium' | 'bronze';
+    }[] = [];
+    const ledStrips: {
+      z: number;
+      isWhite: boolean;
+      yStart: number;
+      yEnd: number;
+    }[] = [];
+
+    for (let i = 0; i < finCount; i++) {
+      const t = i / Math.max(1, finCount - 1);
+      const z = zMin + (i + 0.5) * pitch;
+      const phase = t * Math.PI * 3.2;
+
+      // Sculpted parametric acoustic fin cross-section in (depth, Y)
+      const shape = new THREE.Shape();
+      shape.moveTo(0, yBot);
+      for (let iy = 0; iy <= ySteps; iy++) {
+        const yf = iy / ySteps;
+        const y = THREE.MathUtils.lerp(yBot, yTop, yf);
+        const envelope = Math.sin(yf * Math.PI);
+        const wave =
+          0.11 +
+          envelope *
+            (0.14 +
+              0.11 * Math.sin(phase + yf * Math.PI * 1.45) +
+              0.04 * Math.cos(phase * 1.7 - yf * Math.PI * 2.1));
+        shape.lineTo(Math.max(0.08, wave), y);
+      }
+      shape.lineTo(0, yTop);
+      shape.closePath();
+
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: finThickZ,
+        bevelEnabled: true,
+        bevelThickness: 0.012,
+        bevelSize: 0.01,
+        bevelSegments: 2,
+        curveSegments: 8,
+      });
+      geo.translate(0, 0, -finThickZ * 0.5);
+      geo.computeVertexNormals();
+
+      fins.push({
+        geo,
+        z,
+        tone: i % 2 === 0 ? 'titanium' : 'bronze',
+      });
+
+      if (i % 2 === 0 && i < finCount - 1) {
+        ledStrips.push({
+          z: z + pitch * 0.5,
+          isWhite: (i / 2) % 3 === 1,
+          yStart: yBot + 0.14,
+          yEnd: yTop - 0.14,
+        });
+      }
+    }
+
+    return { fins, ledStrips };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      thunderWaveWall?.fins.forEach((f) => f.geo.dispose());
+    };
+  }, [thunderWaveWall]);
+
+  // IMAX Polar Aurora: Slate-Grey & Deep Indigo-Charcoal Hexagonal & Angled Polygon Acoustic Fabric Panels with Brushed Dark-Aluminum Trims + Ice-White & Subtle Cobalt-Blue LEDs
+  const polarAuroraWall = useMemo(() => {
+    if (sideLightStyle !== 'aurora_ribbon_waves') return null;
+    const zMin = -L * 0.36; // Keep front wall bay clear for illuminated blue IMAX emblem
+    const zMax = L * 0.455;
+    const yBot = 0.24;
+    const yTop = H - 1.25; // Leave clean horizontal upper band for symmetrical black IMAX surrounds
+    const bayCount = 5;
+    const bayLen = (zMax - zMin) / bayCount;
+    const seam = 0.055;
+
+    const panels: {
+      geo: THREE.BufferGeometry;
+      depthOffset: number;
+      isSlateGrey: boolean;
+    }[] = [];
+    const trimBars: { startZY: [number, number]; endZY: [number, number] }[] = [];
+    const ledStrips: { startZY: [number, number]; endZY: [number, number]; isBlue: boolean }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + seam;
+      const z1 = zMin + (i + 1) * bayLen - seam;
+      const zMid = (z0 + z1) * 0.5;
+      const wZ = z1 - z0;
+      const panelH = yTop - yBot;
+      const yMid = THREE.MathUtils.lerp(yBot, yTop, 0.48 + (i % 2 === 0 ? 0.03 : -0.02));
+
+      // Central Large Beveled Hexagonal Acoustic Fabric Panel
+      const hexR = wZ * 0.36;
+      const hexRy = panelH * 0.27;
+      const hexPts: [number, number][] = [
+        [zMid - hexR, yMid],
+        [zMid - hexR * 0.5, yMid + hexRy],
+        [zMid + hexR * 0.5, yMid + hexRy],
+        [zMid + hexR, yMid],
+        [zMid + hexR * 0.5, yMid - hexRy],
+        [zMid - hexR * 0.5, yMid - hexRy],
+      ];
+      panels.push({
+        geo: buildWallPolygonGeo(hexPts, 0.068, 0.012),
+        depthOffset: 0.058,
+        isSlateGrey: i % 2 === 0,
+      });
+
+      // Surrounding Angled Polygon Sections (4 interlocking trapezoids/pentagons framing the central hexagon)
+      const g = 0.065;
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yMid + g * 0.6],
+            [zMid - hexR - g, yMid + g * 0.6],
+            [zMid - hexR * 0.5 - g * 0.5, yMid + hexRy + g],
+            [zMid - g * 0.4, yMid + hexRy + g],
+            [zMid - g * 0.4, yTop],
+            [z0, yTop],
+          ],
+          0.052,
+          0.01,
+        ),
+        depthOffset: 0.04,
+        isSlateGrey: i % 2 === 1,
+      });
+
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMid + g * 0.4, yMid + hexRy + g],
+            [zMid + hexR * 0.5 + g * 0.5, yMid + hexRy + g],
+            [zMid + hexR + g, yMid + g * 0.6],
+            [z1, yMid + g * 0.6],
+            [z1, yTop],
+            [zMid + g * 0.4, yTop],
+          ],
+          0.052,
+          0.01,
+        ),
+        depthOffset: 0.04,
+        isSlateGrey: i % 2 === 0,
+      });
+
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [z0, yBot],
+            [zMid - g * 0.4, yBot],
+            [zMid - g * 0.4, yMid - hexRy - g],
+            [zMid - hexR * 0.5 - g * 0.5, yMid - hexRy - g],
+            [zMid - hexR - g, yMid - g * 0.6],
+            [z0, yMid - g * 0.6],
+          ],
+          0.052,
+          0.01,
+        ),
+        depthOffset: 0.04,
+        isSlateGrey: i % 2 === 0,
+      });
+
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zMid + g * 0.4, yBot],
+            [z1, yBot],
+            [z1, yMid - g * 0.6],
+            [zMid + hexR + g, yMid - g * 0.6],
+            [zMid + hexR * 0.5 + g * 0.5, yMid - hexRy - g],
+            [zMid + g * 0.4, yMid - hexRy - g],
+          ],
+          0.052,
+          0.01,
+        ),
+        depthOffset: 0.04,
+        isSlateGrey: i % 2 === 1,
+      });
+
+      // Brushed Dark-Aluminum Trims Along Bay Dividers & Upper/Lower Hexagon Angled Ribs
+      if (i > 0) {
+        const zDiv = zMin + i * bayLen;
+        trimBars.push({ startZY: [zDiv, yBot], endZY: [zDiv, yTop] });
+        // Crisp Recessed Ice-White Vertical LED Strip Beside Bay Trim
+        ledStrips.push({
+          startZY: [zDiv - 0.05, yBot + 0.35],
+          endZY: [zDiv - 0.05, yTop - 0.25],
+          isBlue: false,
+        });
+      }
+
+      // Brushed Dark-Aluminum Perimeter Bars Framing the Hexagon Angles
+      trimBars.push(
+        { startZY: hexPts[0], endZY: hexPts[1] },
+        { startZY: hexPts[1], endZY: hexPts[2] },
+        { startZY: hexPts[2], endZY: hexPts[3] },
+        { startZY: hexPts[3], endZY: hexPts[4] },
+        { startZY: hexPts[4], endZY: hexPts[5] },
+        { startZY: hexPts[5], endZY: hexPts[0] },
+      );
+
+      // Crisp Recessed Ice-White & Subtle Cobalt-Blue LED Strips Along Select Angled Hexagon Edges
+      ledStrips.push(
+        { startZY: hexPts[0], endZY: hexPts[1], isBlue: i % 2 === 1 },
+        { startZY: hexPts[2], endZY: hexPts[3], isBlue: i % 2 === 0 },
+      );
+      if (i % 2 === 0) {
+        ledStrips.push({ startZY: hexPts[4], endZY: hexPts[5], isBlue: true });
+      }
+    }
+
+    // Continuous Brushed Dark-Aluminum Upper & Lower Horizontal Datum Trims
+    trimBars.push(
+      { startZY: [zMin, yBot], endZY: [zMax, yBot] },
+      { startZY: [zMin, yTop], endZY: [zMax, yTop] },
+    );
+
+    return { panels, trimBars, ledStrips, zMin, zMax };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      polarAuroraWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [polarAuroraWall]);
+
+  // IMAX Obsidian Amber: Subtle 3D Origami-Folded Triangular & Trapezoidal Acoustic Fabric Panels (Graphite-Black & Deep Ocean-Teal) with Satin-Black Shadow Gaps + Warm-Tungsten & Soft Cyan Crease LEDs
+  const obsidianAmberWall = useMemo(() => {
+    if (sideLightStyle !== 'horizon_tier_strips') return null;
+    const zMin = -L * 0.36; // Keep front wall bay clean for illuminated blue IMAX emblem
+    const zMax = L * 0.455;
+    const yBot = 0.24;
+    const yTop = H - 1.3; // Leave upper wall band clear for symmetrical black IMAX surrounds
+    const bayCount = 5;
+    const bayLen = (zMax - zMin) / bayCount;
+    const gap = 0.055; // Satin-black shadow gap between bays & panels
+
+    const facets: {
+      geo: THREE.BufferGeometry;
+      tone: 'graphite' | 'teal';
+    }[] = [];
+    const shadowGaps: { startZY: [number, number]; endZY: [number, number] }[] = [];
+    const creaseLeds: { startZY: [number, number]; endZY: [number, number]; isCyan: boolean }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const z0 = zMin + i * bayLen + gap;
+      const z1 = zMin + (i + 1) * bayLen - gap;
+      const zMid = THREE.MathUtils.lerp(z0, z1, i % 2 === 0 ? 0.56 : 0.44);
+      const yMidL = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.42 : 0.58);
+      const yMidR = THREE.MathUtils.lerp(yBot, yTop, i % 2 === 0 ? 0.62 : 0.38);
+      const yPeak = THREE.MathUtils.lerp(yMidL, yMidR, 0.5) + (i % 2 === 0 ? 0.35 : -0.35);
+
+      const dLow = 0.03;
+      const dMid = 0.095;
+      const dPeak = 0.145;
+
+      // Upper-Left Folded Trapezoidal Acoustic Panel
+      facets.push({
+        geo: buildOrigamiFacetGeo([
+          [z0, yMidL + 0.03, dMid],
+          [zMid - 0.025, yPeak + 0.03, dPeak],
+          [zMid - 0.025, yTop, dLow],
+          [z0, yTop, dLow],
+        ]),
+        tone: i % 2 === 0 ? 'graphite' : 'teal',
+      });
+
+      // Upper-Right Folded Triangular Acoustic Panel
+      facets.push({
+        geo: buildOrigamiFacetGeo([
+          [zMid + 0.025, yPeak + 0.03, dPeak],
+          [z1, yMidR + 0.03, dMid],
+          [z1, yTop, dLow],
+          [zMid + 0.025, yTop, dLow],
+        ]),
+        tone: i % 2 === 0 ? 'teal' : 'graphite',
+      });
+
+      // Center Folded Triangular Origami Crest (connecting mid ridge)
+      facets.push({
+        geo: buildOrigamiFacetGeo([
+          [z0 + 0.04, yMidL - 0.01, dLow],
+          [zMid, yPeak, dPeak],
+          [z1 - 0.04, yMidR - 0.01, dLow],
+        ]),
+        tone: i % 2 === 0 ? 'teal' : 'graphite',
+      });
+
+      // Lower-Left Folded Trapezoidal Acoustic Panel
+      facets.push({
+        geo: buildOrigamiFacetGeo([
+          [z0, yBot, dLow],
+          [zMid - 0.025, yBot, dLow],
+          [zMid - 0.025, yPeak - 0.04, dPeak * 0.88],
+          [z0, yMidL - 0.04, dMid],
+        ]),
+        tone: i % 2 === 0 ? 'graphite' : 'teal',
+      });
+
+      // Lower-Right Folded Trapezoidal Acoustic Panel
+      facets.push({
+        geo: buildOrigamiFacetGeo([
+          [zMid + 0.025, yBot, dLow],
+          [z1, yBot, dLow],
+          [z1, yMidR - 0.04, dMid],
+          [zMid + 0.025, yPeak - 0.04, dPeak * 0.88],
+        ]),
+        tone: 'graphite',
+      });
+
+      // Clean Satin-Black Shadow-Gap Bars Separating Bays
+      if (i > 0) {
+        const zDiv = zMin + i * bayLen;
+        shadowGaps.push({ startZY: [zDiv, yBot], endZY: [zDiv, yTop] });
+      }
+
+      // Warm-Tungsten & Soft Cyan Linear LED Strips Tucked Cleanly Along Select Origami Panel Creases
+      creaseLeds.push({
+        startZY: [z0 + 0.08, yMidL + 0.02],
+        endZY: [zMid, yPeak + 0.01],
+        isCyan: false,
+      });
+      if (i % 2 === 1 || i === 0) {
+        creaseLeds.push({
+          startZY: [zMid, yPeak + 0.01],
+          endZY: [z1 - 0.08, yMidR + 0.02],
+          isCyan: true,
+        });
+      }
+    }
+
+    return { facets, shadowGaps, creaseLeds, zMin, zMax };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      obsidianAmberWall?.facets.forEach((f) => f.geo.dispose());
+    };
+  }, [obsidianAmberWall]);
+
+  // Dolby Obsidian Reference: Charcoal-Black & Midnight-Slate Acoustic Panels Divided by Brushed Gunmetal Trims + Dolby-Blue & Soft Warm-White LED Strips
+  const dolbyObsidianWall = useMemo(() => {
+    if (sideLightStyle !== 'obsidian_slat_grazers') return null;
+    const zMin = -L * 0.455;
+    const zMax = L * 0.455;
+    const yBot = 0.24;
+    const yTop = H - 0.3;
+    const bayCount = 5;
+    const bayLen = (zMax - zMin) / bayCount;
+    const seam = 0.028;
+
+    const panels: { geo: THREE.BufferGeometry; depthOffset: number; isMidnightSlate: boolean }[] = [];
+    const trimBars: { startZY: [number, number]; endZY: [number, number] }[] = [];
+    const ledStrips: { startZY: [number, number]; endZY: [number, number]; isWarmWhite: boolean }[] = [];
+
+    for (let i = 0; i < bayCount; i++) {
+      const zFront = zMin + i * bayLen + seam * 0.5;
+      const zBack = zMin + (i + 1) * bayLen - seam * 0.5;
+      const zMid = (zFront + zBack) * 0.5;
+
+      // Balanced diagonal architectural division rising toward rear stadium rows
+      const yDiagFront = THREE.MathUtils.lerp(yBot, yTop, 0.34);
+      const yDiagBack = THREE.MathUtils.lerp(yBot, yTop, 0.54);
+      const yLowerBand = THREE.MathUtils.lerp(yBot, yTop, 0.24);
+
+      // Upper acoustic fabric bay (split cleanly along crisp diagonal)
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zFront, yDiagFront + 0.025],
+            [zBack, yDiagBack + 0.025],
+            [zBack, yTop],
+            [zFront, yTop],
+          ],
+          0.056,
+          0.01,
+        ),
+        depthOffset: 0.044,
+        isMidnightSlate: i % 2 === 0,
+      });
+
+      // Mid acoustic fabric wedge
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zFront, yLowerBand + 0.02],
+            [zBack, yLowerBand + 0.02],
+            [zBack, yDiagBack - 0.025],
+            [zFront, yDiagFront - 0.025],
+          ],
+          0.048,
+          0.01,
+        ),
+        depthOffset: 0.038,
+        isMidnightSlate: i % 2 === 1,
+      });
+
+      // Lower charcoal-black acoustic wainscot bay
+      panels.push({
+        geo: buildWallPolygonGeo(
+          [
+            [zFront, yBot],
+            [zBack, yBot],
+            [zBack, yLowerBand - 0.02],
+            [zFront, yLowerBand - 0.02],
+          ],
+          0.052,
+          0.01,
+        ),
+        depthOffset: 0.04,
+        isMidnightSlate: false,
+      });
+
+      // Clean diagonal brushed gunmetal trim dividing the upper and mid bays
+      trimBars.push({
+        startZY: [zFront, yDiagFront],
+        endZY: [zBack, yDiagBack],
+      });
+
+      // Clean horizontal brushed gunmetal trim along lower wainscot seam
+      trimBars.push({
+        startZY: [zFront, yLowerBand],
+        endZY: [zBack, yLowerBand],
+      });
+
+      // Sleek recessed Dolby-blue linear LED light strip tracing the diagonal seam
+      ledStrips.push({
+        startZY: [zFront + 0.16, THREE.MathUtils.lerp(yDiagFront, yDiagBack, 0.06) + 0.06],
+        endZY: [zBack - 0.16, THREE.MathUtils.lerp(yDiagFront, yDiagBack, 0.94) + 0.06],
+        isWarmWhite: false,
+      });
+
+      // Soft warm-white recessed linear LED accent at top architectural reveal
+      ledStrips.push({
+        startZY: [zFront + 0.22, yTop - 0.06],
+        endZY: [zBack - 0.22, yTop - 0.06],
+        isWarmWhite: true,
+      });
+
+      // Vertical brushed gunmetal divider trim between architectural bays
+      if (i < bayCount - 1) {
+        const zDivider = zBack + seam * 0.5;
+        trimBars.push({
+          startZY: [zDivider, yBot],
+          endZY: [zDivider, yTop],
+        });
+        // Crisp recessed vertical Dolby-blue or warm-white light strip beside divider
+        ledStrips.push({
+          startZY: [zDivider - 0.055, yLowerBand + 0.15],
+          endZY: [zDivider - 0.055, yTop - 0.25],
+          isWarmWhite: i % 2 === 1,
+        });
+      }
+
+      // Subtle mid-bay brushed gunmetal accent bar on alternating bays
+      if (i % 2 === 0) {
+        trimBars.push({
+          startZY: [zMid, yLowerBand + 0.02],
+          endZY: [zMid, yTop - 0.02],
+        });
+      }
+    }
+
+    return { panels, trimBars, ledStrips, yBot, yTop, zMin, zMax };
+  }, [sideLightStyle, L, H]);
+
+  useEffect(() => {
+    return () => {
+      dolbyObsidianWall?.panels.forEach((p) => p.geo.dispose());
+    };
+  }, [dolbyObsidianWall]);
+
+  // Dolby Cobalt Noir: Balanced Horizontal Charcoal-Slate Acoustic Panels & Warm Dark Walnut-Bronze Wood Slats Separated by Satin-Black Trims + Warm-Amber & Soft Cool-Blue LEDs
+  const dolbyCobaltWall = useMemo(() => {
+    if (sideLightStyle !== 'diagonal_parabolic_ribs') return null;
+    const zMin = -L * 0.45;
+    const zMax = L * 0.45;
+    const yBot = 0.24;
+    const yTop = H - 0.32;
+    const yBand1Top = THREE.MathUtils.lerp(yBot, yTop, 0.24);
+    const yBand2Bot = yBand1Top + 0.055;
+    const yBand2Top = THREE.MathUtils.lerp(yBot, yTop, 0.62);
+    const yBand3Bot = yBand2Top + 0.055;
+
+    const bayCount = 5;
+    const bayLen = (zMax - zMin) / bayCount;
+    const seam = 0.05;
+
+    const fabricPanels: { posZY: [number, number]; lengthZ: number; heightY: number; depth: number }[] = [];
+    const woodSlats: { z: number; yMid: number; heightY: number }[] = [];
+    const satinTrims: { posZY: [number, number]; lengthZ: number; heightY: number }[] = [];
+    const ledStrips: { startZY: [number, number]; endZY: [number, number]; isCoolBlue: boolean }[] = [];
+
+    // Continuous clean horizontal satin-black trim rails separating the 3 horizontal tiers
+    satinTrims.push({
+      posZY: [(zMin + zMax) * 0.5, (yBand1Top + yBand2Bot) * 0.5],
+      lengthZ: zMax - zMin + 0.08,
+      heightY: 0.065,
+    });
+    satinTrims.push({
+      posZY: [(zMin + zMax) * 0.5, (yBand2Top + yBand3Bot) * 0.5],
+      lengthZ: zMax - zMin + 0.08,
+      heightY: 0.065,
+    });
+    satinTrims.push({
+      posZY: [(zMin + zMax) * 0.5, yTop + 0.025],
+      lengthZ: zMax - zMin + 0.08,
+      heightY: 0.06,
+    });
+
+    // Sleek recessed warm-amber linear LED strips along the main horizontal seam lines
+    ledStrips.push({
+      startZY: [zMin + 0.2, yBand2Bot - 0.015],
+      endZY: [zMax - 0.2, yBand2Bot - 0.015],
+      isCoolBlue: false,
+    });
+    ledStrips.push({
+      startZY: [zMin + 0.2, yBand2Top + 0.015],
+      endZY: [zMax - 0.2, yBand2Top + 0.015],
+      isCoolBlue: false,
+    });
+    // Soft cool-blue recessed linear LED accent along upper architectural cove reveal
+    ledStrips.push({
+      startZY: [zMin + 0.2, yTop - 0.02],
+      endZY: [zMax - 0.2, yTop - 0.02],
+      isCoolBlue: true,
+    });
+
+    for (let i = 0; i < bayCount; i++) {
+      const zFront = zMin + i * bayLen + seam * 0.5;
+      const zBack = zMin + (i + 1) * bayLen - seam * 0.5;
+      const zMid = (zFront + zBack) * 0.5;
+      const wZ = zBack - zFront;
+
+      // Mid-upper horizontal charcoal-slate acoustic fabric frieze (framing symmetrical Dolby Atmos speakers cleanly)
+      fabricPanels.push({
+        posZY: [zMid, (yBand2Bot + yBand2Top) * 0.5],
+        lengthZ: wZ,
+        heightY: yBand2Top - yBand2Bot - 0.02,
+        depth: 0.054,
+      });
+
+      // Alternate charcoal-slate fabric panels and warm dark walnut-bronze vertical slat bays in upper & lower horizontal bands
+      if (i % 2 === 0) {
+        // Upper bay: warm dark walnut-bronze vertical wood acoustic slats
+        const slatCount = 11;
+        const slatStep = (wZ - 0.16) / (slatCount - 1);
+        for (let s = 0; s < slatCount; s++) {
+          woodSlats.push({
+            z: zFront + 0.08 + s * slatStep,
+            yMid: (yBand3Bot + yTop) * 0.5,
+            heightY: yTop - yBand3Bot - 0.04,
+          });
+        }
+        // Lower bay: charcoal-slate acoustic fabric
+        fabricPanels.push({
+          posZY: [zMid, (yBot + yBand1Top) * 0.5],
+          lengthZ: wZ,
+          heightY: yBand1Top - yBot - 0.02,
+          depth: 0.056,
+        });
+      } else {
+        // Upper bay: charcoal-slate acoustic fabric
+        fabricPanels.push({
+          posZY: [zMid, (yBand3Bot + yTop) * 0.5],
+          lengthZ: wZ,
+          heightY: yTop - yBand3Bot - 0.03,
+          depth: 0.056,
+        });
+        // Lower bay: warm dark walnut-bronze vertical wood acoustic slats
+        const slatCount = 11;
+        const slatStep = (wZ - 0.16) / (slatCount - 1);
+        for (let s = 0; s < slatCount; s++) {
+          woodSlats.push({
+            z: zFront + 0.08 + s * slatStep,
+            yMid: (yBot + yBand1Top) * 0.5,
+            heightY: yBand1Top - yBot - 0.04,
+          });
+        }
+      }
+
+      // Vertical satin-black trim mullions between bays + recessed vertical accent LEDs
+      if (i < bayCount - 1) {
+        const zDiv = zBack + seam * 0.5;
+        satinTrims.push({
+          posZY: [zDiv, (yBot + yTop) * 0.5],
+          lengthZ: 0.065,
+          heightY: yTop - yBot + 0.04,
+        });
+        ledStrips.push({
+          startZY: [zDiv, yBand3Bot + 0.08],
+          endZY: [zDiv, yTop - 0.08],
+          isCoolBlue: i % 2 === 0,
+        });
+      }
+    }
+
+    return { fabricPanels, woodSlats, satinTrims, ledStrips };
+  }, [sideLightStyle, L, H]);
+
+  // Dolby Cobalt Veil 250: Continuous Smooth Matte-Black & Deep Cobalt-Blue Acoustically Transparent Fabric Veil + Sharp Horizontal Angular Architectural Recesses with Deeply Recessed Laser-Blue LEDs
+  const cobaltVeilWall = useMemo(() => {
+    if (sideLightStyle !== 'cobalt_veil_laser_recess') return null;
+    const zMin = -L * 0.485;
+    const zMax = L * 0.485;
+    const wallLen = zMax - zMin;
+    const zCenter = (zMin + zMax) * 0.5;
+    const yFloor = 0.04;
+    const yCeil = H - 0.18;
+
+    // Two sharp horizontal angular architectural slices along the side walls
+    const slice1Center = Math.max(2.6, Math.min(3.4, topTierY * 0.35 + 1.55));
+    const slice1Half = 0.17;
+    const slice2Center = Math.min(yCeil - 2.3, Math.max(slice1Center + 3.8, H * 0.56));
+    const slice2Half = 0.17;
+
+    const s1Bot = slice1Center - slice1Half;
+    const s1Top = slice1Center + slice1Half;
+    const s2Bot = slice2Center - slice2Half;
+    const s2Top = slice2Center + slice2Half;
+
+    // Helper: extrude a sharp angled veil profile in (x = wall depth into hall, y = height) along Z
+    const buildHorizontalVeilTierGeo = (
+      ptsXY: [number, number][],
+      lengthZ: number,
+    ): THREE.BufferGeometry => {
+      const shape = new THREE.Shape();
+      shape.moveTo(ptsXY[0][0], ptsXY[0][1]);
+      for (let i = 1; i < ptsXY.length; i++) {
+        shape.lineTo(ptsXY[i][0], ptsXY[i][1]);
+      }
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: lengthZ,
+        bevelEnabled: false,
+      });
+      geo.translate(0, 0, -lengthZ * 0.5);
+      geo.computeVertexNormals();
+      return geo;
+    };
+
+    const veilDepth = 0.155;
+    const lipBevel = 0.12;
+
+    // Lower smooth matte-black fabric veil with sharp angular upper recess cheek
+    const lowerVeilGeo = buildHorizontalVeilTierGeo(
+      [
+        [0, yFloor],
+        [veilDepth, yFloor],
+        [veilDepth, s1Bot - lipBevel],
+        [0.02, s1Bot + 0.03],
+        [0, s1Bot + 0.03],
+      ],
+      wallLen,
+    );
+
+    // Mid deep cobalt-blue fabric veil with sharp angular top & bottom recess cheeks
+    const midCobaltVeilGeo = buildHorizontalVeilTierGeo(
+      [
+        [0, s1Top - 0.03],
+        [0.02, s1Top - 0.03],
+        [veilDepth, s1Top + lipBevel],
+        [veilDepth, s2Bot - lipBevel],
+        [0.02, s2Bot + 0.03],
+        [0, s2Bot + 0.03],
+      ],
+      wallLen,
+    );
+
+    // Upper smooth matte-black fabric veil with sharp angular lower recess cheek
+    const upperVeilGeo = buildHorizontalVeilTierGeo(
+      [
+        [0, s2Top - 0.03],
+        [0.02, s2Top - 0.03],
+        [veilDepth, s2Top + lipBevel],
+        [veilDepth, yCeil],
+        [0, yCeil],
+      ],
+      wallLen,
+    );
+
+    return {
+      zCenter,
+      wallLen,
+      yFloor,
+      yCeil,
+      s1Bot,
+      s1Top,
+      s2Bot,
+      s2Top,
+      slice1Center,
+      slice2Center,
+      lowerVeilGeo,
+      midCobaltVeilGeo,
+      upperVeilGeo,
+    };
+  }, [sideLightStyle, L, H, topTierY]);
+
+  useEffect(() => {
+    return () => {
+      cobaltVeilWall?.lowerVeilGeo.dispose();
+      cobaltVeilWall?.midCobaltVeilGeo.dispose();
+      cobaltVeilWall?.upperVeilGeo.dispose();
+    };
+  }, [cobaltVeilWall]);
+
+  // Obsidian Wave 550: 3D Flowing Parametric Acoustic Waves (Matte Carbon-Grey & Deep Obsidian) Across Side & Back Walls + Glare-Free Vertical & Diagonal Neon-Purple Fissures
+  const parametricObsidianWall = useMemo(() => {
+    if (sideLightStyle !== 'parametric_obsidian_waves') return null;
+    const fZ = -L / 2;
+    const bZ = L / 2;
+    const zMin = fZ + 1.4;
+    const zMax = bZ - 0.45;
+    const yBot = 0.25;
+    const yTop = H - 0.42;
+
+    const channelY = Math.min(H - 2.3, Math.max(topTierY + 1.35, H * 0.61));
+    const spkBandBot = channelY - 0.56;
+    const spkBandTop = channelY + 0.56;
+
+    const sideBands: {
+      geo: THREE.BufferGeometry;
+      yMid: number;
+      tone: 'obsidian' | 'carbon';
+    }[] = [];
+
+    // Lower stack of flowing wave bands (below speaker channel)
+    const lowerCount = 5;
+    const lowerH = (spkBandBot - yBot) / lowerCount;
+    for (let i = 0; i < lowerCount; i++) {
+      const bandMid = yBot + (i + 0.5) * lowerH;
+      sideBands.push({
+        geo: buildHorizontalWaveBandGeo(
+          zMin,
+          zMax,
+          Math.max(0.28, lowerH - 0.045),
+          0.12,
+          0.22,
+          2.6,
+          i * 0.62,
+          72,
+        ),
+        yMid: bandMid,
+        tone: i % 2 === 0 ? 'carbon' : 'obsidian',
+      });
+    }
+
+    // Recessed matte-obsidian undulating speaker channel band
+    sideBands.push({
+      geo: buildHorizontalWaveBandGeo(
+        zMin,
+        zMax,
+        Math.max(0.5, spkBandTop - spkBandBot - 0.04),
+        0.07,
+        0.055,
+        2.6,
+        lowerCount * 0.62,
+        72,
+      ),
+      yMid: channelY,
+      tone: 'obsidian',
+    });
+
+    // Upper stack of flowing wave bands (above speaker channel)
+    const upperCount = 3;
+    const upperH = Math.max(0.45, (yTop - spkBandTop) / upperCount);
+    for (let i = 0; i < upperCount; i++) {
+      const bandMid = spkBandTop + (i + 0.5) * upperH;
+      sideBands.push({
+        geo: buildHorizontalWaveBandGeo(
+          zMin,
+          zMax,
+          Math.max(0.28, upperH - 0.045),
+          0.12,
+          0.21,
+          2.6,
+          (lowerCount + 1 + i) * 0.62,
+          72,
+        ),
+        yMid: bandMid,
+        tone: i % 2 === 0 ? 'carbon' : 'obsidian',
+      });
+    }
+
+    // Recessed vertical & diagonal neon-purple wall fissures (front buffer avoids screen glare)
+    const sideFissures: { startZY: [number, number]; endZY: [number, number] }[] = [];
+    const fissureCount = 8;
+    const zFissureStart = fZ + 5.2;
+    const zFissureEnd = bZ - 1.1;
+    for (let fi = 0; fi < fissureCount; fi++) {
+      const fz = THREE.MathUtils.lerp(zFissureStart, zFissureEnd, fi / (fissureCount - 1));
+      if (fi % 2 === 0) {
+        // Crisp recessed vertical neon-purple wall fissure
+        sideFissures.push({
+          startZY: [fz, yBot + 0.16],
+          endZY: [fz, yTop - 0.16],
+        });
+      } else {
+        // Sweeping diagonal recessed neon-purple fissure slicing across the parametric waves
+        const diagTilt = fi % 4 === 1 ? 1.05 : -1.05;
+        sideFissures.push({
+          startZY: [fz - diagTilt, yBot + 0.18],
+          endZY: [fz + diagTilt, yTop - 0.18],
+        });
+      }
+    }
+
+    // Back-wall parametric wave wings flanking projection booth & rear speakers
+    const boothY = Math.min(H - 1.4, topTierY + 3.25);
+    const boothWinW = Math.min(4.8, W * 0.42);
+    const boothWinH = Math.min(1.42, H * 0.24);
+    const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
+    const winBot = Math.max(0.25, boothY - boothWinH / 2);
+    const winMidY = (winTop + winBot) / 2;
+
+    const backYBot = Math.max(0.4, topTierY - 0.18);
+    const backYTop = H - 0.44;
+    const backSpkBot = winMidY - 0.56;
+    const backSpkTop = winMidY + 0.56;
+    const wingMinAbsX = boothWinW / 2 + 0.34;
+    const wingMaxAbsX = W / 2 - 0.44;
+
+    const backBands: {
+      geo: THREE.BufferGeometry;
+      yMid: number;
+      tone: 'obsidian' | 'carbon';
+      side: -1 | 1;
+    }[] = [];
+
+    ([-1, 1] as const).forEach((side) => {
+      const xStart = side === -1 ? -wingMaxAbsX : wingMinAbsX;
+      const xEnd = side === -1 ? -wingMinAbsX : wingMaxAbsX;
+      if (xEnd - xStart < 1.2) return;
+
+      const backLowerCount = 3;
+      const bLowH = Math.max(0.4, (backSpkBot - backYBot) / backLowerCount);
+      for (let i = 0; i < backLowerCount; i++) {
+        backBands.push({
+          geo: buildHorizontalWaveBandGeo(
+            xStart,
+            xEnd,
+            Math.max(0.26, bLowH - 0.045),
+            0.1,
+            0.16,
+            1.6,
+            i * 0.7 + (side === 1 ? Math.PI : 0),
+            44,
+          ),
+          yMid: backYBot + (i + 0.5) * bLowH,
+          tone: i % 2 === 0 ? 'carbon' : 'obsidian',
+          side,
+        });
+      }
+
+      // Recessed rear speaker undulating channel
+      backBands.push({
+        geo: buildHorizontalWaveBandGeo(
+          xStart,
+          xEnd,
+          Math.max(0.42, backSpkTop - backSpkBot - 0.04),
+          0.06,
+          0.04,
+          1.6,
+          backLowerCount * 0.7 + (side === 1 ? Math.PI : 0),
+          44,
+        ),
+        yMid: winMidY,
+        tone: 'obsidian',
+        side,
+      });
+
+      const upperBackH = backYTop - backSpkTop;
+      if (upperBackH > 0.38) {
+        const backUpperCount = upperBackH > 1.3 ? 2 : 1;
+        const bUpH = upperBackH / backUpperCount;
+        for (let i = 0; i < backUpperCount; i++) {
+          backBands.push({
+            geo: buildHorizontalWaveBandGeo(
+              xStart,
+              xEnd,
+              Math.max(0.24, bUpH - 0.045),
+              0.1,
+              0.15,
+              1.6,
+              (backLowerCount + 1 + i) * 0.7 + (side === 1 ? Math.PI : 0),
+              44,
+            ),
+            yMid: backSpkTop + (i + 0.5) * bUpH,
+            tone: i % 2 === 0 ? 'carbon' : 'obsidian',
+            side,
+          });
+        }
+      }
+    });
+
+    // Symmetrical vertical & diagonal recessed neon-purple fissures on the rear wall wings
+    const backFissures: { startXY: [number, number]; endXY: [number, number] }[] = [];
+    ([-1, 1] as const).forEach((side) => {
+      const innerX = side * (wingMinAbsX + 0.9);
+      const midX = side * THREE.MathUtils.lerp(wingMinAbsX + 0.9, wingMaxAbsX - 0.9, 0.5);
+      const outerX = side * (wingMaxAbsX - 0.9);
+      backFissures.push(
+        { startXY: [innerX, backYBot + 0.16], endXY: [innerX, backYTop - 0.16] },
+        { startXY: [midX - side * 0.8, backYBot + 0.16], endXY: [midX + side * 0.8, backYTop - 0.16] },
+        { startXY: [outerX, backYBot + 0.16], endXY: [outerX, backYTop - 0.16] },
+      );
+    });
+
+    return { sideBands, sideFissures, backBands, backFissures };
+  }, [sideLightStyle, W, L, H, topTierY]);
+
+  useEffect(() => {
+    return () => {
+      parametricObsidianWall?.sideBands.forEach((b) => b.geo.dispose());
+      parametricObsidianWall?.backBands.forEach((b) => b.geo.dispose());
+    };
+  }, [parametricObsidianWall]);
+
+  // Sylva Moss 250: Multi-layered organic crystalline acoustic moss-texture panels (sand-beige, sage-green, deep charcoal), concealed warm-gold halo LEDs & speaker recesses on left, right, and rear walls
+  const biophilicCrystallineMossWall = useMemo(() => {
+    if (sideLightStyle !== 'biophilic_crystalline_moss') return null;
+    type MossTone = 'sand' | 'sage' | 'mossMid' | 'charcoal';
+    interface SideShard {
+      geo: THREE.BufferGeometry;
+      tone: MossTone;
+      depthOffset: number;
+    }
+    interface RearShard {
+      geo: THREE.BufferGeometry;
+      tone: MossTone;
+      depthOffset: number;
+    }
+    interface HaloStrip {
+      cx: number;
+      cy: number;
+      cz: number;
+      len: number;
+      rotZ?: number;
+      rotX?: number;
+      depthOffset: number;
+    }
+
+    const sideShards: SideShard[] = [];
+    const rearShards: RearShard[] = [];
+    const sideHaloStrips: HaloStrip[] = [];
+    const rearHaloStrips: HaloStrip[] = [];
+
+    const fZ = -L / 2;
+    const bZ = L / 2;
+    const zMin = fZ + 0.55;
+    const zMax = bZ - 0.55;
+    const yBot = 0.24;
+    const yTop = H - 0.34;
+
+    // Exact side speaker recess coordinates aligned with CinemaSpeakers.tsx
+    const countPerSide = 5;
+    const spkZStart = Math.max(fZ + 5.2, firstRowZ - 0.8);
+    const spkZEnd = Math.min(bZ - 2.6, firstRowZ + (seatingRows - 1) * rowSpacing + 0.4);
+    const recessY = Math.min(H - 2.1, Math.max(topTierY + 1.25, H * 0.56));
+    const sideSpeakerCenters = Array.from({ length: countPerSide }, (_, i) => ({
+      z: THREE.MathUtils.lerp(spkZStart, spkZEnd, i / (countPerSide - 1)),
+      y: recessY,
+    }));
+
+    const isInsideSideSpeakerRecess = (cz: number, cy: number) =>
+      sideSpeakerCenters.some((s) => Math.abs(cz - s.z) < 0.72 && Math.abs(cy - s.y) < 0.68);
+
+    // Deterministic organic crystalline polygon builder (hex/pentagon/shard with gentle organic asymmetry)
+    const buildOrganicFacetPts = (
+      cz: number,
+      cy: number,
+      rz: number,
+      ry: number,
+      sides: number,
+      seed: number,
+    ): [number, number][] => {
+      const pts: [number, number][] = [];
+      for (let s = 0; s < sides; s++) {
+        const ang = (s / sides) * Math.PI * 2 + (seed % 5) * 0.27;
+        const radScale = 0.82 + 0.28 * Math.sin(seed * 1.93 + s * 2.41);
+        pts.push([
+          cz + Math.cos(ang) * rz * radScale,
+          cy + Math.sin(ang) * ry * radScale,
+        ]);
+      }
+      return pts;
+    };
+
+    const toneCycle: MossTone[] = ['charcoal', 'sage', 'sand', 'mossMid', 'sage', 'sand', 'charcoal'];
+
+    // Build stratified organic crystalline grid across side walls (skipping foreground shards inside speaker alcoves)
+    const zCols = 11;
+    const yRows = 6;
+    const cellW = (zMax - zMin) / zCols;
+    const cellH = (yTop - yBot) / yRows;
+
+    for (let zi = 0; zi < zCols; zi++) {
+      for (let yi = 0; yi < yRows; yi++) {
+        const seed = zi * 13 + yi * 7 + 3;
+        const jitterZ = Math.sin(seed * 1.37) * cellW * 0.14;
+        const jitterY = Math.cos(seed * 2.11) * cellH * 0.12;
+        const cz = zMin + (zi + 0.5) * cellW + jitterZ;
+        const cy = THREE.MathUtils.clamp(yBot + (yi + 0.5) * cellH + jitterY, yBot + 0.55, yTop - 0.55);
+
+        const inRecess = isInsideSideSpeakerRecess(cz, cy);
+
+        // Layer 1 base deep moss/charcoal backing shards (always present except dead-center of speaker alcove)
+        if (!inRecess) {
+          const pts1 = buildOrganicFacetPts(
+            cz,
+            cy,
+            cellW * 0.64,
+            cellH * 0.62,
+            6,
+            seed,
+          );
+          sideShards.push({
+            geo: buildWallPolygonGeo(pts1, 0.068, 0.014),
+            tone: (zi + yi) % 2 === 0 ? 'charcoal' : 'mossMid',
+            depthOffset: 0.06,
+          });
+        }
+
+        // Layer 2 & Layer 3 overlapping crystalline foreground shards (sand-beige, sage-green, deep charcoal)
+        if (!inRecess) {
+          const isLayer3 = (zi + yi * 2) % 3 === 0;
+          const depthOffset = isLayer3 ? 0.185 : 0.128;
+          const rz = cellW * (isLayer3 ? 0.52 : 0.58);
+          const ry = cellH * (isLayer3 ? 0.52 : 0.56);
+          const tone = toneCycle[(zi * 3 + yi * 2) % toneCycle.length];
+          const pts2 = buildOrganicFacetPts(
+            cz + jitterZ * 0.35,
+            cy - jitterY * 0.3,
+            rz,
+            ry,
+            isLayer3 ? 5 : 6,
+            seed + 11,
+          );
+          sideShards.push({
+            geo: buildWallPolygonGeo(pts2, isLayer3 ? 0.056 : 0.064, 0.015),
+            tone,
+            depthOffset,
+          });
+
+          // Concealed indirect warm-gold LED strips tucked strictly behind foreground overlapping shards (creates diffused halo silhouette)
+          if ((zi + yi) % 2 === 1) {
+            sideHaloStrips.push({
+              cx: 0,
+              cy,
+              cz,
+              len: Math.min(cellH, cellW) * 0.92,
+              rotX: ((seed % 7) - 3) * 0.32,
+              depthOffset: depthOffset - 0.038,
+            });
+          }
+        }
+      }
+    }
+
+    // Rear wall exact coordinates matching CinemaSpeakers & AuditoriumShell projection booth
+    const bY = Math.min(H - 1.4, topTierY + 3.25);
+    const bWinW = Math.min(4.8, W * 0.42);
+    const bWinH = Math.min(1.42, H * 0.24);
+    const wTop = Math.min(H - 0.28, bY + bWinH / 2);
+    const wBot = Math.max(0.25, bY - bWinH / 2);
+    const wMidY = (wTop + wBot) / 2;
+    const boothSideX = Math.min(W / 2 - 0.68, bWinW / 2 + 0.78);
+    const cornerX = Math.max(boothSideX + 1.45, Math.min(W * 0.38, W / 2 - 1.05));
+    const cornerY = Math.min(H - 1.2, Math.max(2.35, wMidY - 0.12));
+
+    const rearSpeakerCenters = [
+      { x: -boothSideX, y: wMidY },
+      { x: boothSideX, y: wMidY },
+      { x: -cornerX, y: cornerY },
+      { x: cornerX, y: cornerY },
+    ];
+
+    const rearDoorTopY = Math.min(wBot - 1.35, topTierY + 1.15) + 1.45;
+    const isRearOpening = (cx: number, cy: number) => {
+      // Keep projector window clear
+      if (Math.abs(cx) < bWinW * 0.5 + 0.32 && cy > wBot - 0.25 && cy < wTop + 0.25) return true;
+      // Keep rear double doors clear
+      if (Math.abs(cx) < 1.55 && cy < rearDoorTopY) return true;
+      // Keep rear surround speaker recesses clear
+      if (rearSpeakerCenters.some((s) => Math.abs(cx - s.x) < 0.7 && Math.abs(cy - s.y) < 0.68)) {
+        return true;
+      }
+      return false;
+    };
+
+    const rYMin = Math.max(0.3, topTierY + 0.2);
+    const rYMax = H - 0.38;
+    const rxCols = 10;
+    const ryRows = 4;
+    const rCellW = (W - 1.1) / rxCols;
+    const rCellH = (rYMax - rYMin) / ryRows;
+
+    for (let xi = 0; xi < rxCols; xi++) {
+      for (let yi = 0; yi < ryRows; yi++) {
+        const seed = xi * 17 + yi * 11 + 5;
+        const cx = -W * 0.5 + 0.55 + (xi + 0.5) * rCellW + Math.sin(seed * 1.2) * rCellW * 0.12;
+        const cy = THREE.MathUtils.clamp(rYMin + (yi + 0.5) * rCellH + Math.cos(seed * 1.7) * rCellH * 0.1, rYMin + 0.45, rYMax - 0.45);
+        if (isRearOpening(cx, cy)) continue;
+
+        const isTopLayer = (xi + yi) % 2 === 0;
+        const depthOffset = isTopLayer ? 0.165 : 0.095;
+        const ptsRear = buildOrganicFacetPts(
+          cx,
+          cy,
+          rCellW * (isTopLayer ? 0.55 : 0.62),
+          rCellH * (isTopLayer ? 0.55 : 0.6),
+          isTopLayer ? 5 : 6,
+          seed,
+        );
+        rearShards.push({
+          geo: buildRearWallPolygonGeo(ptsRear, isTopLayer ? 0.056 : 0.064, 0.015),
+          tone: toneCycle[(xi * 2 + yi * 3 + 1) % toneCycle.length],
+          depthOffset,
+        });
+
+        if (isTopLayer) {
+          rearHaloStrips.push({
+            cx,
+            cy,
+            cz: 0,
+            len: Math.min(rCellW, rCellH) * 0.88,
+            rotZ: ((seed % 5) - 2) * 0.36,
+            depthOffset: depthOffset - 0.036,
+          });
+        }
+      }
+    }
+
+    return {
+      sideShards,
+      rearShards,
+      sideHaloStrips,
+      rearHaloStrips,
+      sideSpeakerCenters,
+      rearSpeakerCenters,
+    };
+  }, [sideLightStyle, W, L, H, topTierY, firstRowZ, rowSpacing, seatingRows]);
+
+  useEffect(() => {
+    return () => {
+      biophilicCrystallineMossWall?.sideShards.forEach((s) => s.geo.dispose());
+      biophilicCrystallineMossWall?.rearShards.forEach((s) => s.geo.dispose());
+    };
+  }, [biophilicCrystallineMossWall]);
+
+  return (
+    <group>
+      {/* Standard Acoustic Pilasters & Framed Wall Panels (skipped for ICE, Art Deco Navy, Modern Multiplex, IMAX Wave/Aurora/Amber, 4DX bespoke walls, Dolby Obsidian/Cobalt & full-wall styles) */}
+      {!isIce &&
+        sideLightStyle !== 'art_deco_navy_sunburst' &&
+        sideLightStyle !== 'modern_charcoal_navy_diagonal' &&
+        sideLightStyle !== 'volcanic_copper_ribbons' &&
+        sideLightStyle !== 'private_volcanic_copper_ribbons' &&
+        sideLightStyle !== 'champagne_fluted_oak_alcoves' &&
+        sideLightStyle !== 'imax_cobalt_wave' &&
+        sideLightStyle !== 'aurora_ribbon_waves' &&
+        sideLightStyle !== 'horizon_tier_strips' &&
+        sideLightStyle !== 'crimson_velocity_4dx' &&
+        sideLightStyle !== 'arctic_parametric_fins' &&
+        sideLightStyle !== 'thunder_emerald_waves' &&
+        sideLightStyle !== 'obsidian_slat_grazers' &&
+        sideLightStyle !== 'diagonal_parabolic_ribs' &&
+        sideLightStyle !== 'cobalt_veil_laser_recess' &&
+        sideLightStyle !== 'crisscross_geometric' &&
+        sideLightStyle !== 'screenx_panoramic_walls' &&
+        sideLightStyle !== 'screenx_silver_baffles' &&
+        sideLightStyle !== 'indian_mandap_jali' &&
+        sideLightStyle !== 'parametric_obsidian_waves' &&
+        sideLightStyle !== 'biophilic_crystalline_moss' &&
+        wallBayZs.map((bz, idx) => {
+          const nextBz = wallBayZs[idx + 1];
+          const allowTile = idx < wallBayZs.length - 1;
+          return [-1, 1].map((side) => (
+            <group key={`wall-bay-${idx}-${side}`}>
+              {/* Architectural Acoustic Pilaster */}
+              <mesh
+                position={[side * (W / 2 - 0.25), H * 0.49, bz]}
+                material={trimMetalMat}
+                castShadow
+              >
+                <boxGeometry args={[0.14, H * 0.88, 0.24]} />
+              </mesh>
+
+              {/* Framed Fabric Acoustic Wall Tile between Pilasters */}
+              {allowTile && (
+                <group
+                  position={[
+                    side * (W / 2 - 0.215),
+                    H * 0.52,
+                    (bz + nextBz) / 2,
+                  ]}
+                >
+                  <mesh material={acousticPanelMat} receiveShadow>
+                    <boxGeometry
+                      args={[0.07, H * 0.68, Math.max(0.4, Math.abs(nextBz - bz) - 0.56)]}
+                    />
+                  </mesh>
+                  {/* Beveled acoustic frame trim */}
+                  <mesh position={[-side * 0.036, 0, 0]} material={mats.channelMetalMat}>
+                    <boxGeometry
+                      args={[0.014, H * 0.64, Math.max(0.32, Math.abs(nextBz - bz) - 0.68)]}
+                    />
+                  </mesh>
+                </group>
+              )}
+            </group>
+          ));
+        })}
+
+      {/* Art Deco Midnight Navy & Charcoal Slate Textured Bays + Metallic Gold/Bronze Chevrons/Sunbursts + Fluted Walnut Slats */}
+      {sideLightStyle === 'art_deco_navy_sunburst' &&
+        wallBayZs.map((bz, idx) => {
+          const nextBz = wallBayZs[idx + 1];
+          const allowTile = idx < wallBayZs.length - 1;
+          const bayLen = allowTile ? Math.max(0.8, Math.abs(nextBz - bz)) : 0;
+          const midZ = allowTile ? (bz + nextBz) * 0.5 : bz;
+          const panelLen = Math.max(0.6, bayLen - 1.18);
+          return [-1, 1].map((side) => {
+            const wallX = side * (W / 2 - 0.21);
+            const inDir = -side;
+            return (
+              <group key={`deco-navy-bay-${idx}-${side}`}>
+                {/* Fluted Walnut Vertical Slats Flanking Every Patterned Wall Bay */}
+                {[-0.44, -0.34, -0.24, 0.24, 0.34, 0.44].map((oz, oi) => (
+                  <mesh
+                    key={`walnut-slat-${oi}`}
+                    position={[wallX + inDir * 0.04, H * 0.5, bz + oz]}
+                    material={mats.walnutWoodMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <boxGeometry args={[0.08, H * 0.86, 0.055]} />
+                  </mesh>
+                ))}
+                {/* Dark Charcoal Walnut Pilaster Backing Spine Between Bays */}
+                <mesh position={[wallX + inDir * 0.015, H * 0.5, bz]} material={mats.channelMetalMat}>
+                  <boxGeometry args={[0.05, H * 0.88, 1.04]} />
+                </mesh>
+
+                {/* Vertical Brushed Brass Wall Sconce Mounted Symmetrically Between Geometric Bays */}
+                <group position={[wallX + inDir * 0.08, H * 0.47, bz]}>
+                  <mesh material={mats.warmBronzeMat}>
+                    <boxGeometry args={[0.04, 2.35, 0.28]} />
+                  </mesh>
+                  <mesh position={[inDir * 0.035, 0.48, 0]} material={mats.alabasterGlassMat}>
+                    <cylinderGeometry args={[0.065, 0.065, 0.82, 14]} />
+                  </mesh>
+                  <mesh position={[inDir * 0.035, -0.48, 0]} material={mats.alabasterGlassMat}>
+                    <cylinderGeometry args={[0.065, 0.065, 0.82, 14]} />
+                  </mesh>
+                  {/* Brass Sconce End & Center Collars */}
+                  {[-0.95, 0, 0.95].map((cy, ci) => (
+                    <mesh key={`collar-${ci}`} position={[inDir * 0.035, cy, 0]} material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.14, 0.09, 0.18]} />
+                    </mesh>
+                  ))}
+                </group>
+
+                {/* Midnight Navy & Charcoal Slate Art Deco Chevron & Sunburst Acoustic Bay */}
+                {allowTile && (
+                  <group position={[wallX + inDir * 0.03, H * 0.5, midZ]}>
+                    {/* Patterned Acoustic Fabric Panel */}
+                    <mesh material={wallMat ?? acousticPanelMat} receiveShadow>
+                      <boxGeometry args={[0.05, H * 0.78, panelLen]} />
+                    </mesh>
+                    {/* Stepped Warm Bronze Outer Picture Frame Trim */}
+                    <mesh position={[inDir * 0.03, H * 0.39, 0]} material={mats.warmBronzeMat}>
+                      <boxGeometry args={[0.025, 0.07, panelLen + 0.04]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.03, -H * 0.39, 0]} material={mats.warmBronzeMat}>
+                      <boxGeometry args={[0.025, 0.07, panelLen + 0.04]} />
+                    </mesh>
+                    {/* 3D Brushed Gold Upper Sunburst Fan Relief Rays */}
+                    {[-0.52, -0.26, 0, 0.26, 0.52].map((ang, ai) => (
+                      <mesh
+                        key={`sun-ray-${ai}`}
+                        position={[inDir * 0.036, H * 0.27, Math.sin(ang) * 0.45]}
+                        rotation={[ang, 0, 0]}
+                        material={ai % 2 === 0 ? mats.brassHardwareMat : mats.warmBronzeMat}
+                      >
+                        <boxGeometry args={[0.022, 1.35, 0.036]} />
+                      </mesh>
+                    ))}
+                    {/* 3D Brushed Gold Geometric Chevron V-Ribs Above & Below Ear-Level Recessed Speaker */}
+                    {[H * 0.13, -H * 0.21].map((cy, ci) => (
+                      <group key={`chevron-set-${ci}`} position={[inDir * 0.036, cy, 0]}>
+                        <mesh rotation={[0.58, 0, 0]} position={[0, 0, panelLen * 0.2]} material={mats.brassHardwareMat}>
+                          <boxGeometry args={[0.022, 0.045, panelLen * 0.44]} />
+                        </mesh>
+                        <mesh rotation={[-0.58, 0, 0]} position={[0, 0, -panelLen * 0.2]} material={mats.brassHardwareMat}>
+                          <boxGeometry args={[0.022, 0.045, panelLen * 0.44]} />
+                        </mesh>
+                      </group>
+                    ))}
+                  </group>
+                )}
+              </group>
+            );
+          });
+        })}
+
+      {/* Contemporary Commercial Multiplex: Matte Charcoal Grey & Deep Midnight Blue Angled Diagonal Panels + Linear LED Strips */}
+      {sideLightStyle === 'modern_charcoal_navy_diagonal' &&
+        modernDiagonalWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.075;
+          return (
+            <group key={`modern-diagonal-wall-${side}`}>
+              {/* Shadow-gap dark backing rail running full length of side wall */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.channelMetalMat}>
+                <boxGeometry args={[0.024, H * 0.92, L * 0.88]} />
+              </mesh>
+
+              {/* Beveled 3D Angled Charcoal & Midnight Blue Fabric-Wrapped Acoustic Polygons */}
+              {modernDiagonalWall.panels.map((p, pi) => (
+                <mesh
+                  key={`diag-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.tone === 'navy' ? mats.midnightBlueAcousticMat : mats.charcoalAcousticMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Minimal Recessed Linear Warm-White & Subtle Amber LED Strips Tracing Angled Geometric Seams */}
+              {modernDiagonalWall.ledSeamSegments.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`diag-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={0.032}
+                  depth={0.032}
+                  material={seg.isAmber ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.45}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* Grand Crimson Palace: Broad Gently Angled Interlocking Volcanic-Basalt & Muted Terracotta-Copper Ribbon Bands + Dark-Bronze Shadow Reveals + Warm-Gold & Soft Ivory LED Seams */}
+      {sideLightStyle === 'volcanic_copper_ribbons' &&
+        volcanicRibbonsWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.082;
+          const bronzeX = wallX + inDir * 0.036;
+          return (
+            <group key={`volcanic-ribbons-wall-${side}`}>
+              {/* Clean Dark-Bronze Shadow-Reveal Acoustic Backing Plane */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.darkBronzeRevealMat}>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
+              </mesh>
+
+              {/* Broad Interlocking Volcanic-Basalt & Muted Terracotta-Copper Acoustic Ribbon Panels */}
+              {volcanicRibbonsWall.panels.map((p, pi) => (
+                <mesh
+                  key={`volcanic-ribbon-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.tone === 'terracotta' ? mats.terracottaCopperMat : mats.volcanicBasaltMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Dark-Bronze Architectural Reveal Trim Bars */}
+              {volcanicRibbonsWall.bronzeReveals.map((bar, bi) => (
+                <ArchitecturalChannelBar
+                  key={`volcanic-bronze-reveal-${side}-${bi}`}
+                  start={[bronzeX, bar.startZY[1], bar.startZY[0]]}
+                  end={[bronzeX, bar.endZY[1], bar.endZY[0]]}
+                  thickness={0.042}
+                  depth={0.036}
+                  material={mats.darkBronzeRevealMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+
+              {/* Sleek Recessed Warm-Gold & Soft Ivory-White Linear LED Strips Tracing Ribbon Seams */}
+              {volcanicRibbonsWall.ledSeams.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`volcanic-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={seg.isIvory ? 0.026 : 0.03}
+                  depth={0.03}
+                  material={seg.isIvory ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.darkBronzeRevealMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* Walnut Reserve Salon: Symmetrical Vertical Fluted American Walnut Acoustic Panels + Softly Curved Oatmeal Bouclé & Saddle-Cognac Suede Bays + Champagne-Brass Inlays + Warm-Amber Vertical Cove Grazers + Minimalist Alabaster Sconces + Concealed Surrounds */}
+      {sideLightStyle === 'private_volcanic_copper_ribbons' &&
+        privateVolcanicWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const fluteCount = 10;
+          const fluteStep = (privateVolcanicWall.pierW - 0.14) / (fluteCount - 1);
+          const mainCenterY = privateVolcanicWall.bayCenterY + privateVolcanicWall.bayH * 0.14;
+          const lowerCenterY = privateVolcanicWall.bayCenterY - privateVolcanicWall.bayH * 0.36;
+          return (
+            <group key={`private-walnut-salon-wall-${side}`}>
+              {/* Dark Matte-Espresso Acoustic Felt Backing Wall */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.espressoFeltBackingMat} receiveShadow>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
+              </mesh>
+
+              {/* Continuous American Walnut Lower Dado Plinth & Upper Cornice Header */}
+              <mesh position={[wallX + inDir * 0.055, 0.15, 0]} material={mats.americanWalnutMat}>
+                <boxGeometry args={[0.095, 0.28, L * 0.91]} />
+              </mesh>
+              <mesh position={[wallX + inDir * 0.06, H - 0.2, 0]} material={mats.americanWalnutMat}>
+                <boxGeometry args={[0.11, 0.28, L * 0.91]} />
+              </mesh>
+
+              {/* Precision Champagne-Brass Horizontal Dado & Cornice Inlays */}
+              <mesh position={[wallX + inDir * 0.108, 0.285, 0]} material={mats.champagneBrassInlayMat}>
+                <boxGeometry args={[0.016, 0.022, L * 0.89]} />
+              </mesh>
+              <mesh position={[wallX + inDir * 0.118, H - 0.34, 0]} material={mats.champagneBrassInlayMat}>
+                <boxGeometry args={[0.016, 0.022, L * 0.89]} />
+              </mesh>
+
+              {/* 4 Vertical Fluted American Walnut Acoustic Piers + Minimalist Alabaster Wall Sconces */}
+              {privateVolcanicWall.pierZs.map((pz, pi) => (
+                <group key={`walnut-fluted-pier-${side}-${pi}`} position={[wallX, 0, pz]}>
+                  {/* Dark Acoustic Felt Backing Strip Behind Walnut Flutes */}
+                  <mesh position={[inDir * 0.032, privateVolcanicWall.bayCenterY, 0]} material={mats.espressoFeltBackingMat}>
+                    <boxGeometry args={[0.024, privateVolcanicWall.bayH + 0.18, privateVolcanicWall.pierW]} />
+                  </mesh>
+
+                  {/* Vertical Fluted American Walnut Slats */}
+                  {Array.from({ length: fluteCount }, (_, fi) => {
+                    const sz = -privateVolcanicWall.pierW * 0.5 + 0.07 + fi * fluteStep;
+                    return (
+                      <mesh
+                        key={`walnut-flute-${fi}`}
+                        position={[inDir * 0.068, privateVolcanicWall.bayCenterY, sz]}
+                        material={mats.americanWalnutMat}
+                        castShadow
+                        receiveShadow
+                      >
+                        <boxGeometry args={[0.068, privateVolcanicWall.bayH + 0.14, 0.052]} />
+                      </mesh>
+                    );
+                  })}
+
+                  {/* Precision Champagne-Brass Vertical Edge Inlays Framing Each Fluted Walnut Pier */}
+                  {[-privateVolcanicWall.pierW * 0.5 - 0.018, privateVolcanicWall.pierW * 0.5 + 0.018].map((iz, ii) => (
+                    <mesh
+                      key={`walnut-brass-inlay-${ii}`}
+                      position={[inDir * 0.078, privateVolcanicWall.bayCenterY, iz]}
+                      material={mats.champagneBrassInlayMat}
+                    >
+                      <boxGeometry args={[0.016, privateVolcanicWall.bayH + 0.16, 0.018]} />
+                    </mesh>
+                  ))}
+
+                  {/* Minimalist Alabaster Wall Sconce Mounted Symmetrically on Fluted Walnut Pier */}
+                  <group position={[inDir * 0.114, privateVolcanicWall.bayCenterY + 0.06, 0]}>
+                    {/* Slim Brushed Champagne-Brass Wall Backplate */}
+                    <mesh material={mats.champagneBrassInlayMat}>
+                      <boxGeometry args={[0.018, 0.92, 0.11]} />
+                    </mesh>
+                    {/* Glowing Translucent Alabaster Cylindrical Shade */}
+                    <mesh position={[inDir * 0.034, 0, 0]} material={mats.alabasterShadeMat}>
+                      <cylinderGeometry args={[0.042, 0.042, 0.72, 16]} />
+                    </mesh>
+                    {/* Minimalist Top & Bottom Brass Collar Caps */}
+                    {[-0.37, 0.37].map((cy, ci) => (
+                      <mesh key={`alabaster-cap-${ci}`} position={[inDir * 0.034, cy, 0]} material={mats.champagneBrassInlayMat}>
+                        <cylinderGeometry args={[0.046, 0.046, 0.032, 16]} />
+                      </mesh>
+                    ))}
+                  </group>
+                </group>
+              ))}
+
+              {/* 3 Softly Curved Upholstered Acoustic Bays (Warm Oatmeal Bouclé & Rich Saddle-Cognac Suede) + Concealed Warm-Amber Vertical Cove Grazers + Concealed Flush Surrounds */}
+              {privateVolcanicWall.bayZs.map((bz, bi) => {
+                const isCenterBay = bi === 1;
+                const upperMat = isCenterBay ? mats.saddleCognacSuedeMat : mats.oatmealBoucleMat;
+                const lowerMat = isCenterBay ? mats.oatmealBoucleMat : mats.saddleCognacSuedeMat;
+                return (
+                  <group key={`walnut-curved-bay-${side}-${bi}`} position={[wallX, 0, bz]}>
+                    {/* Concealed Flush-Mounted Acoustic Surround Cavity Integrated Seamlessly Behind Translucent Upholstered Bay */}
+                    <mesh position={[inDir * 0.022, mainCenterY, 0]} material={mats.espressoFeltBackingMat}>
+                      <boxGeometry args={[0.018, 0.76, 0.56]} />
+                    </mesh>
+
+                    {/* Softly Curved Main Upholstered Bay */}
+                    <mesh
+                      position={[inDir * 0.024, mainCenterY, 0]}
+                      rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                      geometry={privateVolcanicWall.curvedMainGeo}
+                      material={upperMat}
+                      receiveShadow
+                      castShadow
+                    />
+
+                    {/* Precision Horizontal Champagne-Brass Reveal Dividing Upper & Lower Upholstery */}
+                    <mesh
+                      position={[inDir * 0.056, privateVolcanicWall.bayCenterY - privateVolcanicWall.bayH * 0.22, 0]}
+                      material={mats.champagneBrassInlayMat}
+                    >
+                      <boxGeometry args={[0.055, 0.02, privateVolcanicWall.bayW - 0.1]} />
+                    </mesh>
+
+                    {/* Softly Curved Lower Dado Upholstered Bay */}
+                    <mesh
+                      position={[inDir * 0.024, lowerCenterY, 0]}
+                      rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                      geometry={privateVolcanicWall.curvedLowerBandGeo}
+                      material={lowerMat}
+                      receiveShadow
+                    />
+
+                    {/* Concealed Warm-Amber Vertical Cove Grazers Tucked Along Left & Right Bay Reveals */}
+                    {[-privateVolcanicWall.bayW * 0.5 + 0.035, privateVolcanicWall.bayW * 0.5 - 0.035].map((gz, gi) => (
+                      <group key={`amber-cove-grazer-${gi}`} position={[inDir * 0.044, privateVolcanicWall.bayCenterY, gz]}>
+                        <mesh material={mats.espressoFeltBackingMat}>
+                          <boxGeometry args={[0.022, privateVolcanicWall.bayH + 0.04, 0.034]} />
+                        </mesh>
+                        <mesh position={[inDir * 0.008, 0, 0]} material={mats.primaryEmitterMat}>
+                          <boxGeometry args={[0.016, privateVolcanicWall.bayH - 0.04, 0.018]} />
+                        </mesh>
+                      </group>
+                    ))}
+                  </group>
+                );
+              })}
+            </group>
+          );
+        })}
+
+      {/* Champagne Ivory Lounge: Vertical Fluted Smoked-Oak Acoustic Slats + Gently Curved Warm Alabaster Plaster Niches & Muted Sage-Slate Fabric Panels + Hairline Champagne-Gold Inlays + Indirect Cove Uplights & Slim Vertical Brass Sconces */}
+      {sideLightStyle === 'champagne_fluted_oak_alcoves' &&
+        champagneFlutedWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const fluteCount = 9;
+          const fluteStep = (champagneFlutedWall.pierW - 0.14) / (fluteCount - 1);
+          return (
+            <group key={`champagne-fluted-wall-${side}`}>
+              {/* Warm Alabaster & Acoustic Felt Wall Backing */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.warmAlabasterPlasterMat} receiveShadow>
+                <boxGeometry args={[0.024, H * 0.92, L * 0.9]} />
+              </mesh>
+
+              {/* Continuous Lower Base Dado Plinth & Upper Cove Cornice */}
+              <mesh position={[wallX + inDir * 0.06, 0.16, 0]} material={mats.smokedOakMat}>
+                <boxGeometry args={[0.1, 0.28, L * 0.9]} />
+              </mesh>
+              <mesh position={[wallX + inDir * 0.065, H - 0.2, 0]} material={mats.smokedOakMat}>
+                <boxGeometry args={[0.12, 0.28, L * 0.9]} />
+              </mesh>
+              {/* Hairline Champagne-Gold Metallic Dado & Cornice Inlays */}
+              <mesh position={[wallX + inDir * 0.115, 0.29, 0]} material={mats.champagneGoldInlayMat}>
+                <boxGeometry args={[0.014, 0.022, L * 0.88]} />
+              </mesh>
+              <mesh position={[wallX + inDir * 0.125, H - 0.34, 0]} material={mats.champagneGoldInlayMat}>
+                <boxGeometry args={[0.014, 0.022, L * 0.88]} />
+              </mesh>
+
+              {/* Vertical Fluted Smoked-Oak Acoustic Slat Piers + Slim Vertical Brass Wall Sconces */}
+              {champagneFlutedWall.pierZs.map((pz, pi) => (
+                <group key={`champagne-pier-${side}-${pi}`} position={[wallX, 0, pz]}>
+                  {/* Dark Felt Acoustic Backing Strip Behind Smoked-Oak Flutes */}
+                  <mesh position={[inDir * 0.032, champagneFlutedWall.nicheCenterY, 0]} material={mats.pitchBlackAcousticMat}>
+                    <boxGeometry args={[0.024, champagneFlutedWall.nicheH + 0.12, champagneFlutedWall.pierW]} />
+                  </mesh>
+                  {/* Individual Fluted Smoked-Oak Acoustic Slats */}
+                  {Array.from({ length: fluteCount }, (_, fi) => {
+                    const sz = -champagneFlutedWall.pierW * 0.5 + 0.07 + fi * fluteStep;
+                    return (
+                      <mesh
+                        key={`oak-flute-${fi}`}
+                        position={[inDir * 0.068, champagneFlutedWall.nicheCenterY, sz]}
+                        material={mats.smokedOakMat}
+                        castShadow
+                        receiveShadow
+                      >
+                        <boxGeometry args={[0.065, champagneFlutedWall.nicheH + 0.08, 0.056]} />
+                      </mesh>
+                    );
+                  })}
+                  {/* Hairline Champagne-Gold Vertical Edge Inlays Flanking Each Pier */}
+                  {[-champagneFlutedWall.pierW * 0.5 - 0.015, champagneFlutedWall.pierW * 0.5 + 0.015].map((iz, ii) => (
+                    <mesh
+                      key={`pier-gold-${ii}`}
+                      position={[inDir * 0.075, champagneFlutedWall.nicheCenterY, iz]}
+                      material={mats.champagneGoldInlayMat}
+                    >
+                      <boxGeometry args={[0.018, champagneFlutedWall.nicheH + 0.1, 0.016]} />
+                    </mesh>
+                  ))}
+
+                  {/* Slim Vertical Brushed-Brass Wall Sconce Mounted on Smoked-Oak Pier */}
+                  <group position={[inDir * 0.115, champagneFlutedWall.nicheCenterY + 0.05, 0]}>
+                    <mesh material={mats.champagneGoldInlayMat}>
+                      <boxGeometry args={[0.018, 1.38, 0.085]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.025, 0, 0]} material={mats.alabasterGlassMat}>
+                      <cylinderGeometry args={[0.022, 0.022, 1.18, 12]} />
+                    </mesh>
+                    {[-0.6, 0, 0.6].map((cy, ci) => (
+                      <mesh key={`sconce-collar-${ci}`} position={[inDir * 0.024, cy, 0]} material={mats.brassHardwareMat}>
+                        <boxGeometry args={[0.048, 0.036, 0.065]} />
+                      </mesh>
+                    ))}
+                  </group>
+                </group>
+              ))}
+
+              {/* Gently Curved Alabaster Plaster Niches & Muted Sage-Slate Acoustic Fabric Panels + Indirect Warm-Amber Uplighting */}
+              {champagneFlutedWall.nicheZs.map((nz, ni) => (
+                <group key={`champagne-niche-${side}-${ni}`} position={[wallX, champagneFlutedWall.nicheCenterY, nz]}>
+                  {/* Curved Warm Alabaster Plaster Niche Frame */}
+                  <mesh
+                    position={[inDir * (side === -1 ? 0.024 : 0.109), 0, 0]}
+                    geometry={champagneFlutedWall.curvedFrameGeo}
+                    material={mats.warmAlabasterPlasterMat}
+                    receiveShadow
+                    castShadow
+                  />
+                  {/* Muted Sage-Slate Acoustic Fabric Inset Panel */}
+                  <mesh
+                    position={[inDir * (side === -1 ? 0.028 : 0.068), 0, 0]}
+                    geometry={champagneFlutedWall.curvedFabricGeo}
+                    material={mats.sageSlateFabricMat}
+                    receiveShadow
+                  />
+                  {/* Hairline Champagne-Gold Metallic Trim Framing Inner Sage-Slate Panel */}
+                  {[-champagneFlutedWall.nicheW * 0.5 + 0.18, champagneFlutedWall.nicheW * 0.5 - 0.18].map((gz, gi) => (
+                    <mesh
+                      key={`niche-gold-v-${gi}`}
+                      position={[inDir * 0.084, -0.04, gz]}
+                      material={mats.champagneGoldInlayMat}
+                    >
+                      <boxGeometry args={[0.014, champagneFlutedWall.nicheH - 0.42, 0.014]} />
+                    </mesh>
+                  ))}
+                  {/* Concealed Warm-Amber Indirect Cove Uplight & Downlight Tucked Inside Niche Header/Base */}
+                  <mesh position={[inDir * 0.098, champagneFlutedWall.nicheH * 0.5 - 0.11, 0]} material={mats.primaryEmitterMat}>
+                    <boxGeometry args={[0.026, 0.028, champagneFlutedWall.nicheW - 0.58]} />
+                  </mesh>
+                  <mesh position={[inDir * 0.092, -champagneFlutedWall.nicheH * 0.5 + 0.06, 0]} material={mats.secondaryEmitterMat}>
+                    <boxGeometry args={[0.022, 0.024, champagneFlutedWall.nicheW - 0.42]} />
+                  </mesh>
+                </group>
+              ))}
+            </group>
+          );
+        })}
+
+      {/* IMAX Cobalt Horizon: Matte Obsidian & Deep Charcoal Acoustic Wave Panels + Vertical/Diagonal Cobalt & Cyan Strips */}
+      {sideLightStyle === 'imax_cobalt_wave' &&
+        imaxWaveWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.085;
+          return (
+            <group key={`imax-cobalt-wave-wall-${side}`}>
+              {/* Deep Obsidian Acoustic Backing Plane */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.imaxObsidianMat}>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.94]} />
+              </mesh>
+
+              {/* Sculpted 3D Acoustic Wave Polygons (Matte Obsidian & Deep Charcoal) */}
+              {imaxWaveWall.panels.map((p, pi) => (
+                <mesh
+                  key={`imax-wave-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.tone === 'obsidian' ? mats.imaxObsidianMat : mats.imaxCharcoalMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Subtle Angled Geometric Wave Groove Ribs Suppressing Light Reflection */}
+              {imaxWaveWall.grooveRibs.map((rib, ri) => (
+                <mesh
+                  key={`imax-groove-rib-${side}-${ri}`}
+                  position={[wallX + inDir * 0.095, rib.y, rib.z]}
+                  rotation={[rib.tilt, 0, 0]}
+                  material={mats.imaxObsidianMat}
+                >
+                  <boxGeometry args={[0.055, rib.height, 0.14]} />
+                </mesh>
+              ))}
+
+              {/* Signature Electric Cobalt-Blue & Cyan Vertical + Diagonal Grazing LED Strips */}
+              {imaxWaveWall.ledSeamSegments.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`imax-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={seg.isCyan ? 0.03 : 0.042}
+                  depth={0.036}
+                  material={seg.isCyan ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* IMAX Polar Aurora: Matte Slate-Grey & Deep Indigo-Charcoal Hexagonal & Angled Polygon Panels with Brushed Dark-Aluminum Trims + Ice-White & Subtle Cobalt-Blue LEDs */}
+      {sideLightStyle === 'aurora_ribbon_waves' &&
+        polarAuroraWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.086;
+          const trimX = wallX + inDir * 0.072;
+          return (
+            <group key={`polar-aurora-wall-${side}`}>
+              {/* Deep Indigo-Charcoal Recessed Backing Plane */}
+              <mesh position={[wallX + inDir * 0.01, H * 0.5, 0]} material={mats.auroraIndigoCharcoalMat}>
+                <boxGeometry args={[0.02, H * 0.94, L * 0.94]} />
+              </mesh>
+
+              {/* Hexagonal & Angled Polygon Acoustic Fabric Panels */}
+              {polarAuroraWall.panels.map((p, pi) => (
+                <mesh
+                  key={`aurora-poly-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.isSlateGrey ? mats.auroraSlateGreyMat : mats.auroraIndigoCharcoalMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Brushed Dark-Aluminum Architectural Trims */}
+              {polarAuroraWall.trimBars.map((bar, bi) => (
+                <ArchitecturalChannelBar
+                  key={`aurora-trim-${side}-${bi}`}
+                  start={[trimX, bar.startZY[1], bar.startZY[0]]}
+                  end={[trimX, bar.endZY[1], bar.endZY[0]]}
+                  thickness={0.042}
+                  depth={0.042}
+                  material={mats.brushedDarkAluminumMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+
+              {/* Recessed Ice-White & Subtle Cobalt-Blue Linear LED Strips */}
+              {polarAuroraWall.ledStrips.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`aurora-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={seg.isBlue ? 0.026 : 0.03}
+                  depth={0.032}
+                  material={seg.isBlue ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* IMAX Obsidian Amber: 3D Origami-Folded Triangular & Trapezoidal Acoustic Fabric Panels (Graphite-Black & Ocean-Teal) with Satin-Black Shadow Gaps + Warm-Tungsten & Soft Cyan Crease LEDs */}
+      {sideLightStyle === 'horizon_tier_strips' &&
+        obsidianAmberWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.12;
+          const gapX = wallX + inDir * 0.035;
+          return (
+            <group key={`obsidian-amber-wall-${side}`}>
+              {/* Satin-Black Shadow-Gap Acoustic Backing Plane */}
+              <mesh position={[wallX + inDir * 0.01, H * 0.5, 0]} material={mats.satinBlackShadowMat}>
+                <boxGeometry args={[0.02, H * 0.94, L * 0.94]} />
+              </mesh>
+
+              {/* 3D Origami-Folded Triangular & Trapezoidal Acoustic Fabric Panels */}
+              <group position={[wallX, 0, 0]} scale={[inDir, 1, 1]}>
+                {obsidianAmberWall.facets.map((f, fi) => (
+                  <mesh
+                    key={`amber-origami-facet-${side}-${fi}`}
+                    geometry={f.geo}
+                    material={f.tone === 'teal' ? mats.oceanTealFabricMat : mats.graphiteBlackFabricMat}
+                    receiveShadow
+                    castShadow
+                  />
+                ))}
+              </group>
+
+              {/* Clean Satin-Black Shadow-Gap Vertical Divider Strips */}
+              {obsidianAmberWall.shadowGaps.map((g, gi) => (
+                <ArchitecturalChannelBar
+                  key={`amber-shadow-gap-${side}-${gi}`}
+                  start={[gapX, g.startZY[1], g.startZY[0]]}
+                  end={[gapX, g.endZY[1], g.endZY[0]]}
+                  thickness={0.05}
+                  depth={0.04}
+                  material={mats.satinBlackShadowMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+
+              {/* Recessed Warm-Tungsten & Soft Cyan Linear LED Strips Along Select Panel Creases */}
+              {obsidianAmberWall.creaseLeds.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`amber-crease-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={seg.isCyan ? 0.024 : 0.03}
+                  depth={0.028}
+                  material={seg.isCyan ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.satinBlackShadowMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* 4DX Crimson Velocity: Matte Carbon-Black & Dark Gunmetal-Grey Angular Acoustic Panels + Recessed Crimson-Red & Electric-Blue Linear LEDs + Wind Blowers & SFX Nozzles */}
+      {sideLightStyle === 'crimson_velocity_4dx' &&
+        crimson4dxWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.088;
+          return (
+            <group key={`crimson-4dx-wall-${side}`}>
+              {/* Deep Matte Carbon Backing Plane */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.carbonBlackAcousticMat}>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
+              </mesh>
+
+              {/* Beveled Angular Carbon-Black & Dark Gunmetal-Grey Acoustic Polygons */}
+              {crimson4dxWall.panels.map((p, pi) => (
+                <mesh
+                  key={`crimson-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.tone === 'gunmetal' ? mats.gunmetalAcousticMat : mats.carbonBlackAcousticMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Recessed Crimson-Red & Electric-Blue Linear LED Light Strips */}
+              {crimson4dxWall.ledSeamSegments.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`crimson-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={0.038}
+                  depth={0.034}
+                  material={seg.isBlue ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.45}
+                />
+              ))}
+
+              {/* Wall-Mounted High-Power Wind Blowers & Special-Effects (SFX) Nozzles */}
+              {wallBayZs.map((bz, bi) => {
+                const rowFrac = THREE.MathUtils.clamp(
+                  (bz - firstRowZ) / Math.max(0.5, rowSpacing),
+                  0,
+                  Math.max(0, seatingRows - 1),
+                );
+                const tierY = rowFrac * rowElevationStep;
+                const blowerY = Math.min(H - 2.1, tierY + 2.55);
+                const sfxY = Math.min(H - 2.8, tierY + 1.85);
+                return (
+                  <group key={`4dx-wall-rig-${side}-${bi}`}>
+                    {/* High-Power Wind Blower Turbine Unit */}
+                    <group
+                      position={[wallX + inDir * 0.14, blowerY, bz]}
+                      rotation={[0, inDir * (Math.PI / 2), 0]}
+                    >
+                      {/* Wall Anchor Plate & Gimbal Bracket */}
+                      <mesh position={[0, 0, 0.02]} material={mats.channelMetalMat}>
+                        <boxGeometry args={[0.38, 0.42, 0.04]} />
+                      </mesh>
+                      <mesh position={[0, 0, 0.14]} material={mats.gunmetalAcousticMat}>
+                        <boxGeometry args={[0.46, 0.08, 0.28]} />
+                      </mesh>
+                      {/* Angled Turbine Cowling & Flared Exhaust Nozzle */}
+                      <group position={[0, 0, 0.28]} rotation={[0.24, 0, 0]}>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.gunmetalAcousticMat} castShadow>
+                          <cylinderGeometry args={[0.21, 0.19, 0.44, 18]} />
+                        </mesh>
+                        <mesh position={[0, 0, 0.24]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
+                          <cylinderGeometry args={[0.235, 0.205, 0.08, 18]} />
+                        </mesh>
+                        {/* Internal Fan Hub & 4 Turbine Rotor Blades */}
+                        <mesh position={[0, 0, 0.18]} rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
+                          <cylinderGeometry args={[0.055, 0.055, 0.08, 12]} />
+                        </mesh>
+                        {[0, 1, 2, 3].map((ri) => (
+                          <mesh
+                            key={`blade-${ri}`}
+                            position={[0, 0, 0.18]}
+                            rotation={[0, 0, (ri * Math.PI) / 4]}
+                            material={mats.channelMetalMat}
+                          >
+                            <boxGeometry args={[0.35, 0.045, 0.02]} />
+                          </mesh>
+                        ))}
+                        {/* Subtle Status Accent Ring */}
+                        <mesh position={[0, 0, 0.27]} material={bi % 2 === 0 ? mats.primaryEmitterMat : mats.secondaryEmitterMat}>
+                          <torusGeometry args={[0.22, 0.012, 8, 20]} />
+                        </mesh>
+                      </group>
+                    </group>
+
+                    {/* Special-Effects (SFX) Manifold & Dual Mist/Air/Scent Jet Nozzles */}
+                    <group
+                      position={[wallX + inDir * 0.12, sfxY, Math.min(L * 0.41, bz + 0.88)]}
+                      rotation={[0, inDir * (Math.PI / 2), 0]}
+                    >
+                      {/* Vertical Conduit Pipe */}
+                      <mesh position={[0, -0.35, 0.02]} material={mats.channelMetalMat}>
+                        <cylinderGeometry args={[0.024, 0.024, 0.85, 10]} />
+                      </mesh>
+                      {/* Gunmetal Manifold Distribution Box */}
+                      <mesh position={[0, 0, 0.06]} material={mats.gunmetalAcousticMat}>
+                        <boxGeometry args={[0.24, 0.16, 0.12]} />
+                      </mesh>
+                      {/* Dual Brass/Steel Angled SFX Nozzles */}
+                      {[-0.065, 0.065].map((nx, ni) => (
+                        <group key={`sfx-jet-${ni}`} position={[nx, 0.01, 0.14]} rotation={[0.22, 0, 0]}>
+                          <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
+                            <cylinderGeometry args={[0.024, 0.034, 0.12, 12]} />
+                          </mesh>
+                          <mesh position={[0, 0, 0.068]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
+                            <cylinderGeometry args={[0.014, 0.022, 0.04, 10]} />
+                          </mesh>
+                        </group>
+                      ))}
+                    </group>
+                  </group>
+                );
+              })}
+            </group>
+          );
+        })}
+
+      {/* 4DX Arctic Storm: Interlocking Diamond & Diagonal-Cut Slate/Indigo/Pitch-Black Acoustic Panels + Violet & Cyan LEDs + Wind Blowers & SFX Nozzles */}
+      {sideLightStyle === 'arctic_parametric_fins' &&
+        arctic4dxWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.088;
+          return (
+            <group key={`arctic-4dx-wall-${side}`}>
+              {/* Deep Pitch-Black Backing Plane */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.pitchBlackAcousticMat}>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
+              </mesh>
+
+              {/* Sharp Interlocking Diamond & Diagonal-Cut Acoustic Polygons */}
+              {arctic4dxWall.panels.map((p, pi) => (
+                <mesh
+                  key={`arctic-diamond-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={
+                    p.tone === 'indigo'
+                      ? mats.indigoAcousticMat
+                      : p.tone === 'slate'
+                        ? mats.slateAcousticMat
+                        : mats.pitchBlackAcousticMat
+                  }
+                  receiveShadow
+                />
+              ))}
+
+              {/* Recessed Electric-Violet & Bright Cyan Linear LED Light Strips Tracing Every Panel Angle */}
+              {arctic4dxWall.ledSeamSegments.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`arctic-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={0.036}
+                  depth={0.034}
+                  material={seg.isCyan ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.45}
+                />
+              ))}
+
+              {/* Mounted High-Power Wind Blowers & Special-Effects (SFX) Nozzles */}
+              {wallBayZs.map((bz, bi) => {
+                const rowFrac = THREE.MathUtils.clamp(
+                  (bz - firstRowZ) / Math.max(0.5, rowSpacing),
+                  0,
+                  Math.max(0, seatingRows - 1),
+                );
+                const tierY = rowFrac * rowElevationStep;
+                const blowerY = Math.min(H - 2.1, tierY + 2.55);
+                const sfxY = Math.min(H - 2.8, tierY + 1.85);
+                return (
+                  <group key={`arctic-4dx-wall-rig-${side}-${bi}`}>
+                    <group
+                      position={[wallX + inDir * 0.14, blowerY, bz]}
+                      rotation={[0, inDir * (Math.PI / 2), 0]}
+                    >
+                      <mesh position={[0, 0, 0.02]} material={mats.channelMetalMat}>
+                        <boxGeometry args={[0.38, 0.42, 0.04]} />
+                      </mesh>
+                      <mesh position={[0, 0, 0.14]} material={mats.gunmetalAcousticMat}>
+                        <boxGeometry args={[0.46, 0.08, 0.28]} />
+                      </mesh>
+                      <group position={[0, 0, 0.28]} rotation={[0.24, 0, 0]}>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.gunmetalAcousticMat} castShadow>
+                          <cylinderGeometry args={[0.21, 0.19, 0.44, 18]} />
+                        </mesh>
+                        <mesh position={[0, 0, 0.24]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
+                          <cylinderGeometry args={[0.235, 0.205, 0.08, 18]} />
+                        </mesh>
+                        <mesh position={[0, 0, 0.18]} rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
+                          <cylinderGeometry args={[0.055, 0.055, 0.08, 12]} />
+                        </mesh>
+                        {[0, 1, 2, 3].map((ri) => (
+                          <mesh
+                            key={`arctic-blade-${ri}`}
+                            position={[0, 0, 0.18]}
+                            rotation={[0, 0, (ri * Math.PI) / 4]}
+                            material={mats.channelMetalMat}
+                          >
+                            <boxGeometry args={[0.35, 0.045, 0.02]} />
+                          </mesh>
+                        ))}
+                        <mesh position={[0, 0, 0.27]} material={bi % 2 === 0 ? mats.primaryEmitterMat : mats.secondaryEmitterMat}>
+                          <torusGeometry args={[0.22, 0.012, 8, 20]} />
+                        </mesh>
+                      </group>
+                    </group>
+
+                    <group
+                      position={[wallX + inDir * 0.12, sfxY, Math.min(L * 0.41, bz + 0.88)]}
+                      rotation={[0, inDir * (Math.PI / 2), 0]}
+                    >
+                      <mesh position={[0, -0.35, 0.02]} material={mats.channelMetalMat}>
+                        <cylinderGeometry args={[0.024, 0.024, 0.85, 10]} />
+                      </mesh>
+                      <mesh position={[0, 0, 0.06]} material={mats.gunmetalAcousticMat}>
+                        <boxGeometry args={[0.24, 0.16, 0.12]} />
+                      </mesh>
+                      {[-0.065, 0.065].map((nx, ni) => (
+                        <group key={`arctic-sfx-jet-${ni}`} position={[nx, 0.01, 0.14]} rotation={[0.22, 0, 0]}>
+                          <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
+                            <cylinderGeometry args={[0.024, 0.034, 0.12, 12]} />
+                          </mesh>
+                          <mesh position={[0, 0, 0.068]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
+                            <cylinderGeometry args={[0.014, 0.022, 0.04, 10]} />
+                          </mesh>
+                        </group>
+                      ))}
+                    </group>
+                  </group>
+                );
+              })}
+            </group>
+          );
+        })}
+
+      {/* 4DX Thunder Arena: Dramatic 3D Parametric Ribbed Acoustic Fins in Matte Titanium Grey & Deep Espresso-Bronze + Inner Golden-Amber & Ice-White LEDs + Sleek Recessed Air Turbines */}
+      {sideLightStyle === 'thunder_emerald_waves' &&
+        thunderWaveWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.058;
+          return (
+            <group key={`thunder-4dx-wall-${side}`}>
+              {/* Dark Acoustic Backing Cavity Behind Ribs */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.pitchBlackAcousticMat}>
+                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
+              </mesh>
+
+              {/* 3D Parametric Ribbed Acoustic Fins (Titanium Grey & Deep Espresso-Bronze) */}
+              {thunderWaveWall.fins.map((fin, fi) => (
+                <mesh
+                  key={`thunder-parametric-fin-${side}-${fi}`}
+                  position={[wallX + inDir * 0.018, 0, fin.z]}
+                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                  geometry={fin.geo}
+                  material={fin.tone === 'titanium' ? mats.titaniumFinMat : mats.espressoBronzeFinMat}
+                  castShadow
+                  receiveShadow
+                />
+              ))}
+
+              {/* Warm Golden-Amber & Crisp Ice-White Linear LED Strips Illuminated From Within Between Ribs */}
+              {thunderWaveWall.ledStrips.map((strip, si) => (
+                <ArchitecturalChannelBar
+                  key={`thunder-inner-led-${side}-${si}`}
+                  start={[ledX, strip.yStart, strip.z]}
+                  end={[ledX, strip.yEnd, strip.z]}
+                  thickness={0.034}
+                  depth={0.03}
+                  material={strip.isWhite ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+
+              {/* Sleek Recessed Circular High-Velocity Air Turbines Integrated Cleanly Between Wall Ribs */}
+              {wallBayZs.map((bz, bi) => {
+                const rowFrac = THREE.MathUtils.clamp(
+                  (bz - firstRowZ) / Math.max(0.5, rowSpacing),
+                  0,
+                  Math.max(0, seatingRows - 1),
+                );
+                const tierY = rowFrac * rowElevationStep;
+                const turbineY = Math.min(H - 2.0, tierY + 2.45);
+                return (
+                  <group
+                    key={`thunder-recessed-turbine-${side}-${bi}`}
+                    position={[wallX + inDir * 0.085, turbineY, bz]}
+                    rotation={[0, inDir * (Math.PI / 2), 0]}
+                  >
+                    {/* Flush Brushed Titanium Recessed Bezel Ring */}
+                    <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.titaniumFinMat}>
+                      <cylinderGeometry args={[0.27, 0.27, 0.05, 24]} />
+                    </mesh>
+                    {/* Deep Dark Acoustic Turbine Throat */}
+                    <mesh position={[0, 0, 0.012]} rotation={[Math.PI / 2, 0, 0]} material={mats.pitchBlackAcousticMat}>
+                      <cylinderGeometry args={[0.215, 0.215, 0.04, 22]} />
+                    </mesh>
+                    {/* Machined Aluminum Hub & 6 Recessed Turbine Blades */}
+                    <mesh position={[0, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
+                      <cylinderGeometry args={[0.055, 0.055, 0.05, 14]} />
+                    </mesh>
+                    {[0, 1, 2].map((ri) => (
+                      <mesh
+                        key={`thunder-recessed-blade-${ri}`}
+                        position={[0, 0, 0.018]}
+                        rotation={[0, 0, (ri * Math.PI) / 3]}
+                        material={mats.channelMetalMat}
+                      >
+                        <boxGeometry args={[0.38, 0.04, 0.018]} />
+                      </mesh>
+                    ))}
+                    {/* Subtle Perimeter Ring Illumination */}
+                    <mesh position={[0, 0, 0.032]} material={bi % 2 === 0 ? mats.primaryEmitterMat : mats.secondaryEmitterMat}>
+                      <torusGeometry args={[0.23, 0.01, 8, 24]} />
+                    </mesh>
+                  </group>
+                );
+              })}
+            </group>
+          );
+        })}
+
+      {/* ICE Theater 1 (Flagship): Sculpted Matte-Black Carbon-Weave Acoustic Modules, Precision Brushed-Aluminum Reveals & Concealed Surrounds */}
+      {isIce && iceLayout && sideLightStyle === 'ice_faceted_cyan' && (
+        <group>
+          {[-1, 1].map((side) => {
+            const wallX = side * (W / 2 - 0.22);
+            const inDir = -side;
+            const carbonMat = wallMat ?? mats.carbonBlackAcousticMat;
+            return (
+              <group key={`ice-flagship-wall-${side}`}>
+                {iceLayout.panelZs.map((pz, idx) => {
+                  const py = iceLayout.panelYs[idx];
+                  const nextZ = iceLayout.panelZs[idx + 1];
+                  const prevZ = iceLayout.panelZs[idx - 1];
+                  const baySpan = nextZ
+                    ? Math.abs(nextZ - pz)
+                    : prevZ
+                      ? Math.abs(pz - prevZ)
+                      : 3.4;
+                  const t = idx / Math.max(1, iceLayout.panelZs.length - 1);
+                  const moduleDepthX = wallX + inDir * (0.06 + t * 0.14);
+                  const facetTilt = side * iceLayout.inwardAngle;
+                  return (
+                    <group key={`ice-flagship-bay-${side}-${idx}`}>
+                      {/* Sculpted Matte-Black Carbon-Weave Acoustic Wall Module */}
+                      <mesh
+                        position={[moduleDepthX, H * 0.5, pz]}
+                        rotation={[0, facetTilt, 0]}
+                        material={carbonMat}
+                        receiveShadow
+                      >
+                        <boxGeometry args={[0.14, H * 0.92, Math.max(2.9, baySpan * 0.91)]} />
+                      </mesh>
+                      {/* Precision Brushed-Aluminum Horizontal Mid-Tier Reveal Dividing Upper & Lower LED Tiers */}
+                      <mesh
+                        position={[moduleDepthX + inDir * 0.082, py, pz]}
+                        rotation={[0, facetTilt, 0]}
+                        material={mats.iceBrushedAlumMat}
+                      >
+                        <boxGeometry args={[0.028, 0.048, Math.max(2.9, baySpan * 0.93)]} />
+                      </mesh>
+                      {/* Precision Brushed-Aluminum Top & Bottom Module Shadow Reveals */}
+                      <mesh
+                        position={[moduleDepthX + inDir * 0.08, H * 0.91, pz]}
+                        rotation={[0, facetTilt, 0]}
+                        material={mats.iceBrushedAlumMat}
+                      >
+                        <boxGeometry args={[0.022, 0.032, Math.max(2.9, baySpan * 0.93)]} />
+                      </mesh>
+                      <mesh
+                        position={[moduleDepthX + inDir * 0.08, Math.max(0.85, py - iceLayout.panelHeight - 0.56), pz]}
+                        rotation={[0, facetTilt, 0]}
+                        material={mats.iceBrushedAlumMat}
+                      >
+                        <boxGeometry args={[0.022, 0.032, Math.max(2.9, baySpan * 0.93)]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+                {/* Vertical Precision Brushed-Aluminum Reveals & Concealed Flush Surround Grilles Between Bays */}
+                {iceLayout.betweenPanelZs.map((bz, bi) => {
+                  const midY = ((iceLayout.panelYs[bi] ?? 5.6) + (iceLayout.panelYs[bi + 1] ?? 5.8)) * 0.5;
+                  const t = (bi + 0.5) / Math.max(1, iceLayout.panelZs.length - 1);
+                  const seamX = wallX + inDir * (0.14 + t * 0.14);
+                  return (
+                    <group key={`ice-flagship-reveal-${side}-${bi}`} position={[seamX, H * 0.5, bz]}>
+                      <mesh material={mats.iceBrushedAlumMat}>
+                        <boxGeometry args={[0.04, H * 0.88, 0.055]} />
+                      </mesh>
+                      {/* Concealed Flush-Mounted Surround Speaker Integrated Seamlessly in Acoustic Reveal */}
+                      <mesh position={[inDir * 0.015, midY - H * 0.5, 0]} material={mats.concealedGrilleMat}>
+                        <boxGeometry args={[0.032, 0.68, 0.34]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+            );
+          })}
+        </group>
+      )}
+
+      {/* ICE Theater 2 (Cobalt Grand): Sweeping Curved Sandblasted-Taupe Acoustic Plaster Walls, Ribbed Bronze-Metal Ribs & Hidden Surrounds */}
+      {isIce && iceLayout && sideLightStyle === 'ice_faceted_cobalt' && iceLayout.curvedWallPoints && (
+        <group>
+          {[-1, 1].map((side) => {
+            const inDir = -side;
+            const plasterMat = wallMat ?? mats.iceTaupePlasterMat;
+            const pts = iceLayout.curvedWallPoints!;
+            return (
+              <group key={`ice-cobalt-curved-wall-${side}`}>
+                {/* Sweeping Curved Sandblasted-Taupe Acoustic Plaster Wall Segments */}
+                {pts.slice(0, -1).map((p0, idx) => {
+                  const p1 = pts[idx + 1];
+                  const midZ = (p0.z + p1.z) * 0.5;
+                  const midX = side * ((p0.wallX + p1.wallX) * 0.5);
+                  const dz = p1.z - p0.z;
+                  const dx = (p1.wallX - p0.wallX) * side;
+                  const segLen = Math.hypot(dz, dx) + 0.08;
+                  const yaw = Math.atan2(dx, dz);
+                  return (
+                    <group key={`ice-cobalt-seg-${side}-${idx}`} position={[midX, H * 0.49, midZ]} rotation={[0, yaw, 0]}>
+                      <mesh material={plasterMat} receiveShadow>
+                        <boxGeometry args={[0.24, H * 0.94, segLen]} />
+                      </mesh>
+                      {/* Vertical Ribbed Bronze-Metal Architectural Wall Ribs */}
+                      {[-segLen * 0.34, 0, segLen * 0.34].map((rz, ri) => (
+                        <mesh
+                          key={`bronze-rib-${ri}`}
+                          position={[inDir * 0.122, 0, rz]}
+                          material={mats.iceRibbedBronzeMat}
+                        >
+                          <boxGeometry args={[0.036, H * 0.92, 0.085]} />
+                        </mesh>
+                      ))}
+                    </group>
+                  );
+                })}
+                {/* Horizontal Ribbed Bronze-Metal Dado & Upper Datum Moldings Following Wall Curve */}
+                {iceLayout.betweenPanelZs.map((bz, bi) => {
+                  const u = THREE.MathUtils.clamp((bz - (frontZ + 1.2)) / (L - 2.4), 0.05, 0.95);
+                  const bow = Math.sin(Math.PI * u) * 0.85;
+                  const spkX = side * (W / 2 - 0.95 + bow) + inDir * 0.12;
+                  const spkY = ((iceLayout.panelYs[bi] ?? 4.8) + (iceLayout.panelYs[bi + 1] ?? 5.2)) * 0.5;
+                  return (
+                    <group key={`ice-cobalt-spk-${side}-${bi}`} position={[spkX, spkY, bz]}>
+                      <mesh material={mats.iceRibbedBronzeMat}>
+                        <boxGeometry args={[0.05, 0.78, 0.42]} />
+                      </mesh>
+                      {/* Hidden Bronze-Black Surround Grille Recessed Flush Between Bronze Ribs */}
+                      <mesh position={[inDir * 0.022, 0, 0]} material={mats.concealedGrilleMat}>
+                        <boxGeometry args={[0.025, 0.68, 0.32]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+            );
+          })}
+        </group>
+      )}
+
+      {/* ICE Theater 3 (Obsidian Amber): Vertical Charred Shou Sugi Ban Timber Slats, Dark Basalt Acoustic Bays & Concealed Surrounds */}
+      {isIce && iceLayout && sideLightStyle === 'ice_faceted_amber' && (
+        <group>
+          {[-1, 1].map((side) => {
+            const wallX = side * (W / 2 - 0.22);
+            const inDir = -side;
+            const facetTilt = side * iceLayout.inwardAngle;
+            const slatCount = 46;
+            const zSpanStart = frontZ + 3.2;
+            const zSpanEnd = backZ - 2.0;
+            return (
+              <group key={`ice-amber-shou-wall-${side}`}>
+                {/* Angled Dark Basalt Acoustic Fabric Wall Bays */}
+                {iceLayout.panelZs.map((pz, idx) => {
+                  const t = idx / Math.max(1, iceLayout.panelZs.length - 1);
+                  const bayX = wallX + inDir * (0.04 + t * 0.12);
+                  return (
+                    <mesh
+                      key={`ice-amber-basalt-${side}-${idx}`}
+                      position={[bayX, H * 0.5, pz]}
+                      rotation={[0, facetTilt, 0]}
+                      material={wallMat ?? mats.iceBasaltFabricMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.12, H * 0.92, 3.65]} />
+                    </mesh>
+                  );
+                })}
+                {/* Rhythmic Vertical Charred Shou Sugi Ban Timber Slats Flanking & Framing Floating Diagonal LED Panels */}
+                {Array.from({ length: slatCount }, (_, si) => {
+                  const u = si / (slatCount - 1);
+                  const sz = THREE.MathUtils.lerp(zSpanStart, zSpanEnd, u);
+                  const slatX = wallX + inDir * (0.11 + u * 0.12);
+                  // Check proximity to diagonal panel center so slats wrap cleanly above/below active panel faces without clipping them
+                  const nearPanelIdx = iceLayout.panelZs.findIndex(
+                    (pz) => Math.abs(sz - pz) < iceLayout.panelWidth * 0.49,
+                  );
+                  if (nearPanelIdx >= 0) {
+                    const py = iceLayout.panelYs[nearPanelIdx];
+                    const halfH = iceLayout.panelHeight * 0.5 + 0.14;
+                    const lowerH = Math.max(0.25, py - halfH - 0.15);
+                    const upperH = Math.max(0.25, H - 0.35 - (py + halfH));
+                    return (
+                      <group key={`ice-amber-slat-split-${side}-${si}`}>
+                        <mesh
+                          position={[slatX, 0.15 + lowerH * 0.5, sz]}
+                          rotation={[0, facetTilt, 0]}
+                          material={mats.iceShouSugiBanMat}
+                        >
+                          <boxGeometry args={[0.07, lowerH, 0.075]} />
+                        </mesh>
+                        <mesh
+                          position={[slatX, py + halfH + upperH * 0.5, sz]}
+                          rotation={[0, facetTilt, 0]}
+                          material={mats.iceShouSugiBanMat}
+                        >
+                          <boxGeometry args={[0.07, upperH, 0.075]} />
+                        </mesh>
+                      </group>
+                    );
+                  }
+                  return (
+                    <mesh
+                      key={`ice-amber-slat-full-${side}-${si}`}
+                      position={[slatX, H * 0.49, sz]}
+                      rotation={[0, facetTilt, 0]}
+                      material={mats.iceShouSugiBanMat}
+                    >
+                      <boxGeometry args={[0.075, H * 0.9, 0.08]} />
+                    </mesh>
+                  );
+                })}
+                {/* Concealed Flush Surround Grilles Tucked Cleanly Between Shou Sugi Ban Slats */}
+                {iceLayout.betweenPanelZs.map((bz, bi) => {
+                  const midY = ((iceLayout.panelYs[bi] ?? 4.4) + (iceLayout.panelYs[bi + 1] ?? 5.4)) * 0.5;
+                  const t = (bi + 0.5) / Math.max(1, iceLayout.panelZs.length - 1);
+                  const spkX = wallX + inDir * (0.12 + t * 0.12);
+                  return (
+                    <mesh
+                      key={`ice-amber-spk-${side}-${bi}`}
+                      position={[spkX, midY, bz]}
+                      rotation={[0, facetTilt, 0]}
+                      material={mats.concealedGrilleMat}
+                    >
+                      <boxGeometry args={[0.05, 0.72, 0.34]} />
+                    </mesh>
+                  );
+                })}
+              </group>
+            );
+          })}
+        </group>
+      )}
+
+      {/* Sylva Moss 250: Multi-Layered Organic Crystalline Acoustic Moss Walls (Sand-Beige, Sage-Green & Deep Charcoal), Concealed Warm-Gold Indirect Halo LEDs & Architectural Speaker Recesses */}
+      {sideLightStyle === 'biophilic_crystalline_moss' && biophilicCrystallineMossWall && (
+        <group>
+          {/* Left & Right Side Walls */}
+          {[-1, 1].map((side) => {
+            const baseFaceX = side * (W / 2 - 0.2);
+            const inDir = -side;
+            return (
+              <group key={`biophilic-side-${side}`}>
+                {/* Deep Matte-Charcoal Acoustic Felt Wall Backing Substrate */}
+                <mesh position={[baseFaceX + inDir * 0.015, H * 0.5, 0]} material={mats.biophilicRecessBoxMat} receiveShadow>
+                  <boxGeometry args={[0.03, H - 0.35, L - 0.5]} />
+                </mesh>
+
+                {/* Overlapping Organic Crystalline Moss-Texture Shards */}
+                {biophilicCrystallineMossWall.sideShards.map((shard, si) => {
+                  const mat =
+                    shard.tone === 'sand'
+                      ? mats.sandBeigeMossMat
+                      : shard.tone === 'sage'
+                        ? mats.sageGreenMossMat
+                        : shard.tone === 'mossMid'
+                          ? mats.softMossMidMat
+                          : mats.deepCharcoalMossMat;
+                  return (
+                    <mesh
+                      key={`biophilic-side-shard-${side}-${si}`}
+                      position={[baseFaceX + inDir * shard.depthOffset, 0, 0]}
+                      geometry={shard.geo}
+                      material={mat}
+                      receiveShadow
+                      castShadow
+                    />
+                  );
+                })}
+
+                {/* Purely Indirect Warm-Gold Halo LED Strips Concealed Behind Overlapping Wall Shards */}
+                {biophilicCrystallineMossWall.sideHaloStrips.map((strip, hi) => (
+                  <mesh
+                    key={`biophilic-side-halo-${side}-${hi}`}
+                    position={[baseFaceX + inDir * strip.depthOffset, strip.cy, strip.cz]}
+                    rotation={[strip.rotX || 0, 0, 0]}
+                    material={mats.warmGoldHaloMat}
+                  >
+                    <boxGeometry args={[0.016, strip.len, 0.024]} />
+                  </mesh>
+                ))}
+
+                {/* Specialized Architectural Matte-Charcoal Speaker Recess Alcoves */}
+                {biophilicCrystallineMossWall.sideSpeakerCenters.map((spk, ri) => (
+                  <group
+                    key={`biophilic-side-recess-${side}-${ri}`}
+                    position={[baseFaceX + inDir * 0.09, spk.y, spk.z]}
+                  >
+                    {/* Top & Bottom Recess Frame Ledges */}
+                    <mesh position={[0, 0.5, 0]} material={mats.biophilicRecessBoxMat}>
+                      <boxGeometry args={[0.19, 0.06, 0.88]} />
+                    </mesh>
+                    <mesh position={[0, -0.5, 0]} material={mats.biophilicRecessBoxMat}>
+                      <boxGeometry args={[0.19, 0.06, 0.88]} />
+                    </mesh>
+                    {/* Front & Rear Vertical Recess Cheek Walls */}
+                    <mesh position={[0, 0, -0.44]} material={mats.biophilicRecessBoxMat}>
+                      <boxGeometry args={[0.19, 1.06, 0.06]} />
+                    </mesh>
+                    <mesh position={[0, 0, 0.44]} material={mats.biophilicRecessBoxMat}>
+                      <boxGeometry args={[0.19, 1.06, 0.06]} />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            );
+          })}
+
+          {/* Rear Wall: Organic Crystalline Moss Composition, Concealed Warm-Gold Halos & Rear Surround Speaker Recesses */}
+          <group position={[0, 0, backZ - 0.2]}>
+            {/* Matte-Charcoal Rear Acoustic Backing Wings */}
+            <mesh position={[0, H * 0.52, -0.015]} material={mats.biophilicRecessBoxMat} receiveShadow>
+              <boxGeometry args={[W - 0.6, H * 0.88, 0.03]} />
+            </mesh>
+
+            {biophilicCrystallineMossWall.rearShards.map((shard, ri) => {
+              const mat =
+                shard.tone === 'sand'
+                  ? mats.sandBeigeMossMat
+                  : shard.tone === 'sage'
+                    ? mats.sageGreenMossMat
+                    : shard.tone === 'mossMid'
+                      ? mats.softMossMidMat
+                      : mats.deepCharcoalMossMat;
+              return (
+                <mesh
+                  key={`biophilic-rear-shard-${ri}`}
+                  position={[0, 0, -shard.depthOffset]}
+                  geometry={shard.geo}
+                  material={mat}
+                  receiveShadow
+                  castShadow
+                />
+              );
+            })}
+
+            {biophilicCrystallineMossWall.rearHaloStrips.map((strip, hi) => (
+              <mesh
+                key={`biophilic-rear-halo-${hi}`}
+                position={[strip.cx, strip.cy, -strip.depthOffset]}
+                rotation={[0, 0, strip.rotZ || 0]}
+                material={mats.warmGoldHaloMat}
+              >
+                <boxGeometry args={[strip.len, 0.022, 0.016]} />
+              </mesh>
+            ))}
+
+            {/* Rear Wall Architectural Speaker Recess Casings */}
+            {biophilicCrystallineMossWall.rearSpeakerCenters.map((spk, ri) => (
+              <group key={`biophilic-rear-recess-${ri}`} position={[spk.x, spk.y, -0.095]}>
+                <mesh position={[0, 0.5, 0]} material={mats.biophilicRecessBoxMat}>
+                  <boxGeometry args={[0.88, 0.06, 0.19]} />
+                </mesh>
+                <mesh position={[0, -0.5, 0]} material={mats.biophilicRecessBoxMat}>
+                  <boxGeometry args={[0.88, 0.06, 0.19]} />
+                </mesh>
+                <mesh position={[-0.44, 0, 0]} material={mats.biophilicRecessBoxMat}>
+                  <boxGeometry args={[0.06, 1.06, 0.19]} />
+                </mesh>
+                <mesh position={[0.44, 0, 0]} material={mats.biophilicRecessBoxMat}>
+                  <boxGeometry args={[0.06, 1.06, 0.19]} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+        </group>
+      )}
+
+      {/* Flush Matte Acoustic Bays + Crisscross Continuous Geometric LED Channels */}
+      {sideLightStyle === 'crisscross_geometric' && (
+        <group>
+          {wallBayZs.slice(0, -1).map((bz, idx) =>
+            [-1, 1].map((side) => (
+              <mesh
+                key={`mat-bay-${idx}-${side}`}
+                position={[
+                  side * (W / 2 - 0.21),
+                  H * 0.5,
+                  (bz + wallBayZs[idx + 1]) / 2,
+                ]}
+                material={acousticPanelMat}
+                receiveShadow
+              >
+                <boxGeometry
+                  args={[0.05, H * 0.84, Math.max(0.4, Math.abs(wallBayZs[idx + 1] - bz) - 0.14)]}
+                />
+              </mesh>
+            )),
+          )}
+          {wallBayZs.slice(1, -1).map((bz, idx) =>
+            [-1, 1].map((side) => (
+              <group key={`crisscross-grille-${idx}-${side}`} position={[side * (W / 2 - 0.22), H * 0.72, bz]}>
+                <mesh material={mats.channelMetalMat}>
+                  <boxGeometry args={[0.04, 0.72, 0.72]} />
+                </mesh>
+                <mesh position={[-side * 0.022, 0, 0]} material={acousticPanelMat}>
+                  <boxGeometry args={[0.02, 0.56, 0.56]} />
+                </mesh>
+              </group>
+            )),
+          )}
+          {crisscrossSegments.map((seg, i) => (
+            <ArchitecturalChannelBar
+              key={`crisscross-${i}`}
+              start={seg.start}
+              end={seg.end}
+              thickness={0.055}
+              depth={0.042}
+              material={seg.accent ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+              housingMaterial={mats.channelMetalMat}
+              interiorFocusY={H * 0.45}
+            />
+          ))}
+        </group>
+      )}
+
+      {/* Dolby Obsidian Reference: Charcoal-Black & Midnight-Slate Acoustic Panels Divided by Brushed Gunmetal Trims + Recessed Dolby-Blue & Soft Warm-White LED Strips */}
+      {sideLightStyle === 'obsidian_slat_grazers' &&
+        dolbyObsidianWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const trimX = wallX + inDir * 0.072;
+          const ledX = wallX + inDir * 0.078;
+          return (
+            <group key={`dolby-obsidian-wall-${side}`}>
+              {/* Matte Obsidian-Black Backing Wall */}
+              <mesh position={[wallX + inDir * 0.01, H * 0.5, 0]} material={mats.pitchBlackAcousticMat}>
+                <boxGeometry args={[0.02, H * 0.96, L * 0.95]} />
+              </mesh>
+
+              {/* Matte Charcoal-Black & Deep Midnight-Slate Acoustic Fabric Panels */}
+              {dolbyObsidianWall.panels.map((p, pi) => (
+                <mesh
+                  key={`obsidian-panel-${side}-${pi}`}
+                  position={[wallX + inDir * p.depthOffset, 0, 0]}
+                  geometry={p.geo}
+                  material={p.isMidnightSlate ? mats.midnightSlateFabricMat : mats.obsidianFabricMat}
+                  receiveShadow
+                />
+              ))}
+
+              {/* Clean Diagonal & Vertical Brushed Gunmetal Trims Dividing the Acoustic Panels */}
+              {dolbyObsidianWall.trimBars.map((bar, bi) => (
+                <ArchitecturalChannelBar
+                  key={`obsidian-trim-${side}-${bi}`}
+                  start={[trimX, bar.startZY[1], bar.startZY[0]]}
+                  end={[trimX, bar.endZY[1], bar.endZY[0]]}
+                  thickness={0.042}
+                  depth={0.028}
+                  material={mats.brushedGunmetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+
+              {/* Sleek Recessed Dolby-Blue & Soft Warm-White Linear LED Light Strips */}
+              {dolbyObsidianWall.ledStrips.map((seg, si) => (
+                <ArchitecturalChannelBar
+                  key={`obsidian-led-${side}-${si}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={0.028}
+                  depth={0.024}
+                  material={seg.isWarmWhite ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* Dolby Cobalt Noir: Horizontal Charcoal-Slate Acoustic Panels & Warm Dark Walnut-Bronze Wood Slats Separated by Satin-Black Trims + Warm-Amber & Soft Cool-Blue LEDs */}
+      {sideLightStyle === 'diagonal_parabolic_ribs' &&
+        dolbyCobaltWall &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const ledX = wallX + inDir * 0.078;
+          return (
+            <group key={`dolby-cobalt-horizontal-wall-${side}`}>
+              {/* Deep Matte-Black Acoustic Wall Cavity Behind Slats & Panels */}
+              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.pitchBlackAcousticMat}>
+                <boxGeometry args={[0.024, H * 0.95, L * 0.94]} />
+              </mesh>
+
+              {/* Matte Charcoal-Slate Acoustic Fabric Panels */}
+              {dolbyCobaltWall.fabricPanels.map((panel, pi) => (
+                <mesh
+                  key={`cobalt-fabric-${side}-${pi}`}
+                  position={[wallX + inDir * (panel.depth * 0.5 + 0.016), panel.posZY[1], panel.posZY[0]]}
+                  material={mats.charcoalSlatePanelMat}
+                  receiveShadow
+                >
+                  <boxGeometry args={[panel.depth, panel.heightY, panel.lengthZ]} />
+                </mesh>
+              ))}
+
+              {/* Warm Dark Walnut-Bronze Wood-Textured Vertical Acoustic Slats */}
+              {dolbyCobaltWall.woodSlats.map((slat, si) => (
+                <mesh
+                  key={`cobalt-slat-${side}-${si}`}
+                  position={[wallX + inDir * 0.048, slat.yMid, slat.z]}
+                  material={mats.walnutBronzeWoodMat}
+                  receiveShadow
+                  castShadow
+                >
+                  <boxGeometry args={[0.064, slat.heightY, 0.056]} />
+                </mesh>
+              ))}
+
+              {/* Clean Satin-Black Architectural Trims Separating Horizontal Bands & Bays */}
+              {dolbyCobaltWall.satinTrims.map((trim, ti) => (
+                <mesh
+                  key={`cobalt-trim-${side}-${ti}`}
+                  position={[wallX + inDir * 0.068, trim.posZY[1], trim.posZY[0]]}
+                  material={mats.satinBlackTrimMat}
+                >
+                  <boxGeometry args={[0.042, trim.heightY, trim.lengthZ]} />
+                </mesh>
+              ))}
+
+              {/* Sleek Recessed Warm-Amber & Soft Cool-Blue Linear LED Light Strips */}
+              {dolbyCobaltWall.ledStrips.map((seg, li) => (
+                <ArchitecturalChannelBar
+                  key={`cobalt-led-${side}-${li}`}
+                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                  thickness={0.026}
+                  depth={0.024}
+                  material={seg.isCoolBlue ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                  housingMaterial={mats.channelMetalMat}
+                  interiorFocusY={H * 0.48}
+                />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* Dolby Cobalt Veil 250: Continuous Smooth Matte-Black & Deep Cobalt-Blue Acoustically Transparent Fabric Veil + Deeply Recessed Laser-Blue LED Horizontal Architectural Slices */}
+      {sideLightStyle === 'cobalt_veil_laser_recess' && cobaltVeilWall && (
+        <group>
+          {[-1, 1].map((side) => {
+            const wallX = side * (W / 2 - 0.21);
+            const inDir = -side;
+            return (
+              <group key={`dolby-cobalt-veil-side-${side}`}>
+                {/* Deep Pitch-Black Acoustic Pocket Cavity Behind Continuous Fabric Veil */}
+                <mesh
+                  position={[wallX + inDir * 0.012, H * 0.5, cobaltVeilWall.zCenter]}
+                  material={mats.cobaltVeilShadowMat}
+                >
+                  <boxGeometry args={[0.024, H * 0.96, cobaltVeilWall.wallLen]} />
+                </mesh>
+
+                {/* Lower Continuous Smooth Matte-Black Fabric Veil */}
+                <mesh
+                  position={[wallX, 0, cobaltVeilWall.zCenter]}
+                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                  geometry={cobaltVeilWall.lowerVeilGeo}
+                  material={mats.matteBlackVeilMat}
+                  receiveShadow
+                />
+
+                {/* Mid Continuous Smooth Deep Cobalt-Blue Fabric Veil */}
+                <mesh
+                  position={[wallX, 0, cobaltVeilWall.zCenter]}
+                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                  geometry={cobaltVeilWall.midCobaltVeilGeo}
+                  material={mats.deepCobaltVeilMat}
+                  receiveShadow
+                />
+
+                {/* Upper Continuous Smooth Matte-Black Fabric Veil */}
+                <mesh
+                  position={[wallX, 0, cobaltVeilWall.zCenter]}
+                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
+                  geometry={cobaltVeilWall.upperVeilGeo}
+                  material={mats.matteBlackVeilMat}
+                  receiveShadow
+                />
+
+                {/* Sharp Angular Horizontal Architectural Recess Slots + Deeply Recessed Laser-Blue LED Accent Light Bars */}
+                {[cobaltVeilWall.slice1Center, cobaltVeilWall.slice2Center].map((sy, si) => (
+                  <group
+                    key={`cobalt-veil-recess-${side}-${si}`}
+                    position={[wallX + inDir * 0.032, sy, cobaltVeilWall.zCenter]}
+                  >
+                    {/* Deep Matte-Black Recess Shadow Throat */}
+                    <mesh material={mats.cobaltVeilShadowMat}>
+                      <boxGeometry args={[0.04, 0.34, cobaltVeilWall.wallLen - 0.12]} />
+                    </mesh>
+                    {/* Sharp Angular Upper & Lower Matte-Black Knife-Edge Recess Lips */}
+                    <mesh position={[inDir * 0.04, 0.135, 0]} material={mats.cobaltVeilShadowMat}>
+                      <boxGeometry args={[0.09, 0.032, cobaltVeilWall.wallLen - 0.16]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.04, -0.135, 0]} material={mats.cobaltVeilShadowMat}>
+                      <boxGeometry args={[0.09, 0.032, cobaltVeilWall.wallLen - 0.16]} />
+                    </mesh>
+                    {/* Deeply Recessed Continuous Laser-Blue LED Light Bar (Fades to Pitch-Black During Movie) */}
+                    <mesh position={[inDir * 0.022, 0, 0]} material={mats.primaryEmitterMat}>
+                      <boxGeometry args={[0.022, 0.072, cobaltVeilWall.wallLen - 0.24]} />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            );
+          })}
+
+          {/* Rear Wall Continuous Smooth Matte-Black & Deep Cobalt-Blue Fabric Veil Flanking Doors & Projection Window */}
+          {(() => {
+            const boothY = Math.min(H - 1.4, topTierY + 3.25);
+            const boothWinW = Math.min(4.8, W * 0.42);
+            const boothWinH = Math.min(1.42, H * 0.24);
+            const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
+            const winBot = Math.max(0.25, boothY - boothWinH / 2);
+            const wingW = Math.max(1.2, (W - boothWinW) * 0.5 - 0.36);
+            const wingCenterX = boothWinW * 0.5 + wingW * 0.5 + 0.1;
+            const midBandH = Math.max(0.6, cobaltVeilWall.s2Bot - cobaltVeilWall.s1Top);
+            const midBandY = (cobaltVeilWall.s1Top + cobaltVeilWall.s2Bot) * 0.5;
+            return (
+              <group position={[0, 0, backZ - 0.22]}>
+                {/* Left & Right Rear Wing Cobalt-Blue Smooth Fabric Veil Panels */}
+                {[-1, 1].map((side) => (
+                  <group key={`rear-veil-wing-${side}`} position={[side * wingCenterX, 0, 0]}>
+                    <mesh
+                      position={[0, cobaltVeilWall.s1Bot * 0.5, 0]}
+                      material={mats.matteBlackVeilMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[wingW, cobaltVeilWall.s1Bot, 0.04]} />
+                    </mesh>
+                    <mesh position={[0, midBandY, -0.015]} material={mats.deepCobaltVeilMat} receiveShadow>
+                      <boxGeometry args={[wingW, midBandH, 0.05]} />
+                    </mesh>
+                    <mesh
+                      position={[0, (cobaltVeilWall.s2Top + H) * 0.5, 0]}
+                      material={mats.matteBlackVeilMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[wingW, H - cobaltVeilWall.s2Top, 0.04]} />
+                    </mesh>
+                  </group>
+                ))}
+                {/* Center Rear Upper Veil Between Doors & Projection Window */}
+                {winBot > topTierY + 2.5 && (
+                  <mesh
+                    position={[0, (topTierY + 2.48 + winBot) * 0.5, -0.01]}
+                    material={mats.deepCobaltVeilMat}
+                    receiveShadow
+                  >
+                    <boxGeometry args={[boothWinW + 0.24, Math.max(0.2, winBot - (topTierY + 2.48)), 0.04]} />
+                  </mesh>
+                )}
+                {H - winTop > 0.2 && (
+                  <mesh
+                    position={[0, (winTop + H) * 0.5, 0]}
+                    material={mats.matteBlackVeilMat}
+                    receiveShadow
+                  >
+                    <boxGeometry args={[boothWinW + 0.24, H - winTop, 0.04]} />
+                  </mesh>
+                )}
+              </group>
+            );
+          })()}
+        </group>
+      )}
+
+      {/* Mandap Heritage 2D: Deeply Recessed Matte Terracotta & Deep Crimson Acoustic Fabric Bays Framed by Matte Antiqued-Gold Jali Lattice Screens & Curved Monolithic Mandap Arches (Concealing All Surround Speakers) */}
+      {sideLightStyle === 'indian_mandap_jali' &&
+        mandapJaliWall &&
+        jaliResources &&
+        [-1, 1].map((side) => {
+          const wallX = side * (W / 2 - 0.21);
+          const inDir = -side;
+          const archOffsetX = side === -1 ? wallX + 0.04 : wallX - 0.04;
+          const archRotY = side === -1 ? 0 : Math.PI;
+          const { archWallH, archDepthX, innerHalf, springY, crownY, baySpan } = mandapJaliWall;
+          return (
+            <group key={`mandap-heritage-wall-${side}`}>
+              {/* Deep Matte-Espresso Acoustic Shadow Backing Behind Recessed Bays */}
+              <mesh position={[wallX + inDir * 0.02, H * 0.5, 0]} material={mats.mandapEspressoBackingMat}>
+                <boxGeometry args={[0.04, H * 0.96, L * 0.94]} />
+              </mesh>
+
+              {mandapJaliWall.bays.map((bay, bi) => {
+                const lowerH = archWallH * 0.34;
+                const upperH = archWallH * 0.64;
+                const bayW = innerHalf * 1.96;
+                const jaliSideW = Math.min(0.68, innerHalf * 0.34);
+                return (
+                  <group key={`mandap-bay-${side}-${bi}`} position={[0, 0, bay.zMid]}>
+                    {/* Lower Deeply Recessed Acoustic Fabric Dado Bay (Alternating Deep Crimson & Matte Terracotta) */}
+                    <mesh
+                      position={[wallX + inDir * 0.08, lowerH * 0.5 + 0.08, 0]}
+                      material={bay.isTerracottaPrimary ? mats.mandapCrimsonFabricMat : mats.mandapTerracottaFabricMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.07, lowerH, bayW]} />
+                    </mesh>
+
+                    {/* Upper Deeply Recessed Acoustic Fabric Bay (Alternating Matte Terracotta & Deep Crimson) */}
+                    <mesh
+                      position={[wallX + inDir * 0.08, lowerH + upperH * 0.5 + 0.14, 0]}
+                      material={bay.isTerracottaPrimary ? mats.mandapTerracottaFabricMat : mats.mandapCrimsonFabricMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.07, upperH, bayW]} />
+                    </mesh>
+
+                    {/* Intricate Matte Antiqued-Gold Jali Lattice Screens Flanking & Framing Each Recessed Acoustic Bay */}
+                    {[-1, 1].map((jSide) => (
+                      <group key={`jali-flank-${jSide}`} position={[wallX + inDir * 0.24, springY * 0.52, jSide * (innerHalf - jaliSideW * 0.52)]}>
+                        <mesh
+                          rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                          material={jaliResources.jaliMat}
+                          receiveShadow
+                        >
+                          <planeGeometry args={[jaliSideW, springY * 0.94]} />
+                        </mesh>
+                        {/* Slim Matte Antiqued-Gold Frame Stile Holding Jali Screen */}
+                        <mesh position={[inDir * 0.015, 0, -jSide * jaliSideW * 0.5]} material={mats.mandapAntiquedGoldMat}>
+                          <boxGeometry args={[0.055, springY * 0.96, 0.055]} />
+                        </mesh>
+                      </group>
+                    ))}
+
+                    {/* Intricate Matte Antiqued-Gold Jali Lattice Spandrel Header Panel Framing the Arch Crown */}
+                    <mesh
+                      position={[wallX + inDir * 0.26, (springY + crownY) * 0.5 + 0.28, 0]}
+                      rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                      material={jaliResources.jaliMat}
+                    >
+                      <planeGeometry args={[bayW * 0.92, Math.max(0.85, crownY - springY)]} />
+                    </mesh>
+
+                    {/* Softly Curved Monolithic Mandap-Inspired Structural Arch Concealing Surround Speakers */}
+                    <mesh
+                      position={[archOffsetX, 0.14, 0]}
+                      rotation={[0, archRotY, 0]}
+                      geometry={mandapJaliWall.archBayGeo}
+                      material={mats.mandapArchSandstoneMat}
+                      castShadow
+                      receiveShadow
+                    />
+                    <mesh
+                      position={[archOffsetX, 0.14, 0]}
+                      rotation={[0, archRotY, 0]}
+                      geometry={mandapJaliWall.archTrimGeo}
+                      material={mats.mandapAntiquedGoldMat}
+                      receiveShadow
+                    />
+
+                    {/* Monolithic Stepped Mandap Pilaster Plinth Bases & Carved Pier Capitals */}
+                    {[-1, 1].map((pSide) => {
+                      const pz = pSide * (baySpan * 0.5 - 0.34);
+                      return (
+                        <group key={`mandap-pier-${pSide}`} position={[wallX + inDir * (archDepthX * 0.52), 0, pz]}>
+                          <mesh position={[0, 0.24, 0]} material={mats.mandapArchSandstoneMat} receiveShadow>
+                            <boxGeometry args={[archDepthX * 1.08, 0.48, 0.84]} />
+                          </mesh>
+                          <mesh position={[0, springY + 0.16, 0]} material={mats.mandapAntiquedGoldMat}>
+                            <boxGeometry args={[archDepthX * 1.12, 0.16, 0.86]} />
+                          </mesh>
+                        </group>
+                      );
+                    })}
+
+                    {/* Concealed Warm-Amber Architectural Wash Tucked Behind Mandap Arch Soffit */}
+                    <mesh position={[wallX + inDir * 0.16, crownY - 0.18, 0]}>
+                      <boxGeometry args={[0.036, 0.032, innerHalf * 1.32]} />
+                      <meshStandardMaterial
+                        color="#3b2108"
+                        emissive={lightingProfile.wallColor}
+                        emissiveIntensity={wallAccentIntensity * 0.85}
+                        roughness={0.28}
+                      />
+                    </mesh>
+                  </group>
+                );
+              })}
+
+              {/* Continuous Carved Matte Espresso & Antiqued-Gold Upper Frieze Crown Above Mandap Arches */}
+              <mesh position={[wallX + inDir * (archDepthX * 0.5), archWallH + 0.18, 0]} material={mats.mandapArchSandstoneMat}>
+                <boxGeometry args={[archDepthX * 1.04, 0.34, L * 0.88]} />
+              </mesh>
+              <mesh position={[wallX + inDir * (archDepthX * 0.54), archWallH + 0.02, 0]} material={mats.mandapAntiquedGoldMat}>
+                <boxGeometry args={[archDepthX * 1.08, 0.075, L * 0.88]} />
+              </mesh>
+            </group>
+          );
+        })}
+
+      {/* Obsidian Wave 550: 3D Flowing Matte Carbon-Grey & Deep Obsidian Parametric Waves on Left, Right & Back Walls + Glare-Free Neon-Purple Fissures */}
+      {sideLightStyle === 'parametric_obsidian_waves' && parametricObsidianWall && (
+        <group>
+          {[-1, 1].map((side) => {
+            const wallX = side * (W / 2 - 0.21);
+            const rotY = side === -1 ? 0 : Math.PI;
+            const ledX = side * (W / 2 - 0.24);
+            return (
+              <group key={`parametric-side-${side}`}>
+                {/* Deep Matte-Obsidian Wall Cavity Backing Behind Sculpted Parametric Wave Ribbons */}
+                <mesh position={[wallX - side * 0.015, H * 0.5, 0]} material={mats.obsidianParametricMat} receiveShadow>
+                  <boxGeometry args={[0.04, H * 0.96, L * 0.96]} />
+                </mesh>
+
+                {/* Undulating 3D Flowing Parametric Acoustic Wave Ribbons */}
+                {parametricObsidianWall.sideBands.map((band, bi) => (
+                  <mesh
+                    key={`pwave-band-${side}-${bi}`}
+                    position={[wallX, band.yMid, 0]}
+                    rotation={[0, rotY, 0]}
+                    geometry={band.geo}
+                    material={band.tone === 'carbon' ? mats.carbonGreyParametricMat : mats.obsidianParametricMat}
+                    castShadow
+                    receiveShadow
+                  />
+                ))}
+
+                {/* Recessed Ultra-Thin Vertical & Diagonal Neon-Purple Fissures (Glare-Shielded Behind Wave Crests) */}
+                {parametricObsidianWall.sideFissures.map((fissure, fi) => (
+                  <ArchitecturalChannelBar
+                    key={`pwave-led-${side}-${fi}`}
+                    start={[ledX, fissure.startZY[1], fissure.startZY[0]]}
+                    end={[ledX, fissure.endZY[1], fissure.endZY[0]]}
+                    thickness={0.018}
+                    depth={0.022}
+                    material={mats.primaryEmitterMat}
+                    housingMaterial={mats.satinBlackShadowMat}
+                    interiorFocusY={H * 0.5}
+                  />
+                ))}
+              </group>
+            );
+          })}
+
+          {/* Back Wall Sculpted 3D Flowing Parametric Waves Flanking Booth & Rear Speakers */}
+          <group>
+            {parametricObsidianWall.backBands.map((band, bi) => (
+              <mesh
+                key={`pwave-back-band-${bi}`}
+                position={[0, band.yMid, backZ - 0.18]}
+                rotation={[0, Math.PI / 2, 0]}
+                geometry={band.geo}
+                material={band.tone === 'carbon' ? mats.carbonGreyParametricMat : mats.obsidianParametricMat}
+                castShadow
+                receiveShadow
+              />
+            ))}
+
+            {/* Back Wall Vertical & Diagonal Neon-Purple Fissures Facing Auditorium (-Z) */}
+            {parametricObsidianWall.backFissures.map((fissure, fi) => {
+              const dx = fissure.endXY[0] - fissure.startXY[0];
+              const dy = fissure.endXY[1] - fissure.startXY[1];
+              const len = Math.max(0.2, Math.hypot(dx, dy));
+              const mx = (fissure.startXY[0] + fissure.endXY[0]) * 0.5;
+              const my = (fissure.startXY[1] + fissure.endXY[1]) * 0.5;
+              const rotZ = Math.atan2(dy, dx) - Math.PI / 2;
+              return (
+                <group
+                  key={`pwave-back-led-${fi}`}
+                  position={[mx, my, backZ - 0.23]}
+                  rotation={[0, 0, rotZ]}
+                >
+                  <mesh position={[0, 0, 0.012]} material={mats.satinBlackShadowMat}>
+                    <boxGeometry args={[0.036, len + 0.02, 0.026]} />
+                  </mesh>
+                  <mesh position={[0, 0, -0.008]} material={mats.primaryEmitterMat}>
+                    <boxGeometry args={[0.018, len, 0.018]} />
+                  </mesh>
+                </group>
+              );
+            })}
+          </group>
+        </group>
+      )}
+
+      {/* ===================================================================== */}
+      {/* BAY-MOUNTED BESPOKE ARCHITECTURAL SIDE LIGHT DESIGNS                  */}
+      {/* ===================================================================== */}
+      {!isIce &&
+        sideLightStyle !== 'art_deco_navy_sunburst' &&
+        sideLightStyle !== 'modern_charcoal_navy_diagonal' &&
+        sideLightStyle !== 'volcanic_copper_ribbons' &&
+        sideLightStyle !== 'indian_mandap_jali' &&
+        sideLightStyle !== 'parametric_obsidian_waves' &&
+        sideLightStyle !== 'biophilic_crystalline_moss' &&
+        sideLightStyle !== 'private_volcanic_copper_ribbons' &&
+        sideLightStyle !== 'champagne_fluted_oak_alcoves' &&
+        sideLightStyle !== 'imax_cobalt_wave' &&
+        sideLightStyle !== 'aurora_ribbon_waves' &&
+        sideLightStyle !== 'horizon_tier_strips' &&
+        sideLightStyle !== 'crimson_velocity_4dx' &&
+        sideLightStyle !== 'arctic_parametric_fins' &&
+        sideLightStyle !== 'thunder_emerald_waves' &&
+        sideLightStyle !== 'obsidian_slat_grazers' &&
+        sideLightStyle !== 'diagonal_parabolic_ribs' &&
+        sideLightStyle !== 'cobalt_veil_laser_recess' &&
+        sideLightStyle !== 'crisscross_geometric' &&
+        sideLightStyle !== 'screenx_panoramic_walls' &&
+        sideLightStyle !== 'screenx_silver_baffles' &&
+        wallBayZs.map((bz, idx) => {
+          return [-1, 1].map((side) => {
+            const xBase = side * (wallInnerX - 0.08);
+            const inDir = -side; // points inward into the auditorium
+
+            return (
+              <group key={`fixture-${idx}-${side}`}>
+                {/* 1. Standard 2D — Grand Crimson Palace: Sculpted Twin-Arm Fluted Brass Torchiere Sconce */}
+                {sideLightStyle === 'brass_torchieres' && (
+                  <group position={[xBase, sconceY, bz]}>
+                    {/* Ornate Stepped Brass Wall Backplate */}
+                    <mesh material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.05, 0.72, 0.26]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.03, 0, 0]} material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.03, 0.56, 0.18]} />
+                    </mesh>
+                    {/* Twin Brass Sconce Arms + Frosted Alabaster Diffuser Bowls */}
+                    {[-0.14, 0.14].map((az, ai) => (
+                      <group key={`arm-${ai}`} position={[inDir * 0.11, -0.02, az]}>
+                        <mesh material={mats.brassHardwareMat}>
+                          <boxGeometry args={[0.16, 0.035, 0.035]} />
+                        </mesh>
+                        <mesh position={[inDir * 0.06, 0.08, 0]} material={mats.brassHardwareMat}>
+                          <cylinderGeometry args={[0.075, 0.035, 0.11, 14]} />
+                        </mesh>
+                        <mesh position={[inDir * 0.06, 0.21, 0]} material={mats.alabasterGlassMat}>
+                          <cylinderGeometry args={[0.085, 0.055, 0.2, 16]} />
+                        </mesh>
+                        <mesh
+                          position={[inDir * 0.06, 0.31, 0]}
+                          rotation={[-Math.PI / 2, 0, 0]}
+                          material={mats.brassHardwareMat}
+                        >
+                          <ringGeometry args={[0.055, 0.088, 16]} />
+                        </mesh>
+                      </group>
+                    ))}
+                  </group>
+                )}
+
+                {/* 2. Standard 2D Emerald — Emerald Art Deco Hall: 3-Tier Stepped Ziggurat Art Deco Fin */}
+                {sideLightStyle === 'art_deco_stepped_fins' && (
+                  <group position={[xBase, H * 0.5, bz]}>
+                    {/* Outer Stepped Brass & Charcoal Ziggurat Chassis */}
+                    <mesh material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.08, H * 0.74, 0.52]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.045, 0, 0]} material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.05, H * 0.62, 0.36]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.08, 0, 0]} material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.05, H * 0.5, 0.2]} />
+                    </mesh>
+                    {/* Three Tiered Indirect Side-Light Diffuser Channels */}
+                    <mesh position={[inDir * 0.052, 0, 0.22]} material={mats.primaryEmitterMat}>
+                      <boxGeometry args={[0.032, H * 0.7, 0.038]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.052, 0, -0.22]} material={mats.primaryEmitterMat}>
+                      <boxGeometry args={[0.032, H * 0.7, 0.038]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.09, 0, 0.14]} material={mats.secondaryEmitterMat}>
+                      <boxGeometry args={[0.03, H * 0.58, 0.034]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.09, 0, -0.14]} material={mats.secondaryEmitterMat}>
+                      <boxGeometry args={[0.03, H * 0.58, 0.034]} />
+                    </mesh>
+                    {/* Crown Sunburst Finials */}
+                    <mesh position={[inDir * 0.05, H * 0.34, 0]} material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.09, 0.08, 0.44]} />
+                    </mesh>
+                  </group>
+                )}
+
+                {/* 4. IMAX Cobalt — IMAX Cobalt Horizon: Monumental Twin-Slotted Anodized Steel Monolith Totem */}
+                {sideLightStyle === 'monolith_totems' && (
+                  <group position={[xBase, H * 0.49, bz]}>
+                    {/* Broad Architectural Acoustic Baffle Wing */}
+                    <mesh material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.14, H * 0.82, 0.68]} />
+                    </mesh>
+                    {/* Twin Slotted Recessed Knife-Edge Diffuser Reveals */}
+                    {[-0.18, 0.18].map((tz, ti) => (
+                      <group key={`slot-${ti}`} position={[inDir * 0.072, 0, tz]}>
+                        <mesh material={mats.primaryEmitterMat}>
+                          <boxGeometry args={[0.048, H * 0.76, 0.065]} />
+                        </mesh>
+                        <mesh position={[inDir * 0.032, 0, 0]} material={trimMetalMat}>
+                          <boxGeometry args={[0.028, H * 0.78, 0.028]} />
+                        </mesh>
+                      </group>
+                    ))}
+                    {/* Central Horizontal Telemetry Cross-Braces */}
+                    {[-H * 0.24, 0, H * 0.24].map((cy, ci) => (
+                      <mesh key={`brace-${ci}`} position={[inDir * 0.075, cy, 0]} material={trimMetalMat}>
+                        <boxGeometry args={[0.04, 0.09, 0.62]} />
+                      </mesh>
+                    ))}
+                  </group>
+                )}
+
+
+
+                {/* 7. 4DX Thunder — Kinetic V-Chevron Dual-Color Aerodynamic Fin */}
+                {sideLightStyle === 'kinetic_chevron_blades' && (
+                  <group position={[xBase, sconceY + 0.15, bz]}>
+                    {/* Upper Swept Blade Wing */}
+                    <group position={[inDir * 0.04, 0.62, 0.18]} rotation={[0.56, 0, 0]}>
+                      <mesh material={mats.channelMetalMat}>
+                        <boxGeometry args={[0.15, 1.45, 0.22]} />
+                      </mesh>
+                      <mesh position={[inDir * 0.078, 0, 0.04]} material={mats.primaryEmitterMat}>
+                        <boxGeometry args={[0.04, 1.32, 0.065]} />
+                      </mesh>
+                    </group>
+                    {/* Lower Counter-Swept Blade Wing forming V-Chevron */}
+                    <group position={[inDir * 0.04, -0.62, 0.18]} rotation={[-0.56, 0, 0]}>
+                      <mesh material={mats.channelMetalMat}>
+                        <boxGeometry args={[0.15, 1.45, 0.22]} />
+                      </mesh>
+                      <mesh position={[inDir * 0.078, 0, -0.04]} material={mats.secondaryEmitterMat}>
+                        <boxGeometry args={[0.04, 1.32, 0.065]} />
+                      </mesh>
+                    </group>
+                    {/* Center Machined Pivot Hub */}
+                    <mesh position={[inDir * 0.09, 0, -0.25]} material={trimMetalMat}>
+                      <boxGeometry args={[0.14, 0.28, 0.28]} />
+                    </mesh>
+                  </group>
+                )}
+
+                {/* 8. 4DX Crimson Velocity — Triple-Raked Motorsport Carbon Light Pod */}
+                {sideLightStyle === 'velocity_racing_stripes' && (
+                  <group position={[xBase, sconceY + 0.1, bz]} rotation={[0.32, 0, 0]}>
+                    {/* Angled Carbon-Anodized Pod Chassis */}
+                    <mesh material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.12, 2.25, 0.56]} />
+                    </mesh>
+                    {/* Three Parallel High-Speed Light Channels */}
+                    {[-0.16, 0, 0.16].map((sz, si) => (
+                      <mesh
+                        key={`stripe-${si}`}
+                        position={[inDir * 0.055, 0, sz]}
+                        material={si === 1 ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
+                      >
+                        <boxGeometry args={[0.04, 2.04 - Math.abs(si - 1) * 0.22, 0.055]} />
+                      </mesh>
+                    ))}
+                  </group>
+                )}
+
+                {/* 9. 4DX Arctic Storm — Faceted Diamond-Hex Crystalline Frame */}
+                {sideLightStyle === 'glacier_hex_matrix' && (
+                  <group position={[xBase, sconceY + 0.1, bz]}>
+                    {/* Backing Dark Acoustic Diamond Core */}
+                    <mesh rotation={[Math.PI / 4, 0, 0]} material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.09, 1.28, 1.28]} />
+                    </mesh>
+                    {/* Glowing Edge-Lit Diamond Perimeter Frame */}
+                    <mesh
+                      position={[inDir * 0.045, 0, 0]}
+                      rotation={[Math.PI / 4, 0, 0]}
+                      material={mats.primaryEmitterMat}
+                    >
+                      <boxGeometry args={[0.035, 1.18, 1.18]} />
+                    </mesh>
+                    {/* Raised Dark Faceted Acoustic Inner Shield leaving Crisp Edge Halo */}
+                    <mesh
+                      position={[inDir * 0.065, 0, 0]}
+                      rotation={[Math.PI / 4, 0, 0]}
+                      material={acousticPanelMat}
+                    >
+                      <boxGeometry args={[0.04, 0.98, 0.98]} />
+                    </mesh>
+                    {/* Horizontal Central Glacier Crossbar */}
+                    <mesh position={[inDir * 0.088, 0, 0]} material={mats.secondaryEmitterMat}>
+                      <boxGeometry args={[0.025, 0.04, 0.85]} />
+                    </mesh>
+                  </group>
+                )}
+
+                {/* 12. Dolby Noir Bordeaux — Alternating Cantilevered Rose-Gold Shelf Coves */}
+                {sideLightStyle === 'tiered_cantilever_shelves' && (
+                  <group position={[xBase, sconceY + (idx % 2 === 0 ? 0.45 : -0.35), bz]}>
+                    {/* Wide Architectural Acoustic Shelf Hood */}
+                    <mesh material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.24, 0.14, 1.65]} />
+                    </mesh>
+                    {/* Brushed Metal Under-Trim */}
+                    <mesh position={[inDir * 0.04, 0.075, 0]} material={trimMetalMat}>
+                      <boxGeometry args={[0.26, 0.025, 1.68]} />
+                    </mesh>
+                    {/* Indirect Up-Wash + Down-Wash Diffuser Lenses */}
+                    <mesh position={[inDir * 0.06, 0.095, 0]} material={mats.primaryEmitterMat}>
+                      <boxGeometry args={[0.12, 0.03, 1.48]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.06, -0.08, 0]} material={mats.secondaryEmitterMat}>
+                      <boxGeometry args={[0.1, 0.025, 1.48]} />
+                    </mesh>
+                  </group>
+                )}
+
+                {/* 13. Private Walnut Reserve — Carved Walnut & Brushed-Brass Alabaster Lantern */}
+                {sideLightStyle === 'walnut_alabaster_lanterns' && (
+                  <group position={[xBase, sconceY, bz]}>
+                    {/* Carved Walnut Architectural Backboard */}
+                    <mesh material={mats.walnutWoodMat}>
+                      <boxGeometry args={[0.06, 0.92, 0.44]} />
+                    </mesh>
+                    {/* Glowing Frosted Alabaster Cylinder Core */}
+                    <mesh position={[inDir * 0.11, 0, 0]} material={mats.alabasterGlassMat}>
+                      <cylinderGeometry args={[0.11, 0.11, 0.62, 18]} />
+                    </mesh>
+                    {/* Precision Brushed-Brass Lantern Cage Ribs & End Caps */}
+                    <mesh position={[inDir * 0.11, 0.33, 0]} material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.26, 0.05, 0.28]} />
+                    </mesh>
+                    <mesh position={[inDir * 0.11, -0.33, 0]} material={mats.brassHardwareMat}>
+                      <boxGeometry args={[0.26, 0.05, 0.28]} />
+                    </mesh>
+                    {[-0.12, 0.12].map((rz, ri) => (
+                      <mesh
+                        key={`cage-${ri}`}
+                        position={[inDir * 0.21, 0, rz]}
+                        material={mats.brassHardwareMat}
+                      >
+                        <boxGeometry args={[0.025, 0.64, 0.025]} />
+                      </mesh>
+                    ))}
+                  </group>
+                )}
+
+                {/* 14. Private Champagne Lounge — Backlit Circular Brass Halo Medallion Alcove */}
+                {sideLightStyle === 'floating_halo_alcoves' && (
+                  <group position={[xBase, sconceY, bz]}>
+                    {/* Framed Smoked-Oak Wall Alcove Recess */}
+                    <mesh material={mats.walnutWoodMat}>
+                      <boxGeometry args={[0.06, 1.24, 1.24]} />
+                    </mesh>
+                    {/* Recessed Halo Emitter Ring */}
+                    <mesh
+                      position={[inDir * 0.045, 0, 0]}
+                      rotation={[0, (inDir * Math.PI) / 2, 0]}
+                      material={mats.primaryEmitterMat}
+                    >
+                      <torusGeometry args={[0.38, 0.042, 12, 32]} />
+                    </mesh>
+                    {/* Floating Outer Brushed-Brass Disc Shield */}
+                    <mesh
+                      position={[inDir * 0.085, 0, 0]}
+                      rotation={[0, 0, Math.PI / 2]}
+                      material={mats.brassHardwareMat}
+                    >
+                      <cylinderGeometry args={[0.33, 0.33, 0.04, 28]} />
+                    </mesh>
+                    {/* Dark Velvet Acoustic Center Inlay */}
+                    <mesh
+                      position={[inDir * 0.11, 0, 0]}
+                      rotation={[0, 0, Math.PI / 2]}
+                      material={acousticPanelMat}
+                    >
+                      <cylinderGeometry args={[0.26, 0.26, 0.02, 28]} />
+                    </mesh>
+                  </group>
+                )}
+
+                {/* 15. Private Midnight Suite — Herringbone Acoustic Louver Rose-Amber Column */}
+                {sideLightStyle === 'chevron_louver_columns' && (
+                  <group position={[xBase, sconceY + 0.05, bz]}>
+                    <mesh material={mats.channelMetalMat}>
+                      <boxGeometry args={[0.08, 2.35, 0.56]} />
+                    </mesh>
+                    {/* Concealed Warm Rose-Amber Indirect Spine */}
+                    <mesh position={[inDir * 0.048, 0, 0]} material={mats.primaryEmitterMat}>
+                      <boxGeometry args={[0.036, 2.18, 0.2]} />
+                    </mesh>
+                    {/* 6 Precision Angled Brass Chevron Louver Blades */}
+                    {[-0.85, -0.51, -0.17, 0.17, 0.51, 0.85].map((ly, li) => (
+                      <group key={`her-${li}`} position={[inDir * 0.088, ly, 0]}>
+                        <mesh rotation={[0.38, 0, 0]} position={[0, 0, 0.12]} material={mats.brassHardwareMat}>
+                          <boxGeometry args={[0.05, 0.04, 0.28]} />
+                        </mesh>
+                        <mesh rotation={[-0.38, 0, 0]} position={[0, 0, -0.12]} material={mats.brassHardwareMat}>
+                          <boxGeometry args={[0.05, 0.04, 0.28]} />
+                        </mesh>
+                      </group>
+                    ))}
+                  </group>
+                )}
+
+              </group>
+            );
+          });
+        })}
+
+    </group>
+  );
+};
