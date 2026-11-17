@@ -320,21 +320,21 @@ export function createCarpetTexture(
     }
     ctx.globalAlpha = 1;
   } else if (sideLightStyle === 'cobalt_veil_laser_recess') {
-    // Deep matte-black low-pile commercial theater carpet with ultra-subtle cobalt-slate woven micro-grid
-    ctx.fillStyle = '#090b10';
+    // Deep matte-obsidian & charcoal low-pile architectural carpet with ultra-subtle amber-bronze micro-weave
+    ctx.fillStyle = '#09090c';
     ctx.fillRect(0, 0, 512, 512);
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.2;
     ctx.lineWidth = 1.0;
     for (let y = 0; y < 512; y += 8) {
-      ctx.strokeStyle = y % 16 === 0 ? '#11192c' : '#06080c';
+      ctx.strokeStyle = y % 16 === 0 ? '#181412' : '#050507';
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(512, y);
       ctx.stroke();
     }
-    ctx.globalAlpha = 0.14;
+    ctx.globalAlpha = 0.12;
     for (let x = 0; x < 512; x += 16) {
-      ctx.fillStyle = (x / 16) % 2 === 0 ? '#0d1426' : '#07090e';
+      ctx.fillStyle = (x / 16) % 2 === 0 ? '#151218' : '#08080b';
       ctx.fillRect(x, 0, 6, 512);
     }
     ctx.globalAlpha = 1;
@@ -1360,31 +1360,27 @@ export function createAcousticWallTexture(
   }
 
   if (sideLightStyle === 'cobalt_veil_laser_recess') {
-    // Continuous smooth matte-black and deep cobalt-blue acoustically transparent fabric veil
+    // Acoustically porous charcoal-suede & matte obsidian substrate behind overlapping 3D carbon-fiber scales
     const grad = ctx.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, '#07090e');
-    grad.addColorStop(0.28, '#0b142c');
-    grad.addColorStop(0.55, '#0f1e42');
-    grad.addColorStop(0.82, '#091024');
-    grad.addColorStop(1, '#06070b');
+    grad.addColorStop(0, '#09090c');
+    grad.addColorStop(0.5, '#131419');
+    grad.addColorStop(1, '#08080b');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 512);
 
-    // Ultra-fine acoustically transparent fabric mesh weave (seamless, zero visible speaker cutouts)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.015)';
-    for (let y = 0; y < 512; y += 3) {
-      ctx.fillRect(0, y, 512, 1);
-    }
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-    for (let x = 0; x < 512; x += 3) {
-      ctx.fillRect(x, 0, 1, 512);
+    // Fine porous acoustic suede micro-nap
+    for (let i = 0; i < 6000; i++) {
+      const px = (i * 73) % 512;
+      const py = (i * 139) % 512;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.22)';
+      ctx.fillRect(px, py, 2, 2);
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(2, 1);
+    tex.repeat.set(3, 2);
     tex.anisotropy = 8;
     return tex;
   }
@@ -1869,14 +1865,12 @@ export function createAcousticWallBumpTexture(
     ctx.lineTo(256, 130);
     ctx.stroke();
   } else if (sideLightStyle === 'cobalt_veil_laser_recess') {
-    // Ultra-smooth acoustically transparent micro-weave veil bump
-    for (let y = 0; y < 256; y += 3) {
-      ctx.fillStyle = y % 6 === 0 ? '#868686' : '#787878';
-      ctx.fillRect(0, y, 256, 1);
-    }
-    for (let x = 0; x < 256; x += 3) {
-      ctx.fillStyle = x % 6 === 0 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
-      ctx.fillRect(x, 0, 1, 256);
+    // Acoustically porous charcoal-suede micro-nap bump
+    for (let i = 0; i < 4200; i++) {
+      const px = (i * 53) % 256;
+      const py = (i * 97) % 256;
+      ctx.fillStyle = i % 2 === 0 ? '#969696' : '#646464';
+      ctx.fillRect(px, py, 2, 2);
     }
   } else if (sideLightStyle === 'diagonal_parabolic_ribs') {
     // Horizontal walnut acoustic slat grooves + smooth charcoal-slate mid band
@@ -1936,7 +1930,7 @@ export function createSeatUpholsteryTextures(
   isLeather: boolean,
   isQuilted = false,
   isRedStitched = false,
-  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' = 'default',
+  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' = 'default',
 ): SeatUpholsteryTextureSet {
   const mapCanvas = document.createElement('canvas');
   mapCanvas.width = 256;
@@ -2142,6 +2136,23 @@ export function createSeatUpholsteryTextures(
         mCtx.setLineDash([]);
       });
     }
+  } else if (styleVariant === 'charcoal_knit') {
+    // Fine matte-charcoal technical knit upholstery with precision twin-ribbed diagonal interlock
+    for (let y = 0; y < 256; y += 4) {
+      for (let x = 0; x < 256; x += 4) {
+        const rib = ((x + y) / 4) % 2 === 0;
+        mCtx.fillStyle = rib ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)';
+        mCtx.fillRect(x, y, 3, 3);
+        bCtx.fillStyle = rib ? '#9c9c9c' : '#666666';
+        bCtx.fillRect(x, y, 3, 3);
+      }
+    }
+    [44, 212].forEach((sx) => {
+      mCtx.fillStyle = 'rgba(0,0,0,0.22)';
+      mCtx.fillRect(sx, 0, 2.5, 256);
+      bCtx.fillStyle = '#303030';
+      bCtx.fillRect(sx, 0, 2.5, 256);
+    });
   } else {
     // Plush cinema velvet / acoustic fabric micro-rib
     for (let y = 0; y < 256; y += 3) {
@@ -2290,6 +2301,121 @@ export function createCarbonFiberTexture(): THREE.CanvasTexture {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(4, 3);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+export function createAmberVioletGradientTexture(reverse = false): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 0, 512, 0);
+  if (reverse) {
+    grad.addColorStop(0, '#6d28d9');
+    grad.addColorStop(0.28, '#8b35a3');
+    grad.addColorStop(0.55, '#d96b27');
+    grad.addColorStop(0.82, '#ff981a');
+    grad.addColorStop(1, '#ffb347');
+  } else {
+    grad.addColorStop(0, '#ffb347');
+    grad.addColorStop(0.22, '#ff8f1c');
+    grad.addColorStop(0.48, '#c24d66');
+    grad.addColorStop(0.75, '#7c3aed');
+    grad.addColorStop(1, '#5b21b6');
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 512, 32);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+export function createAmberCoveWashTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  // y=256 maps to UV v=0 (bottom recessed LED crease); y=0 maps to UV v=1 (top outer lip)
+  const grad = ctx.createLinearGradient(0, 256, 0, 0);
+  grad.addColorStop(0, '#ffd98a');
+  grad.addColorStop(0.14, '#ff9c1e');
+  grad.addColorStop(0.42, '#b8560e');
+  grad.addColorStop(0.75, '#421d08');
+  grad.addColorStop(1, '#181416');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 256);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+export function createVioletCoveWashTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 256, 0, 0);
+  grad.addColorStop(0, '#ebd8ff');
+  grad.addColorStop(0.18, '#a470ff');
+  grad.addColorStop(0.46, '#572ca3');
+  grad.addColorStop(0.78, '#211838');
+  grad.addColorStop(1, '#161820');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 256);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+export function createMarbleTrayTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#17191f';
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Subtle dark stone mottling
+  for (let i = 0; i < 1800; i++) {
+    const x = (i * 73) % 256;
+    const y = (i * 131) % 256;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.2)';
+    ctx.fillRect(x, y, 4, 3);
+  }
+
+  // Fine honed golden-amber & warm-ivory Nero Marquina mineral veins
+  const veins = [
+    { x0: 0, y0: 42, cx: 118, cy: 96, x1: 256, y1: 158, color: 'rgba(235, 186, 120, 0.34)', w: 1.5 },
+    { x0: 18, y0: 256, cx: 144, cy: 140, x1: 242, y1: 0, color: 'rgba(244, 240, 232, 0.24)', w: 1.1 },
+    { x0: 0, y0: 190, cx: 96, cy: 210, x1: 256, y1: 112, color: 'rgba(218, 142, 62, 0.28)', w: 1.2 },
+    { x0: 84, y0: 0, cx: 168, cy: 128, x1: 210, y1: 256, color: 'rgba(255, 250, 240, 0.18)', w: 0.9 },
+  ];
+  veins.forEach((v) => {
+    ctx.strokeStyle = v.color;
+    ctx.lineWidth = v.w;
+    ctx.beginPath();
+    ctx.moveTo(v.x0, v.y0);
+    ctx.quadraticCurveTo(v.cx, v.cy, v.x1, v.y1);
+    ctx.stroke();
+  });
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 8;
   return tex;
 }
@@ -3100,5 +3226,94 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
       alphaMap.dispose();
     },
   };
+}
+
+/**
+ * Smooth horizontal Gaussian neon-purple glow texture for recessed vertical S-wave
+ * channel canyons in Obsidian Wave 550 (bright lavender-white core fading across violet cheeks).
+ */
+export function createVioletChannelGlowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0.0, '#07050c');
+  grad.addColorStop(0.16, '#1f0b38');
+  grad.addColorStop(0.32, '#5b21b6');
+  grad.addColorStop(0.44, '#a855f7');
+  grad.addColorStop(0.5, '#f3e8ff');
+  grad.addColorStop(0.56, '#a855f7');
+  grad.addColorStop(0.68, '#5b21b6');
+  grad.addColorStop(0.84, '#1f0b38');
+  grad.addColorStop(1.0, '#07050c');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 32);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/**
+ * Crisp matte-black suspended acoustic T-bar grid tile texture for modern commercial auditorium ceilings.
+ */
+export function createTBarCeilingGridTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  // Matte-black perforated mineral acoustic ceiling field
+  ctx.fillStyle = '#0c0d12';
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle acoustic micro-perforation stipple
+  for (let i = 0; i < 6400; i++) {
+    const px = (i * 73 + (i % 19) * 11) % size;
+    const py = (i * 131 + (i % 23) * 7) % size;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(32, 36, 46, 0.24)' : 'rgba(3, 4, 7, 0.55)';
+    ctx.fillRect(px, py, 2, 2);
+  }
+
+  // Crisp 4x4 dark-slate suspended T-bar grid rails
+  const step = size / 4;
+  ctx.strokeStyle = '#2b303c';
+  ctx.lineWidth = 4;
+  for (let i = 0; i <= 4; i++) {
+    const p = i * step;
+    ctx.beginPath();
+    ctx.moveTo(p, 0);
+    ctx.lineTo(p, size);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, p);
+    ctx.lineTo(size, p);
+    ctx.stroke();
+  }
+
+  // Fine dark inner shadow seam flanking T-bars
+  ctx.strokeStyle = '#050608';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 4; j++) {
+      ctx.strokeRect(i * step + 3, j * step + 3, step - 6, step - 6);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(9, 11);
+  tex.anisotropy = 8;
+  return tex;
 }
 

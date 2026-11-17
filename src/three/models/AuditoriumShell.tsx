@@ -6,6 +6,7 @@ import {
   createAuditoriumTextures,
   createCarbonFiberTexture,
   createRowMarkerTexture,
+  createTBarCeilingGridTexture,
 } from '../materials/proceduralTextures';
 import {
   applyScreenBounceToMaterial,
@@ -113,6 +114,11 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
     [isObsidianScreenX],
   );
 
+  const tBarCeilingGridMap = useMemo(
+    () => (ceilingLightStyle === 'industrial_open_baffle_atmos' ? createTBarCeilingGridTexture() : null),
+    [ceilingLightStyle],
+  );
+
   const rowMarkerTextures = useMemo(() => {
     const arr: THREE.CanvasTexture[] = [];
     for (let r = 0; r < seatingRows; r++) {
@@ -126,9 +132,10 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
     return () => {
       textures.dispose();
       carbonFiberMap?.dispose();
+      tBarCeilingGridMap?.dispose();
       rowMarkerTextures.forEach((t) => t.dispose());
     };
-  }, [textures, carbonFiberMap, rowMarkerTextures]);
+  }, [textures, carbonFiberMap, tBarCeilingGridMap, rowMarkerTextures]);
 
   const aisleXs = useMemo(() => getAisleWorldXs(config), [config]);
 
@@ -216,9 +223,27 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
     );
     const ceilingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: ceilingLightStyle === 'monolithic_acoustic_plaster' ? '#030406' : environmentProfile.ceilingColor,
-        roughness: ceilingLightStyle === 'monolithic_acoustic_plaster' ? 0.99 : 0.9,
-        metalness: ceilingLightStyle === 'monolithic_acoustic_plaster' ? 0.0 : 0.06,
+        map: tBarCeilingGridMap || undefined,
+        color:
+          ceilingLightStyle === 'industrial_open_baffle_atmos'
+            ? '#ffffff'
+            : ceilingLightStyle === 'monolithic_acoustic_plaster'
+              ? '#030406'
+              : ceilingLightStyle === 'espresso_tray_atmos'
+                ? '#140e0a'
+                : environmentProfile.ceilingColor,
+        roughness:
+          ceilingLightStyle === 'monolithic_acoustic_plaster'
+            ? 0.99
+            : ceilingLightStyle === 'espresso_tray_atmos'
+              ? 0.94
+              : 0.9,
+        metalness:
+          ceilingLightStyle === 'monolithic_acoustic_plaster'
+            ? 0.0
+            : ceilingLightStyle === 'espresso_tray_atmos'
+              ? 0.02
+              : 0.06,
       }),
       screenBounceUniforms,
     );
@@ -622,7 +647,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
       matteIndigoDeepMat,
       laserPodBodyMat,
     };
-  }, [textures, carbonFiberMap, environmentProfile, sideLightStyle, screenBounceUniforms]);
+  }, [textures, carbonFiberMap, tBarCeilingGridMap, environmentProfile, sideLightStyle, ceilingLightStyle, screenBounceUniforms]);
 
   useEffect(() => {
     return () => {
@@ -808,14 +833,16 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 material={
                   isPrivateChampagne || isPrivateVolcanic
                     ? materials.walnutCofferMat
-                    : isScreenX || isParametricObsidian || isDolbyVeil
-                      ? materials.matteTitaniumMat
-                      : isMandap2d || isBiophilicMoss
-                        ? materials.darkBronzeTrimMat
-                        : materials.nosingMat
+                    : isDolbyVeil
+                      ? materials.espressoTrimMat
+                      : isScreenX || isParametricObsidian
+                        ? materials.matteTitaniumMat
+                        : isMandap2d || isBiophilicMoss
+                          ? materials.darkBronzeTrimMat
+                          : materials.nosingMat
                 }
               >
-                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.48 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss ? 1.28 : 0.96, 0.022, 0.06]} />
+                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss ? 1.28 : 0.96, 0.022, 0.06]} />
               </mesh>
 
               {/* Always-on recessed safety step LED line */}
@@ -823,16 +850,16 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 position={[
                   ax,
                   isPrivateChampagne || isPrivateVolcanic ? tier.y - 0.004 : tier.y + 0.017,
-                  tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : 0.028),
+                  tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : 0.026),
                 ]}
               >
-                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.36 : isScreenX || isBiophilicMoss ? 1.14 : 0.88, isDolbyVeil ? 0.018 : 0.014, isDolbyVeil ? 0.028 : 0.024]} />
+                <boxGeometry args={[isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss ? 1.14 : 0.88, isDolbyVeil ? 0.008 : 0.014, isDolbyVeil ? 0.011 : 0.024]} />
                 <meshStandardMaterial
                   color={lightingProfile.stepLightColor}
                   emissive={lightingProfile.stepLightColor}
-                  emissiveIntensity={isDolbyVeil ? stepEmissiveIntensity * 1.25 : stepEmissiveIntensity}
+                  emissiveIntensity={isDolbyVeil ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
                   toneMapped={false}
-                  roughness={0.25}
+                  roughness={0.22}
                 />
               </mesh>
               {(isPrivateChampagne || isPrivateVolcanic) && tier.row === 1 && (
@@ -931,20 +958,20 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isParametricObsidian ||
                 isDolbyVeil) &&
                 [
-                  isDolbyVeil ? -0.71 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : -0.46,
-                  isDolbyVeil ? 0.71 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : 0.46,
+                  isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : -0.46,
+                  isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : 0.46,
                 ].map((ex, ei) => (
                   <mesh
                     key={`aisle-edge-${tier.row}-${aIdx}-${ei}`}
                     position={[ax + ex, tier.y + 0.015, tier.z]}
                   >
-                    <boxGeometry args={[isDolbyVeil || isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil ? 0.018 : 0.014, Math.max(0.4, tier.depth - 0.04)]} />
+                    <boxGeometry args={[isDolbyVeil ? 0.011 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil ? 0.008 : 0.014, Math.max(0.4, tier.depth - 0.02)]} />
                     <meshStandardMaterial
                       color={lightingProfile.stepLightColor}
                       emissive={lightingProfile.stepLightColor}
-                      emissiveIntensity={stepEmissiveIntensity * (isDolbyVeil ? 1.25 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
+                      emissiveIntensity={stepEmissiveIntensity * (isDolbyVeil ? 1.45 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
                       toneMapped={false}
-                      roughness={0.25}
+                      roughness={0.22}
                     />
                   </mesh>
                 ))}
@@ -1794,6 +1821,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           {!isMultiplexScreenX &&
             !isParametricObsidian &&
             !isBiophilicMoss &&
+            !isDolbyVeil &&
             [-1, 1].map((pside) => (
               <group key={`rear-poster-${pside}`} position={[pside * Math.min(2.25, W * 0.22), 0.12, 0.04]}>
                 <mesh material={materials.trimMetalMat}>
@@ -2309,6 +2337,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isIce &&
         !isScreenX &&
         !isDolbyVeil &&
+        !isParametricObsidian &&
         [-0.22, 0.22].map((lzFactor, li) => (
           <mesh
             key={`hvac-vent-${li}`}
@@ -4181,60 +4210,40 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* Obsidian Wave 550 Ceiling: Industrial Matte-Black Open-Baffle Acoustic Grid with Recessed Pin-Spot Downlights */}
+      {/* Obsidian Wave 550 Ceiling: Suspended Matte-Black Acoustic T-Bar Grid Ceiling with Circular HVAC Diffusers & Recessed Pin-Spot Downlights */}
       {ceilingLightStyle === 'industrial_open_baffle_atmos' && (
         <group>
-          {/* Deep Industrial Matte-Black Upper Plenum Structural Framing Rails */}
-          {[-W * 0.34, -W * 0.14, W * 0.14, W * 0.34].map((rx, ri) => (
-            <mesh
-              key={`open-baffle-rail-x-${ri}`}
-              position={[rx, H - 0.26, 0]}
-              material={materials.matteTitaniumMat}
-            >
-              <boxGeometry args={[0.09, 0.12, L * 0.88]} />
-            </mesh>
-          ))}
-
-          {/* Parallel Suspended Matte-Black Industrial Open Acoustic Baffles */}
-          {Array.from({ length: 18 }, (_, bi) => {
-            const bz = THREE.MathUtils.lerp(-L * 0.41, L * 0.41, bi / 17);
-            return (
-              <mesh
-                key={`open-baffle-fin-${bi}`}
-                position={[0, H - 0.48, bz]}
-                material={materials.stageMat}
-                castShadow
-                receiveShadow
-              >
-                <boxGeometry args={[W * 0.88, 0.36, 0.075]} />
-              </mesh>
-            );
-          })}
-
-          {/* Dark Structural Side Soffit Borders Framing the Open-Baffle Grid */}
-          {[-1, 1].map((side) => (
-            <mesh
-              key={`open-baffle-soffit-${side}`}
-              position={[side * (W * 0.46), H - 0.36, 0]}
-              material={materials.stageMat}
-            >
-              <boxGeometry args={[W * 0.08, 0.34, L * 0.92]} />
-            </mesh>
-          ))}
-
-          {/* Flush Matte-Black Industrial Pin-Spot Downlight Canisters & Crisp Downlights */}
-          {[-W * 0.34, -W * 0.14, 0, W * 0.14, W * 0.34].map((dx, di) =>
-            [-L * 0.36, -L * 0.18, 0, L * 0.18, L * 0.36].map((dz, dzi) => (
-              <group key={`open-baffle-pinspot-${di}-${dzi}`} position={[dx, H - 0.34, dz]}>
+          {/* Twin Columns of Recessed Circular HVAC Ceiling Air Diffusers */}
+          {[-W * 0.11, W * 0.11].map((hx, hi) =>
+            [-L * 0.28, -L * 0.08, L * 0.12, L * 0.3].map((hz, hzi) => (
+              <group key={`tbar-hvac-${hi}-${hzi}`} position={[hx, H - 0.204, hz]}>
                 <mesh material={materials.matteTitaniumMat}>
-                  <cylinderGeometry args={[0.055, 0.055, 0.14, 14]} />
+                  <boxGeometry args={[0.74, 0.014, 0.74]} />
                 </mesh>
-                <mesh position={[0, -0.072, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <circleGeometry args={[0.042, 14]} />
+                <mesh position={[0, -0.008, 0]} rotation={[Math.PI / 2, 0, 0]} material={materials.stageMat}>
+                  <ringGeometry args={[0.1, 0.28, 20]} />
+                </mesh>
+                <mesh position={[0, -0.01, 0]} rotation={[Math.PI / 2, 0, 0]} material={materials.matteTitaniumMat}>
+                  <ringGeometry args={[0.17, 0.21, 20]} />
+                </mesh>
+              </group>
+            )),
+          )}
+
+          {/* Crisp 4x5 Grid of Recessed Matte-Black Ceiling Pin-Spot Downlights */}
+          {[-W * 0.32, -W * 0.11, W * 0.11, W * 0.32].map((dx, di) =>
+            [-L * 0.36, -L * 0.18, 0, L * 0.18, L * 0.36].map((dz, dzi) => (
+              <group key={`tbar-pinspot-${di}-${dzi}`} position={[dx, H - 0.206, dz]}>
+                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.matteTitaniumMat}>
+                  <ringGeometry args={[0.048, 0.085, 16]} />
+                </mesh>
+                <mesh position={[0, -0.003, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <circleGeometry args={[0.048, 16]} />
                   <meshStandardMaterial
-                    color="#0f0b18"
-                    emissive="#f3e8ff"
-                    emissiveIntensity={ceilingPuckIntensity * 0.92}
+                    color="#120e1c"
+                    emissive="#f8fafc"
+                    emissiveIntensity={ceilingPuckIntensity * 1.1}
+                    toneMapped={false}
                   />
                 </mesh>
               </group>
@@ -4339,6 +4348,68 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 </mesh>
               </group>
             )),
+          )}
+        </group>
+      )}
+
+      {/* Dolby Cobalt Veil 250 Ceiling: Smooth Matte-Espresso Acoustic Ceiling with Flush Seam Reveals, Linear HVAC Diffusers, Flush Dolby Atmos Modules & Warm Pin-Spot Downlights */}
+      {ceilingLightStyle === 'espresso_tray_atmos' && (
+        <group>
+          {/* Subtle Low-Profile Espresso Acoustic Panel Seam Trim */}
+          {[-W * 0.38, -W * 0.14, W * 0.14, W * 0.38].map((bx, bi) => (
+            <mesh
+              key={`espresso-seam-x-${bi}`}
+              position={[bx, H - 0.206, 0]}
+              material={materials.matteEspressoCofferMat}
+            >
+              <boxGeometry args={[0.09, 0.016, L * 0.9]} />
+            </mesh>
+          ))}
+          {[-L * 0.37, -L * 0.185, 0, L * 0.185, L * 0.37].map((bz, bi) => (
+            <mesh
+              key={`espresso-seam-z-${bi}`}
+              position={[0, H - 0.206, bz]}
+              material={materials.matteEspressoCofferMat}
+            >
+              <boxGeometry args={[W * 0.9, 0.016, 0.09]} />
+            </mesh>
+          ))}
+
+          {/* Flush Linear Slotted HVAC Diffusers */}
+          {[-W * 0.29, W * 0.29].map((hx, hi) =>
+            [-L * 0.22, L * 0.06, L * 0.31].map((hz, hzi) => (
+              <group key={`espresso-hvac-${hi}-${hzi}`} position={[hx, H - 0.204, hz]}>
+                <mesh material={materials.espressoTrimMat}>
+                  <boxGeometry args={[0.42, 0.012, 1.45]} />
+                </mesh>
+                <mesh position={[0, -0.005, 0]} material={materials.speakerMat}>
+                  <boxGeometry args={[0.34, 0.006, 1.35]} />
+                </mesh>
+              </group>
+            )),
+          )}
+
+          {/* Perimeter & Overhead Warm Architectural Pin-Spot Downlights */}
+          {[-W * 0.435, -W * 0.22, W * 0.22, W * 0.435].map((dx, di) =>
+            Array.from({ length: 10 }, (_, dzi) => {
+              const dz = THREE.MathUtils.lerp(-L * 0.41, L * 0.41, dzi / 9);
+              return (
+                <group key={`espresso-pinspot-${di}-${dzi}`} position={[dx, H - 0.204, dz]}>
+                  <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.espressoTrimMat}>
+                    <ringGeometry args={[0.036, 0.064, 14]} />
+                  </mesh>
+                  <mesh position={[0, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                    <circleGeometry args={[0.036, 14]} />
+                    <meshStandardMaterial
+                      color="#24180c"
+                      emissive="#ffe2b0"
+                      emissiveIntensity={ceilingPuckIntensity * 0.92}
+                      toneMapped={false}
+                    />
+                  </mesh>
+                </group>
+              );
+            }),
           )}
         </group>
       )}

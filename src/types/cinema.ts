@@ -99,6 +99,7 @@ export type CeilingLightStyle =
   | 'mughal_espresso_coffers'
   | 'linear_coves'
   | 'monolithic_acoustic_plaster'
+  | 'espresso_tray_atmos'
   | 'acoustic_grid_linear'
   | 'overlapping_angled_planes'
   | 'industrial_open_baffle_atmos'

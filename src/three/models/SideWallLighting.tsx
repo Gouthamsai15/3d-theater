@@ -5,8 +5,55 @@ import {
   applyScreenBounceToMaterial,
   ScreenBounceUniforms,
 } from '../lighting/screenBounceShader';
-import { createJaliLatticeTexture } from '../materials/proceduralTextures';
+import {
+  createAmberCoveWashTexture,
+  createAmberVioletGradientTexture,
+  createCarbonFiberTexture,
+  createJaliLatticeTexture,
+  createVioletChannelGlowTexture,
+  createVioletCoveWashTexture,
+} from '../materials/proceduralTextures';
 import { getIceTheaterLayout } from './iceLayoutUtils';
+
+/**
+ * Shared wave elevation profile for Dolby Cobalt Veil 250 sweeping molten-amber
+ * and dual celestial-violet architectural wall coves (u in [0..1] front-to-back).
+ */
+export function getDolbyVeilWaveHeights(u: number, H: number, topTierY: number) {
+  const s = THREE.MathUtils.smoothstep(u, 0.05, 0.92);
+  const sFull = THREE.MathUtils.smoothstep(u, 0.0, 1.0);
+  const amberTargetRear = Math.min(H - 4.4, Math.max(4.4, topTierY + 1.55));
+  const amberBotY =
+    2.05 + (amberTargetRear - 2.05) * s - 0.42 * Math.sin(u * Math.PI * 2.15);
+  const amberHeight = 0.72;
+  const amberTopY = amberBotY + amberHeight;
+
+  const violet1Start = Math.max(5.1, H * 0.39);
+  const violet1End = Math.min(H - 3.3, Math.max(7.6, topTierY + 4.1));
+  const violet1BotY =
+    violet1Start +
+    (violet1End - violet1Start) * sFull -
+    0.55 * Math.sin(u * Math.PI * 2.05 + 0.35);
+  const violetHeight = 0.38;
+  const violet1TopY = violet1BotY + violetHeight;
+
+  const violet2Start = Math.max(violet1Start + 2.1, H * 0.54);
+  const violet2End = Math.min(H - 2.1, Math.max(9.2, topTierY + 5.75));
+  const violet2BotY =
+    violet2Start +
+    (violet2End - violet2Start) * sFull +
+    0.38 * Math.cos(u * Math.PI * 1.9);
+  const violet2TopY = violet2BotY + violetHeight;
+
+  return {
+    amberBotY,
+    amberTopY,
+    violet1BotY,
+    violet1TopY,
+    violet2BotY,
+    violet2TopY,
+  };
+}
 
 interface SideWallLightingProps {
   config: TheaterConfiguration;
@@ -985,6 +1032,195 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [jaliResources]);
 
+  // Dedicated Dolby Cobalt Veil 250 resources: matte carbon-fiber, porous charcoal suede, dark slate & smooth indirect amber/violet cove wash materials
+  const eclipseResources = useMemo(() => {
+    if (sideLightStyle !== 'cobalt_veil_laser_recess') return null;
+    const carbonTex = createCarbonFiberTexture();
+    const gradTexA = createAmberVioletGradientTexture(false);
+    const gradTexB = createAmberVioletGradientTexture(true);
+    const amberWashTex = createAmberCoveWashTexture();
+    const violetWashTex = createVioletCoveWashTexture();
+
+    const carbonFiberScaleMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: carbonTex,
+        bumpMap: carbonTex,
+        bumpScale: 0.014,
+        color: '#a8b0be',
+        roughness: 0.56,
+        metalness: 0.16,
+      }),
+      screenBounceUniforms,
+    );
+    const charcoalSuedeScaleMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1f222a',
+        roughness: 0.92,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const charcoalSlateFacetMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#292d36',
+        roughness: 0.84,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const amberCoveWashMat = new THREE.MeshStandardMaterial({
+      map: amberWashTex,
+      emissive: '#ffffff',
+      emissiveMap: amberWashTex,
+      emissiveIntensity: 1.35,
+      roughness: 0.55,
+      metalness: 0.04,
+    });
+    const violetCoveWashMat = new THREE.MeshStandardMaterial({
+      map: violetWashTex,
+      emissive: '#ffffff',
+      emissiveMap: violetWashTex,
+      emissiveIntensity: 1.35,
+      roughness: 0.52,
+      metalness: 0.04,
+    });
+    const amberLipEmitterMat = new THREE.MeshStandardMaterial({
+      color: '#ffcf70',
+      emissive: '#ff9e24',
+      emissiveIntensity: 2.1,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+    const violetLipEmitterMat = new THREE.MeshStandardMaterial({
+      color: '#e9d5ff',
+      emissive: '#a855f7',
+      emissiveIntensity: 1.95,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+    const eclipseGlowMatA = new THREE.MeshStandardMaterial({
+      map: gradTexA,
+      emissive: '#ffffff',
+      emissiveMap: gradTexA,
+      emissiveIntensity: 1.45,
+      toneMapped: false,
+      roughness: 0.28,
+      metalness: 0.02,
+    });
+    const eclipseGlowMatB = new THREE.MeshStandardMaterial({
+      map: gradTexB,
+      emissive: '#ffffff',
+      emissiveMap: gradTexB,
+      emissiveIntensity: 1.45,
+      toneMapped: false,
+      roughness: 0.28,
+      metalness: 0.02,
+    });
+
+    return {
+      carbonTex,
+      gradTexA,
+      gradTexB,
+      amberWashTex,
+      violetWashTex,
+      carbonFiberScaleMat,
+      charcoalSuedeScaleMat,
+      charcoalSlateFacetMat,
+      amberCoveWashMat,
+      violetCoveWashMat,
+      amberLipEmitterMat,
+      violetLipEmitterMat,
+      eclipseGlowMatA,
+      eclipseGlowMatB,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      eclipseResources?.carbonFiberScaleMat.dispose();
+      eclipseResources?.charcoalSuedeScaleMat.dispose();
+      eclipseResources?.charcoalSlateFacetMat.dispose();
+      eclipseResources?.amberCoveWashMat.dispose();
+      eclipseResources?.violetCoveWashMat.dispose();
+      eclipseResources?.amberLipEmitterMat.dispose();
+      eclipseResources?.violetLipEmitterMat.dispose();
+      eclipseResources?.eclipseGlowMatA.dispose();
+      eclipseResources?.eclipseGlowMatB.dispose();
+      eclipseResources?.carbonTex.dispose();
+      eclipseResources?.gradTexA.dispose();
+      eclipseResources?.gradTexB.dispose();
+      eclipseResources?.amberWashTex.dispose();
+      eclipseResources?.violetWashTex.dispose();
+    };
+  }, [eclipseResources]);
+
+  // Dedicated Obsidian Wave 550 materials: 3 tonal matte acoustic wave finishes + soft neon-purple canyon wash & bright core spline
+  const obsidianWaveResources = useMemo(() => {
+    if (sideLightStyle !== 'parametric_obsidian_waves') return null;
+    const violetGlowTex = createVioletChannelGlowTexture();
+
+    const lightSlateWaveMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#4e5360',
+        roughness: 0.87,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const midCharcoalWaveMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2c303b',
+        roughness: 0.9,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const obsidianWaveMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#13151c',
+        roughness: 0.93,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const violetCanyonWashMat = new THREE.MeshStandardMaterial({
+      map: violetGlowTex,
+      emissive: '#c084fc',
+      emissiveMap: violetGlowTex,
+      emissiveIntensity: 1.55,
+      roughness: 0.48,
+      metalness: 0.02,
+      toneMapped: false,
+    });
+    const violetCoreSplineMat = new THREE.MeshStandardMaterial({
+      color: '#f5e8ff',
+      emissive: '#d8b4fe',
+      emissiveIntensity: 2.35,
+      roughness: 0.18,
+      toneMapped: false,
+    });
+
+    return {
+      violetGlowTex,
+      lightSlateWaveMat,
+      midCharcoalWaveMat,
+      obsidianWaveMat,
+      violetCanyonWashMat,
+      violetCoreSplineMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      obsidianWaveResources?.lightSlateWaveMat.dispose();
+      obsidianWaveResources?.midCharcoalWaveMat.dispose();
+      obsidianWaveResources?.obsidianWaveMat.dispose();
+      obsidianWaveResources?.violetCanyonWashMat.dispose();
+      obsidianWaveResources?.violetCoreSplineMat.dispose();
+      obsidianWaveResources?.violetGlowTex.dispose();
+    };
+  }, [obsidianWaveResources]);
+
   // Smooth dim control (house lighting off cleanly while movie plays)
   const wallAccentIntensity = lightFactor * 1.65;
   mats.primaryEmitterMat.emissiveIntensity = wallAccentIntensity;
@@ -992,6 +1228,18 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
   mats.alabasterGlassMat.emissiveIntensity = wallAccentIntensity * 0.95;
   mats.alabasterShadeMat.emissiveIntensity = wallAccentIntensity * 0.88;
   mats.warmGoldHaloMat.emissiveIntensity = 0.16 + lightFactor * 1.35;
+  if (eclipseResources) {
+    eclipseResources.eclipseGlowMatA.emissiveIntensity = lightFactor * 1.52;
+    eclipseResources.eclipseGlowMatB.emissiveIntensity = lightFactor * 1.44;
+    eclipseResources.amberCoveWashMat.emissiveIntensity = lightFactor * 1.38;
+    eclipseResources.violetCoveWashMat.emissiveIntensity = lightFactor * 1.32;
+    eclipseResources.amberLipEmitterMat.emissiveIntensity = lightFactor * 2.15;
+    eclipseResources.violetLipEmitterMat.emissiveIntensity = lightFactor * 1.95;
+  }
+  if (obsidianWaveResources) {
+    obsidianWaveResources.violetCanyonWashMat.emissiveIntensity = lightFactor * 1.55;
+    obsidianWaveResources.violetCoreSplineMat.emissiveIntensity = lightFactor * 2.35;
+  }
 
   const sconceY = isPrivate ? Math.min(H * 0.58, 2.55) : Math.min(H * 0.56, topTierY + 2.05);
   const wallInnerX = W / 2 - 0.22;
@@ -2527,321 +2775,734 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     return { fabricPanels, woodSlats, satinTrims, ledStrips };
   }, [sideLightStyle, L, H]);
 
-  // Dolby Cobalt Veil 250: Continuous Smooth Matte-Black & Deep Cobalt-Blue Acoustically Transparent Fabric Veil + Sharp Horizontal Angular Architectural Recesses with Deeply Recessed Laser-Blue LEDs
+  // Dolby Cobalt Veil 250: Continuous Interlocked Faceted 3D Architectural Blocks + Sweeping Molten-Amber & Dual Celestial-Violet Indirect Cove Waves (with Open Rear Projection Window)
   const cobaltVeilWall = useMemo(() => {
     if (sideLightStyle !== 'cobalt_veil_laser_recess') return null;
-    const zMin = -L * 0.485;
-    const zMax = L * 0.485;
+    const zMin = -L * 0.482;
+    const zMax = L * 0.482;
     const wallLen = zMax - zMin;
     const zCenter = (zMin + zMax) * 0.5;
-    const yFloor = 0.04;
-    const yCeil = H - 0.18;
+    const yFloor = 0.14;
+    const yCeil = H - 0.22;
 
-    // Two sharp horizontal angular architectural slices along the side walls
-    const slice1Center = Math.max(2.6, Math.min(3.4, topTierY * 0.35 + 1.55));
-    const slice1Half = 0.17;
-    const slice2Center = Math.min(yCeil - 2.3, Math.max(slice1Center + 3.8, H * 0.56));
-    const slice2Half = 0.17;
-
-    const s1Bot = slice1Center - slice1Half;
-    const s1Top = slice1Center + slice1Half;
-    const s2Bot = slice2Center - slice2Half;
-    const s2Top = slice2Center + slice2Half;
-
-    // Helper: extrude a sharp angled veil profile in (x = wall depth into hall, y = height) along Z
-    const buildHorizontalVeilTierGeo = (
-      ptsXY: [number, number][],
-      lengthZ: number,
-    ): THREE.BufferGeometry => {
-      const shape = new THREE.Shape();
-      shape.moveTo(ptsXY[0][0], ptsXY[0][1]);
-      for (let i = 1; i < ptsXY.length; i++) {
-        shape.lineTo(ptsXY[i][0], ptsXY[i][1]);
-      }
-      shape.closePath();
-      const geo = new THREE.ExtrudeGeometry(shape, {
-        depth: lengthZ,
-        bevelEnabled: false,
-      });
-      geo.translate(0, 0, -lengthZ * 0.5);
-      geo.computeVertexNormals();
-      return geo;
-    };
-
-    const veilDepth = 0.155;
-    const lipBevel = 0.12;
-
-    // Lower smooth matte-black fabric veil with sharp angular upper recess cheek
-    const lowerVeilGeo = buildHorizontalVeilTierGeo(
-      [
-        [0, yFloor],
-        [veilDepth, yFloor],
-        [veilDepth, s1Bot - lipBevel],
-        [0.02, s1Bot + 0.03],
-        [0, s1Bot + 0.03],
-      ],
-      wallLen,
-    );
-
-    // Mid deep cobalt-blue fabric veil with sharp angular top & bottom recess cheeks
-    const midCobaltVeilGeo = buildHorizontalVeilTierGeo(
-      [
-        [0, s1Top - 0.03],
-        [0.02, s1Top - 0.03],
-        [veilDepth, s1Top + lipBevel],
-        [veilDepth, s2Bot - lipBevel],
-        [0.02, s2Bot + 0.03],
-        [0, s2Bot + 0.03],
-      ],
-      wallLen,
-    );
-
-    // Upper smooth matte-black fabric veil with sharp angular lower recess cheek
-    const upperVeilGeo = buildHorizontalVeilTierGeo(
-      [
-        [0, s2Top - 0.03],
-        [0.02, s2Top - 0.03],
-        [veilDepth, s2Top + lipBevel],
-        [veilDepth, yCeil],
-        [0, yCeil],
-      ],
-      wallLen,
-    );
-
-    return {
-      zCenter,
-      wallLen,
-      yFloor,
-      yCeil,
-      s1Bot,
-      s1Top,
-      s2Bot,
-      s2Top,
-      slice1Center,
-      slice2Center,
-      lowerVeilGeo,
-      midCobaltVeilGeo,
-      upperVeilGeo,
-    };
-  }, [sideLightStyle, L, H, topTierY]);
-
-  useEffect(() => {
-    return () => {
-      cobaltVeilWall?.lowerVeilGeo.dispose();
-      cobaltVeilWall?.midCobaltVeilGeo.dispose();
-      cobaltVeilWall?.upperVeilGeo.dispose();
-    };
-  }, [cobaltVeilWall]);
-
-  // Obsidian Wave 550: 3D Flowing Parametric Acoustic Waves (Matte Carbon-Grey & Deep Obsidian) Across Side & Back Walls + Glare-Free Vertical & Diagonal Neon-Purple Fissures
-  const parametricObsidianWall = useMemo(() => {
-    if (sideLightStyle !== 'parametric_obsidian_waves') return null;
-    const fZ = -L / 2;
-    const bZ = L / 2;
-    const zMin = fZ + 1.4;
-    const zMax = bZ - 0.45;
-    const yBot = 0.25;
-    const yTop = H - 0.42;
-
-    const channelY = Math.min(H - 2.3, Math.max(topTierY + 1.35, H * 0.61));
-    const spkBandBot = channelY - 0.56;
-    const spkBandTop = channelY + 0.56;
-
-    const sideBands: {
-      geo: THREE.BufferGeometry;
-      yMid: number;
-      tone: 'obsidian' | 'carbon';
-    }[] = [];
-
-    // Lower stack of flowing wave bands (below speaker channel)
-    const lowerCount = 5;
-    const lowerH = (spkBandBot - yBot) / lowerCount;
-    for (let i = 0; i < lowerCount; i++) {
-      const bandMid = yBot + (i + 0.5) * lowerH;
-      sideBands.push({
-        geo: buildHorizontalWaveBandGeo(
-          zMin,
-          zMax,
-          Math.max(0.28, lowerH - 0.045),
-          0.12,
-          0.22,
-          2.6,
-          i * 0.62,
-          72,
-        ),
-        yMid: bandMid,
-        tone: i % 2 === 0 ? 'carbon' : 'obsidian',
-      });
-    }
-
-    // Recessed matte-obsidian undulating speaker channel band
-    sideBands.push({
-      geo: buildHorizontalWaveBandGeo(
-        zMin,
-        zMax,
-        Math.max(0.5, spkBandTop - spkBandBot - 0.04),
-        0.07,
-        0.055,
-        2.6,
-        lowerCount * 0.62,
-        72,
-      ),
-      yMid: channelY,
-      tone: 'obsidian',
-    });
-
-    // Upper stack of flowing wave bands (above speaker channel)
-    const upperCount = 3;
-    const upperH = Math.max(0.45, (yTop - spkBandTop) / upperCount);
-    for (let i = 0; i < upperCount; i++) {
-      const bandMid = spkBandTop + (i + 0.5) * upperH;
-      sideBands.push({
-        geo: buildHorizontalWaveBandGeo(
-          zMin,
-          zMax,
-          Math.max(0.28, upperH - 0.045),
-          0.12,
-          0.21,
-          2.6,
-          (lowerCount + 1 + i) * 0.62,
-          72,
-        ),
-        yMid: bandMid,
-        tone: i % 2 === 0 ? 'carbon' : 'obsidian',
-      });
-    }
-
-    // Recessed vertical & diagonal neon-purple wall fissures (front buffer avoids screen glare)
-    const sideFissures: { startZY: [number, number]; endZY: [number, number] }[] = [];
-    const fissureCount = 8;
-    const zFissureStart = fZ + 5.2;
-    const zFissureEnd = bZ - 1.1;
-    for (let fi = 0; fi < fissureCount; fi++) {
-      const fz = THREE.MathUtils.lerp(zFissureStart, zFissureEnd, fi / (fissureCount - 1));
-      if (fi % 2 === 0) {
-        // Crisp recessed vertical neon-purple wall fissure
-        sideFissures.push({
-          startZY: [fz, yBot + 0.16],
-          endZY: [fz, yTop - 0.16],
-        });
-      } else {
-        // Sweeping diagonal recessed neon-purple fissure slicing across the parametric waves
-        const diagTilt = fi % 4 === 1 ? 1.05 : -1.05;
-        sideFissures.push({
-          startZY: [fz - diagTilt, yBot + 0.18],
-          endZY: [fz + diagTilt, yTop - 0.18],
-        });
-      }
-    }
-
-    // Back-wall parametric wave wings flanking projection booth & rear speakers
     const boothY = Math.min(H - 1.4, topTierY + 3.25);
     const boothWinW = Math.min(4.8, W * 0.42);
     const boothWinH = Math.min(1.42, H * 0.24);
     const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
     const winBot = Math.max(0.25, boothY - boothWinH / 2);
-    const winMidY = (winTop + winBot) / 2;
 
-    const backYBot = Math.max(0.4, topTierY - 0.18);
-    const backYTop = H - 0.44;
-    const backSpkBot = winMidY - 0.56;
-    const backSpkTop = winMidY + 0.56;
-    const wingMinAbsX = boothWinW / 2 + 0.34;
-    const wingMaxAbsX = W / 2 - 0.44;
+    type Vec3 = [number, number, number];
+    type Vec2 = [number, number];
 
-    const backBands: {
-      geo: THREE.BufferGeometry;
-      yMid: number;
-      tone: 'obsidian' | 'carbon';
-      side: -1 | 1;
-    }[] = [];
-
-    ([-1, 1] as const).forEach((side) => {
-      const xStart = side === -1 ? -wingMaxAbsX : wingMinAbsX;
-      const xEnd = side === -1 ? -wingMinAbsX : wingMaxAbsX;
-      if (xEnd - xStart < 1.2) return;
-
-      const backLowerCount = 3;
-      const bLowH = Math.max(0.4, (backSpkBot - backYBot) / backLowerCount);
-      for (let i = 0; i < backLowerCount; i++) {
-        backBands.push({
-          geo: buildHorizontalWaveBandGeo(
-            xStart,
-            xEnd,
-            Math.max(0.26, bLowH - 0.045),
-            0.1,
-            0.16,
-            1.6,
-            i * 0.7 + (side === 1 ? Math.PI : 0),
-            44,
-          ),
-          yMid: backYBot + (i + 0.5) * bLowH,
-          tone: i % 2 === 0 ? 'carbon' : 'obsidian',
-          side,
-        });
+    const pushOrientedTri = (
+      pos: number[],
+      norm: number[],
+      uv: number[],
+      a: Vec3,
+      b: Vec3,
+      c: Vec3,
+      uvA: Vec2,
+      uvB: Vec2,
+      uvC: Vec2,
+      desiredNormal: Vec3,
+    ) => {
+      const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+      const acx = c[0] - a[0], acy = c[1] - a[1], acz = c[2] - a[2];
+      let nx = aby * acz - abz * acy;
+      let ny = abz * acx - abx * acz;
+      let nz = abx * acy - aby * acx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      const dot = nx * desiredNormal[0] + ny * desiredNormal[1] + nz * desiredNormal[2];
+      if (dot >= 0) {
+        pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+        norm.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
+        uv.push(uvA[0], uvA[1], uvB[0], uvB[1], uvC[0], uvC[1]);
+      } else {
+        pos.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]);
+        norm.push(-nx, -ny, -nz, -nx, -ny, -nz, -nx, -ny, -nz);
+        uv.push(uvA[0], uvA[1], uvC[0], uvC[1], uvB[0], uvB[1]);
       }
+    };
 
-      // Recessed rear speaker undulating channel
-      backBands.push({
-        geo: buildHorizontalWaveBandGeo(
-          xStart,
-          xEnd,
-          Math.max(0.42, backSpkTop - backSpkBot - 0.04),
-          0.06,
-          0.04,
-          1.6,
-          backLowerCount * 0.7 + (side === 1 ? Math.PI : 0),
-          44,
-        ),
-        yMid: winMidY,
-        tone: 'obsidian',
-        side,
-      });
+    const makeBufferGeo = (pos: number[], norm: number[], uv: number[]) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      return geo;
+    };
 
-      const upperBackH = backYTop - backSpkTop;
-      if (upperBackH > 0.38) {
-        const backUpperCount = upperBackH > 1.3 ? 2 : 1;
-        const bUpH = upperBackH / backUpperCount;
-        for (let i = 0; i < backUpperCount; i++) {
-          backBands.push({
-            geo: buildHorizontalWaveBandGeo(
-              xStart,
-              xEnd,
-              Math.max(0.24, bUpH - 0.045),
-              0.1,
-              0.15,
-              1.6,
-              (backLowerCount + 1 + i) * 0.7 + (side === 1 ? Math.PI : 0),
-              44,
-            ),
-            yMid: backSpkTop + (i + 0.5) * bUpH,
-            tone: i % 2 === 0 ? 'carbon' : 'obsidian',
-            side,
-          });
+    // Build faceted 3D angular block prism along side wall (axis = 'side', +xSign inward) or rear wall (axis = 'rear', -z inward)
+    const appendFacetedBlock = (
+      pos: number[],
+      norm: number[],
+      uv: number[],
+      ptsUV: [number, number][], // 4 corners in (horiz, vert) plane
+      depthBase: number,
+      cornerTilts: [number, number, number, number],
+      axis: 'side' | 'rear',
+      dirSign: number, // +1 for left wall (+X), -1 for right wall (-X), -1 for rear wall (-Z)
+    ) => {
+      const cx = (ptsUV[0][0] + ptsUV[1][0] + ptsUV[2][0] + ptsUV[3][0]) * 0.25;
+      const cy = (ptsUV[0][1] + ptsUV[1][1] + ptsUV[2][1] + ptsUV[3][1]) * 0.25;
+      const insetScale = 0.978;
+      const bevelScale = 0.945;
+
+      const backPts: Vec2[] = ptsUV.map(([h, v]) => [
+        cx + (h - cx) * insetScale,
+        cy + (v - cy) * insetScale,
+      ]);
+      const frontPts: Vec2[] = ptsUV.map(([h, v]) => [
+        cx + (h - cx) * bevelScale,
+        cy + (v - cy) * bevelScale,
+      ]);
+
+      const to3D = (h: number, v: number, d: number): Vec3 =>
+        axis === 'side' ? [dirSign * d, v, h] : [h, v, dirSign * d];
+
+      const back3D = backPts.map(([h, v]) => to3D(h, v, 0.01));
+      const front3D = frontPts.map(([h, v], idx) =>
+        to3D(h, v, Math.max(0.055, depthBase + cornerTilts[idx])),
+      );
+
+      const frontNormal: Vec3 = axis === 'side' ? [dirSign, 0, 0] : [0, 0, dirSign];
+      const fUV = frontPts.map(([h, v]): Vec2 => [h * 0.65, v * 0.65]);
+      const bUV = backPts.map(([h, v]): Vec2 => [h * 0.65, v * 0.65]);
+
+      // Front faceted face (split into 2 crisp triangles so tilted corner creates angular stone/carbon facet)
+      pushOrientedTri(pos, norm, uv, front3D[0], front3D[1], front3D[2], fUV[0], fUV[1], fUV[2], frontNormal);
+      pushOrientedTri(pos, norm, uv, front3D[0], front3D[2], front3D[3], fUV[0], fUV[2], fUV[3], frontNormal);
+
+      // 4 Chamfered bevel side walls connecting back base to front face
+      for (let i = 0; i < 4; i++) {
+        const j = (i + 1) % 4;
+        const eh = (backPts[i][0] + backPts[j][0]) * 0.5 - cx;
+        const ev = (backPts[i][1] + backPts[j][1]) * 0.5 - cy;
+        const sideDesired: Vec3 =
+          axis === 'side' ? [dirSign * 0.25, ev, eh] : [eh, ev, dirSign * 0.25];
+        pushOrientedTri(pos, norm, uv, back3D[i], back3D[j], front3D[j], bUV[i], bUV[j], fUV[j], sideDesired);
+        pushOrientedTri(pos, norm, uv, back3D[i], front3D[j], front3D[i], bUV[i], fUV[j], fUV[i], sideDesired);
+      }
+    };
+
+    // Deterministic pseudo-random helper for organic angular facets
+    const hash = (a: number, b: number, c: number) => {
+      const s = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453;
+      return s - Math.floor(s);
+    };
+
+    // Populate a continuous region bounded smoothly by [yBotFn(u), yTopFn(u)] with interlocked faceted blocks
+    const populateFacetZone = (
+      buckets: { pos: number[]; norm: number[]; uv: number[] }[],
+      hStart: number,
+      hEnd: number,
+      yBotFn: (u: number) => number,
+      yTopFn: (u: number) => number,
+      numRows: number,
+      colsCount: number,
+      axis: 'side' | 'rear',
+      dirSign: number,
+      seedBase: number,
+    ) => {
+      const span = hEnd - hStart;
+      if (span < 0.45) return;
+
+      for (let r = 0; r < numRows; r++) {
+        const r0 = r / numRows;
+        const r1 = (r + 1) / numRows;
+        const stagger = (r % 2) * 0.42;
+
+        for (let c = 0; c < colsCount; c++) {
+          const uA0 = THREE.MathUtils.clamp((c + (c > 0 ? stagger * 0.35 : 0)) / colsCount, 0, 1);
+          const uB0 = THREE.MathUtils.clamp((c + 1 + (c + 1 < colsCount ? stagger * 0.35 : 0)) / colsCount, 0, 1);
+          // Slanted diagonal end-cuts for authentic architectural polygonal facets
+          const shear0 = c > 0 ? (hash(r, c, seedBase + 1) - 0.5) * (0.42 / colsCount) : 0;
+          const shear1 = c + 1 < colsCount ? (hash(r, c + 1, seedBase + 2) - 0.5) * (0.42 / colsCount) : 0;
+
+          const uBotL = THREE.MathUtils.clamp(uA0 - shear0, 0, 1);
+          const uBotR = THREE.MathUtils.clamp(uB0 - shear1, 0, 1);
+          const uTopR = THREE.MathUtils.clamp(uB0 + shear1, 0, 1);
+          const uTopL = THREE.MathUtils.clamp(uA0 + shear0, 0, 1);
+
+          if (uBotR - uBotL < 0.012 || uTopR - uTopL < 0.012) continue;
+
+          const hBotL = THREE.MathUtils.lerp(hStart, hEnd, uBotL);
+          const hBotR = THREE.MathUtils.lerp(hStart, hEnd, uBotR);
+          const hTopR = THREE.MathUtils.lerp(hStart, hEnd, uTopR);
+          const hTopL = THREE.MathUtils.lerp(hStart, hEnd, uTopL);
+
+          const yBotL = THREE.MathUtils.lerp(yBotFn(uBotL), yTopFn(uBotL), r0);
+          const yBotR = THREE.MathUtils.lerp(yBotFn(uBotR), yTopFn(uBotR), r0);
+          const yTopR = THREE.MathUtils.lerp(yBotFn(uTopR), yTopFn(uTopR), r1);
+          const yTopL = THREE.MathUtils.lerp(yBotFn(uTopL), yTopFn(uTopL), r1);
+
+          if (yTopL - yBotL < 0.16 || yTopR - yBotR < 0.16) continue;
+
+          const rndMat = hash(r, c, seedBase + 5);
+          const bucketIdx = rndMat < 0.36 ? 0 : rndMat < 0.72 ? 1 : 2;
+          const depthBase = 0.095 + hash(r, c, seedBase + 9) * 0.135;
+          const t0 = (hash(r, c, seedBase + 11) - 0.5) * 0.055;
+          const t1 = (hash(r, c, seedBase + 13) - 0.5) * 0.055;
+          const t2 = (hash(r, c, seedBase + 17) - 0.5) * 0.055;
+          const t3 = (hash(r, c, seedBase + 19) - 0.5) * 0.055;
+
+          appendFacetedBlock(
+            buckets[bucketIdx].pos,
+            buckets[bucketIdx].norm,
+            buckets[bucketIdx].uv,
+            [
+              [hBotL, yBotL],
+              [hBotR, yBotR],
+              [hTopR, yTopR],
+              [hTopL, yTopL],
+            ],
+            depthBase,
+            [t0, t1, t2, t3],
+            axis,
+            dirSign,
+          );
         }
       }
+    };
+
+    // Build curved concave indirect architectural cove wash mesh (v=0 at recessed LED lip, v=1 at outer protruding ridge)
+    const buildCoveWashRibbon = (
+      hStart: number,
+      hEnd: number,
+      yBotFn: (u: number) => number,
+      height: number,
+      axis: 'side' | 'rear',
+      dirSign: number,
+      uSegs = 64,
+      vSegs = 7,
+    ) => {
+      const pos: number[] = [];
+      const norm: number[] = [];
+      const uv: number[] = [];
+      const desiredN: Vec3 = axis === 'side' ? [dirSign, 0, 0] : [0, 0, dirSign];
+
+      const ptAt = (u: number, v: number): Vec3 => {
+        const h = THREE.MathUtils.lerp(hStart, hEnd, u);
+        const y = yBotFn(u) + v * height;
+        const d = 0.032 + 0.145 * Math.sin(v * Math.PI * 0.52);
+        return axis === 'side' ? [dirSign * d, y, h] : [h, y, dirSign * d];
+      };
+
+      for (let i = 0; i < uSegs; i++) {
+        const u0 = i / uSegs;
+        const u1 = (i + 1) / uSegs;
+        for (let j = 0; j < vSegs; j++) {
+          const v0 = j / vSegs;
+          const v1 = (j + 1) / vSegs;
+          const a = ptAt(u0, v0);
+          const b = ptAt(u1, v0);
+          const c = ptAt(u1, v1);
+          const d = ptAt(u0, v1);
+          pushOrientedTri(pos, norm, uv, a, b, c, [u0, v0], [u1, v0], [u1, v1], desiredN);
+          pushOrientedTri(pos, norm, uv, a, c, d, [u0, v0], [u1, v1], [u0, v1], desiredN);
+        }
+      }
+      return makeBufferGeo(pos, norm, uv);
+    };
+
+    // Thin indirect LED lip tucked inside the bottom cove crease
+    const buildCoveEmitterStrip = (
+      hStart: number,
+      hEnd: number,
+      yFn: (u: number) => number,
+      axis: 'side' | 'rear',
+      dirSign: number,
+      radius = 0.022,
+      segs = 64,
+    ) => {
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        const h = THREE.MathUtils.lerp(hStart, hEnd, u);
+        const y = yFn(u) + 0.024;
+        const d = dirSign * 0.046;
+        pts.push(axis === 'side' ? new THREE.Vector3(d, y, h) : new THREE.Vector3(h, y, d));
+      }
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), segs, radius, 6, false);
+    };
+
+    const waveAt = (u: number) => getDolbyVeilWaveHeights(u, H, topTierY);
+    const colsSide = Math.max(12, Math.round(wallLen / 1.85));
+
+    // Build Left (dirSign = +1) & Right (dirSign = -1) side walls independently with exact outward normals
+    const buildSideWallGeos = (dirSign: 1 | -1) => {
+      const buckets = [
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 0: carbonFiber
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 1: charcoalSuede
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 2: charcoalSlate
+      ];
+
+      // Zone 1: Below Amber Cove
+      populateFacetZone(buckets, zMin, zMax, () => yFloor, (u) => waveAt(u).amberBotY - 0.015, 3, colsSide, 'side', dirSign, 11);
+      // Zone 2: Between Amber Ridge & Lower Violet Cove (Surround Speakers sit here)
+      populateFacetZone(buckets, zMin, zMax, (u) => waveAt(u).amberTopY + 0.015, (u) => waveAt(u).violet1BotY - 0.015, 3, colsSide, 'side', dirSign, 23);
+      // Zone 3: Between Lower Violet & Upper Violet Coves
+      populateFacetZone(buckets, zMin, zMax, (u) => waveAt(u).violet1TopY + 0.015, (u) => waveAt(u).violet2BotY - 0.015, 2, colsSide, 'side', dirSign, 37);
+      // Zone 4: Upper Wall Above Upper Violet Cove to Ceiling
+      populateFacetZone(buckets, zMin, zMax, (u) => waveAt(u).violet2TopY + 0.015, () => yCeil, 3, colsSide, 'side', dirSign, 53);
+
+      return {
+        carbonGeo: makeBufferGeo(buckets[0].pos, buckets[0].norm, buckets[0].uv),
+        suedeGeo: makeBufferGeo(buckets[1].pos, buckets[1].norm, buckets[1].uv),
+        slateGeo: makeBufferGeo(buckets[2].pos, buckets[2].norm, buckets[2].uv),
+        amberCoveGeo: buildCoveWashRibbon(zMin, zMax, (u) => waveAt(u).amberBotY, 0.72, 'side', dirSign),
+        violet1CoveGeo: buildCoveWashRibbon(zMin, zMax, (u) => waveAt(u).violet1BotY, 0.38, 'side', dirSign),
+        violet2CoveGeo: buildCoveWashRibbon(zMin, zMax, (u) => waveAt(u).violet2BotY, 0.38, 'side', dirSign),
+        amberLipGeo: buildCoveEmitterStrip(zMin, zMax, (u) => waveAt(u).amberBotY, 'side', dirSign, 0.024),
+        violet1LipGeo: buildCoveEmitterStrip(zMin, zMax, (u) => waveAt(u).violet1BotY, 'side', dirSign, 0.02),
+        violet2LipGeo: buildCoveEmitterStrip(zMin, zMax, (u) => waveAt(u).violet2BotY, 'side', dirSign, 0.02),
+      };
+    };
+
+    const leftWall = buildSideWallGeos(1);
+    const rightWall = buildSideWallGeos(-1);
+
+    // Rear wall sculpted faceted blocks & cove continuations built strictly on LEFT & RIGHT wings around booth window & rear entrance doors
+    const wingMinX = -W * 0.5 + 0.24;
+    const wingMaxX = W * 0.5 - 0.24;
+    const boothClearHalfW = boothWinW * 0.5 + 0.14;
+    const doorClearHalfW = 1.38;
+    const wingOuterLim = Math.max(boothClearHalfW + 0.5, wingMaxX);
+
+    const rearBuckets = [
+      { pos: [] as number[], norm: [] as number[], uv: [] as number[] },
+      { pos: [] as number[], norm: [] as number[], uv: [] as number[] },
+      { pos: [] as number[], norm: [] as number[], uv: [] as number[] },
+    ];
+
+    const rearEndWaves = waveAt(1.0);
+    const buildRearWingCoves: THREE.BufferGeometry[] = [];
+    const buildRearWingViolets: THREE.BufferGeometry[] = [];
+    const buildRearWingAmberLips: THREE.BufferGeometry[] = [];
+    const buildRearWingVioletLips: THREE.BufferGeometry[] = [];
+
+    ([-1, 1] as const).forEach((wSide) => {
+      const x0 = wSide === -1 ? wingMinX : boothClearHalfW;
+      const x1 = wSide === -1 ? -boothClearHalfW : wingOuterLim;
+      if (x1 - x0 < 0.8) return;
+      const wingCols = Math.max(4, Math.round((x1 - x0) / 1.8));
+      const yWingBot = Math.max(yFloor, topTierY - 0.15);
+
+      const wingAmberBot = (u: number) => {
+        const edgeFactor = wSide === -1 ? u : 1 - u;
+        return rearEndWaves.amberBotY - edgeFactor * 0.25;
+      };
+      const wingViolet1Bot = (u: number) => {
+        const edgeFactor = wSide === -1 ? u : 1 - u;
+        return rearEndWaves.violet1BotY + edgeFactor * 0.18;
+      };
+      const wingViolet2Bot = (u: number) => {
+        const edgeFactor = wSide === -1 ? u : 1 - u;
+        return rearEndWaves.violet2BotY + edgeFactor * 0.16;
+      };
+
+      populateFacetZone(rearBuckets, x0, x1, () => yWingBot, (u) => wingAmberBot(u) - 0.015, 2, wingCols, 'rear', -1, 71 + wSide);
+      populateFacetZone(rearBuckets, x0, x1, (u) => wingAmberBot(u) + 0.735, (u) => wingViolet1Bot(u) - 0.015, 2, wingCols, 'rear', -1, 83 + wSide);
+      populateFacetZone(rearBuckets, x0, x1, (u) => wingViolet1Bot(u) + 0.395, (u) => wingViolet2Bot(u) - 0.015, 2, wingCols, 'rear', -1, 97 + wSide);
+      populateFacetZone(rearBuckets, x0, x1, (u) => wingViolet2Bot(u) + 0.395, () => yCeil, 2, wingCols, 'rear', -1, 109 + wSide);
+
+      buildRearWingCoves.push(buildCoveWashRibbon(x0, x1, wingAmberBot, 0.72, 'rear', -1, 20, 6));
+      buildRearWingViolets.push(buildCoveWashRibbon(x0, x1, wingViolet1Bot, 0.38, 'rear', -1, 20, 6));
+      buildRearWingViolets.push(buildCoveWashRibbon(x0, x1, wingViolet2Bot, 0.38, 'rear', -1, 20, 6));
+      buildRearWingAmberLips.push(buildCoveEmitterStrip(x0, x1, wingAmberBot, 'rear', -1, 0.024, 20));
+      buildRearWingVioletLips.push(buildCoveEmitterStrip(x0, x1, wingViolet1Bot, 'rear', -1, 0.02, 20));
+      buildRearWingVioletLips.push(buildCoveEmitterStrip(x0, x1, wingViolet2Bot, 'rear', -1, 0.02, 20));
     });
 
-    // Symmetrical vertical & diagonal recessed neon-purple fissures on the rear wall wings
-    const backFissures: { startXY: [number, number]; endXY: [number, number] }[] = [];
-    ([-1, 1] as const).forEach((side) => {
-      const innerX = side * (wingMinAbsX + 0.9);
-      const midX = side * THREE.MathUtils.lerp(wingMinAbsX + 0.9, wingMaxAbsX - 0.9, 0.5);
-      const outerX = side * (wingMaxAbsX - 0.9);
-      backFissures.push(
-        { startXY: [innerX, backYBot + 0.16], endXY: [innerX, backYTop - 0.16] },
-        { startXY: [midX - side * 0.8, backYBot + 0.16], endXY: [midX + side * 0.8, backYTop - 0.16] },
-        { startXY: [outerX, backYBot + 0.16], endXY: [outerX, backYTop - 0.16] },
+    // Narrow lower cheeks between rear entrance doors and wing inner edge (never blocking doors or booth window)
+    if (boothClearHalfW > doorClearHalfW + 0.35) {
+      ([-1, 1] as const).forEach((wSide) => {
+        const cx0 = wSide === -1 ? -boothClearHalfW : doorClearHalfW;
+        const cx1 = wSide === -1 ? -doorClearHalfW : boothClearHalfW;
+        populateFacetZone(
+          rearBuckets,
+          cx0,
+          cx1,
+          () => Math.max(yFloor, topTierY - 0.15),
+          () => Math.max(yFloor + 1.2, winBot - 0.08),
+          2,
+          2,
+          'rear',
+          -1,
+          131 + wSide,
+        );
+      });
+    }
+
+    // Upper rear spandrel strictly ABOVE the booth window (winTop + 0.14 .. yCeil)
+    if (yCeil - (winTop + 0.16) > 0.4) {
+      populateFacetZone(
+        rearBuckets,
+        -boothClearHalfW,
+        boothClearHalfW,
+        () => winTop + 0.14,
+        () => yCeil,
+        2,
+        4,
+        'rear',
+        -1,
+        151,
       );
-    });
+    }
 
-    return { sideBands, sideFissures, backBands, backFissures };
+    return {
+      zCenter,
+      wallLen,
+      boothClearHalfW,
+      doorClearHalfW,
+      winBot,
+      winTop,
+      yCeil,
+      leftWall,
+      rightWall,
+      rearCarbonGeo: makeBufferGeo(rearBuckets[0].pos, rearBuckets[0].norm, rearBuckets[0].uv),
+      rearSuedeGeo: makeBufferGeo(rearBuckets[1].pos, rearBuckets[1].norm, rearBuckets[1].uv),
+      rearSlateGeo: makeBufferGeo(rearBuckets[2].pos, rearBuckets[2].norm, rearBuckets[2].uv),
+      rearAmberCoves: buildRearWingCoves,
+      rearVioletCoves: buildRearWingViolets,
+      rearAmberLips: buildRearWingAmberLips,
+      rearVioletLips: buildRearWingVioletLips,
+    };
   }, [sideLightStyle, W, L, H, topTierY]);
 
   useEffect(() => {
     return () => {
-      parametricObsidianWall?.sideBands.forEach((b) => b.geo.dispose());
-      parametricObsidianWall?.backBands.forEach((b) => b.geo.dispose());
+      if (!cobaltVeilWall) return;
+      [cobaltVeilWall.leftWall, cobaltVeilWall.rightWall].forEach((w) => {
+        w.carbonGeo.dispose();
+        w.suedeGeo.dispose();
+        w.slateGeo.dispose();
+        w.amberCoveGeo.dispose();
+        w.violet1CoveGeo.dispose();
+        w.violet2CoveGeo.dispose();
+        w.amberLipGeo.dispose();
+        w.violet1LipGeo.dispose();
+        w.violet2LipGeo.dispose();
+      });
+      cobaltVeilWall.rearCarbonGeo.dispose();
+      cobaltVeilWall.rearSuedeGeo.dispose();
+      cobaltVeilWall.rearSlateGeo.dispose();
+      cobaltVeilWall.rearAmberCoves.forEach((g) => g.dispose());
+      cobaltVeilWall.rearVioletCoves.forEach((g) => g.dispose());
+      cobaltVeilWall.rearAmberLips.forEach((g) => g.dispose());
+      cobaltVeilWall.rearVioletLips.forEach((g) => g.dispose());
+    };
+  }, [cobaltVeilWall]);
+
+  // Obsidian Wave 550: Vertical Flowing 3D Parametric S-Wave Acoustic Ribbons (Light Slate, Mid Charcoal & Deep Obsidian) + Curved Neon-Purple Valley Canyons
+  const parametricObsidianWall = useMemo(() => {
+    if (sideLightStyle !== 'parametric_obsidian_waves') return null;
+
+    type Vec3 = [number, number, number];
+    type Vec2 = [number, number];
+
+    const pushTri = (
+      pos: number[],
+      norm: number[],
+      uv: number[],
+      a: Vec3,
+      b: Vec3,
+      c: Vec3,
+      uvA: Vec2,
+      uvB: Vec2,
+      uvC: Vec2,
+      desiredNormal: Vec3,
+    ) => {
+      const abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2];
+      const acx = c[0] - a[0], acy = c[1] - a[1], acz = c[2] - a[2];
+      let nx = aby * acz - abz * acy;
+      let ny = abz * acx - abx * acz;
+      let nz = abx * acy - aby * acx;
+      const len = Math.hypot(nx, ny, nz) || 1;
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      const dot = nx * desiredNormal[0] + ny * desiredNormal[1] + nz * desiredNormal[2];
+      if (dot >= 0) {
+        pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]);
+        norm.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
+        uv.push(uvA[0], uvA[1], uvB[0], uvB[1], uvC[0], uvC[1]);
+      } else {
+        pos.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2]);
+        norm.push(-nx, -ny, -nz, -nx, -ny, -nz, -nx, -ny, -nz);
+        uv.push(uvA[0], uvA[1], uvC[0], uvC[1], uvB[0], uvB[1]);
+      }
+    };
+
+    const makeGeo = (pos: number[], norm: number[], uv: number[]) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      return geo;
+    };
+
+    // Build a continuous vertical flowing S-wave field along a wall span [hMin..hMax] from yBot..yTop
+    // axis = 'side' -> curves in (Z, Y) extruded inward by +dirSign along X
+    // axis = 'rear' -> curves in (X, Y) extruded inward by -1 along Z
+    const buildVerticalSWaveField = (
+      hMin: number,
+      hMax: number,
+      yBot: number,
+      yTop: number,
+      ribbonCount: number,
+      fissureBoundaryIndices: number[],
+      axis: 'side' | 'rear',
+      dirSign: number,
+      seedOffset: number,
+    ) => {
+      const vSteps = 44;
+      const toneBuckets = [
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 0: light slate
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 1: mid charcoal
+        { pos: [] as number[], norm: [] as number[], uv: [] as number[] }, // 2: deep obsidian
+      ];
+      const glowBucket = { pos: [] as number[], norm: [] as number[], uv: [] as number[] };
+      const coreBucket = { pos: [] as number[], norm: [] as number[], uv: [] as number[] };
+
+      const span = hMax - hMin;
+      const minRibW = Math.max(0.28, (span / ribbonCount) * 0.42);
+
+      // Evaluate monotonic, non-crossing undulating vertical S-wave boundary curves h[row][k]
+      const hGrid: number[][] = [];
+      for (let r = 0; r <= vSteps; r++) {
+        const v = r / vSteps;
+        const row: number[] = new Array(ribbonCount + 1);
+        row[0] = hMin;
+        row[ribbonCount] = hMax;
+
+        for (let k = 1; k < ribbonCount; k++) {
+          const u = k / ribbonCount;
+          const env = Math.sin(u * Math.PI);
+          // Harmonious flowing vertical-diagonal S-curves matching the grand parametric waves
+          const sweep =
+            (1.38 * Math.sin(v * Math.PI * 1.85 + u * 5.6 + seedOffset) +
+              0.62 * Math.sin(v * Math.PI * 3.15 - u * 3.8 + seedOffset * 0.7) +
+              1.18 * (v - 0.5) * Math.cos(u * Math.PI * 1.45)) *
+            env;
+          const target = THREE.MathUtils.lerp(hMin, hMax, u) + sweep * Math.min(1.0, span / 14);
+          const minAllowed = row[k - 1] + minRibW;
+          const maxAllowed = hMax - (ribbonCount - k) * minRibW;
+          row[k] = THREE.MathUtils.clamp(target, minAllowed, maxAllowed);
+        }
+        // Second smoothing pass from right to left to maintain even minimum spacing
+        for (let k = ribbonCount - 1; k >= 1; k--) {
+          row[k] = Math.min(row[k], row[k + 1] - minRibW);
+        }
+        hGrid.push(row);
+      }
+
+      const to3D = (h: number, y: number, d: number): Vec3 =>
+        axis === 'side' ? [dirSign * d, y, h] : [h, y, dirSign * d];
+      const inwardNorm: Vec3 = axis === 'side' ? [dirSign, 0, 0] : [0, 0, dirSign];
+      const sideHNorm = (hDir: number): Vec3 =>
+        axis === 'side' ? [dirSign * 0.35, 0, hDir] : [hDir, 0, dirSign * 0.35];
+
+      const fissureSet = new Set(fissureBoundaryIndices);
+      // Alternating rhythm ensuring strong light/mid/dark tonal cadence across adjacent vertical ribbons
+      const toneSequence = [0, 2, 1, 0, 1, 2, 0, 2, 1];
+
+      for (let k = 0; k < ribbonCount; k++) {
+        const toneIdx = toneSequence[(k + seedOffset) % toneSequence.length];
+        const b = toneBuckets[toneIdx];
+        const depthTier = ((k * 5 + seedOffset) % 3) * 0.075 + 0.16;
+        const gapHalfLeft = fissureSet.has(k) ? 0.08 : 0.014;
+        const gapHalfRight = fissureSet.has(k + 1) ? 0.08 : 0.014;
+
+        for (let r = 0; r < vSteps; r++) {
+          const v0 = r / vSteps;
+          const v1 = (r + 1) / vSteps;
+          const y0 = THREE.MathUtils.lerp(yBot, yTop, v0);
+          const y1 = THREE.MathUtils.lerp(yBot, yTop, v1);
+
+          const h0L = hGrid[r][k] + gapHalfLeft;
+          const h0R = Math.max(h0L + 0.08, hGrid[r][k + 1] - gapHalfRight);
+          const h1L = hGrid[r + 1][k] + gapHalfLeft;
+          const h1R = Math.max(h1L + 0.08, hGrid[r + 1][k + 1] - gapHalfRight);
+
+          const h0M = (h0L + h0R) * 0.5;
+          const h1M = (h1L + h1R) * 0.5;
+          const bevelFrac0 = Math.min(0.055, (h0R - h0L) * 0.16);
+          const bevelFrac1 = Math.min(0.055, (h1R - h1L) * 0.16);
+
+          const d0 =
+            depthTier +
+            0.11 * Math.sin(v0 * Math.PI * 2.25 + k * 0.85 + seedOffset) +
+            0.04 * Math.cos(v0 * Math.PI * 4.1 - k * 0.5);
+          const d1 =
+            depthTier +
+            0.11 * Math.sin(v1 * Math.PI * 2.25 + k * 0.85 + seedOffset) +
+            0.04 * Math.cos(v1 * Math.PI * 4.1 - k * 0.5);
+
+          // Gently rounded sculptural crest (+0.035m crown in middle vs edges)
+          const d0Edge = Math.max(0.14, d0 - 0.026);
+          const d1Edge = Math.max(0.14, d1 - 0.026);
+          const d0Crown = d0 + 0.034;
+          const d1Crown = d1 + 0.034;
+          const dBack = 0.01;
+
+          // Left shadow reveal return wall
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0L, y0, dBack), to3D(h0L + bevelFrac0, y0, d0Edge), to3D(h1L + bevelFrac1, y1, d1Edge),
+            [0, v0], [0.2, v0], [0.2, v1], sideHNorm(-1),
+          );
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0L, y0, dBack), to3D(h1L + bevelFrac1, y1, d1Edge), to3D(h1L, y1, dBack),
+            [0, v0], [0.2, v1], [0, v1], sideHNorm(-1),
+          );
+
+          // Left-half sculpted curved front face
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0L + bevelFrac0, y0, d0Edge), to3D(h0M, y0, d0Crown), to3D(h1M, y1, d1Crown),
+            [0.2, v0], [0.5, v0], [0.5, v1], inwardNorm,
+          );
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0L + bevelFrac0, y0, d0Edge), to3D(h1M, y1, d1Crown), to3D(h1L + bevelFrac1, y1, d1Edge),
+            [0.2, v0], [0.5, v1], [0.2, v1], inwardNorm,
+          );
+
+          // Right-half sculpted curved front face
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0M, y0, d0Crown), to3D(h0R - bevelFrac0, y0, d0Edge), to3D(h1R - bevelFrac1, y1, d1Edge),
+            [0.5, v0], [0.8, v0], [0.8, v1], inwardNorm,
+          );
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0M, y0, d0Crown), to3D(h1R - bevelFrac1, y1, d1Edge), to3D(h1M, y1, d1Crown),
+            [0.5, v0], [0.8, v1], [0.5, v1], inwardNorm,
+          );
+
+          // Right shadow reveal return wall
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0R - bevelFrac0, y0, d0Edge), to3D(h0R, y0, dBack), to3D(h1R, y1, dBack),
+            [0.8, v0], [1, v0], [1, v1], sideHNorm(1),
+          );
+          pushTri(
+            b.pos, b.norm, b.uv,
+            to3D(h0R - bevelFrac0, y0, d0Edge), to3D(h1R, y1, dBack), to3D(h1R - bevelFrac1, y1, d1Edge),
+            [0.8, v0], [1, v1], [0.8, v1], sideHNorm(1),
+          );
+        }
+      }
+
+      // Build sweeping recessed glowing neon-purple valley canyons + razor-thin bright core splines
+      fissureBoundaryIndices.forEach((fIdx) => {
+        if (fIdx <= 0 || fIdx >= ribbonCount) return;
+        const canyonHalfW = 0.14;
+        const coreHalfW = 0.022;
+
+        for (let r = 0; r < vSteps; r++) {
+          const v0 = r / vSteps;
+          const v1 = (r + 1) / vSteps;
+          const y0 = THREE.MathUtils.lerp(yBot, yTop, v0);
+          const y1 = THREE.MathUtils.lerp(yBot, yTop, v1);
+          const h0 = hGrid[r][fIdx];
+          const h1 = hGrid[r + 1][fIdx];
+
+          // Soft purple Gaussian valley trough wash
+          pushTri(
+            glowBucket.pos, glowBucket.norm, glowBucket.uv,
+            to3D(h0 - canyonHalfW, y0, 0.115), to3D(h0 + canyonHalfW, y0, 0.115), to3D(h1 + canyonHalfW, y1, 0.115),
+            [0, v0 * 4], [1, v0 * 4], [1, v1 * 4], inwardNorm,
+          );
+          pushTri(
+            glowBucket.pos, glowBucket.norm, glowBucket.uv,
+            to3D(h0 - canyonHalfW, y0, 0.115), to3D(h1 + canyonHalfW, y1, 0.115), to3D(h1 - canyonHalfW, y1, 0.115),
+            [0, v0 * 4], [1, v1 * 4], [0, v1 * 4], inwardNorm,
+          );
+
+          // Crisp thin luminous violet-white LED core strip nestled at canyon floor
+          pushTri(
+            coreBucket.pos, coreBucket.norm, coreBucket.uv,
+            to3D(h0 - coreHalfW, y0, 0.135), to3D(h0 + coreHalfW, y0, 0.135), to3D(h1 + coreHalfW, y1, 0.135),
+            [0, v0], [1, v0], [1, v1], inwardNorm,
+          );
+          pushTri(
+            coreBucket.pos, coreBucket.norm, coreBucket.uv,
+            to3D(h0 - coreHalfW, y0, 0.135), to3D(h1 + coreHalfW, y1, 0.135), to3D(h1 - coreHalfW, y1, 0.135),
+            [0, v0], [1, v1], [0, v1], inwardNorm,
+          );
+        }
+      });
+
+      return {
+        lightSlateGeo: makeGeo(toneBuckets[0].pos, toneBuckets[0].norm, toneBuckets[0].uv),
+        midCharcoalGeo: makeGeo(toneBuckets[1].pos, toneBuckets[1].norm, toneBuckets[1].uv),
+        obsidianGeo: makeGeo(toneBuckets[2].pos, toneBuckets[2].norm, toneBuckets[2].uv),
+        violetWashGeo: makeGeo(glowBucket.pos, glowBucket.norm, glowBucket.uv),
+        violetCoreGeo: makeGeo(coreBucket.pos, coreBucket.norm, coreBucket.uv),
+      };
+    };
+
+    const fZ = -L / 2;
+    const bZ = L / 2;
+    const zMin = fZ + 0.95;
+    const zMax = bZ - 0.35;
+    const yBot = 0.12;
+    const yTop = H - 0.18;
+
+    const leftWall = buildVerticalSWaveField(zMin, zMax, yBot, yTop, 36, [5, 13, 21, 29], 'side', 1, 0);
+    const rightWall = buildVerticalSWaveField(zMin, zMax, yBot, yTop, 36, [5, 13, 21, 29], 'side', -1, 3);
+
+    // Back-wall vertical S-wave wings flanking open projection booth & rear double doors
+    const boothY = Math.min(H - 1.4, topTierY + 3.25);
+    const boothWinW = Math.min(4.8, W * 0.42);
+    const boothWinH = Math.min(1.42, H * 0.24);
+    const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
+    const wingMinAbsX = boothWinW * 0.5 + 0.26;
+    const wingMaxAbsX = W * 0.5 - 0.36;
+    const backYBot = Math.max(0.25, topTierY - 0.18);
+
+    const rearLeft = buildVerticalSWaveField(-wingMaxAbsX, -wingMinAbsX, backYBot, yTop, 11, [3, 8], 'rear', -1, 1);
+    const rearRight = buildVerticalSWaveField(wingMinAbsX, wingMaxAbsX, backYBot, yTop, 11, [3, 8], 'rear', -1, 4);
+    const rearSpandrel =
+      yTop - (winTop + 0.14) > 0.35
+        ? buildVerticalSWaveField(-wingMinAbsX, wingMinAbsX, winTop + 0.14, yTop, 7, [], 'rear', -1, 2)
+        : null;
+
+    return {
+      leftWall,
+      rightWall,
+      rearLeft,
+      rearRight,
+      rearSpandrel,
+      wingMinAbsX,
+      wingMaxAbsX,
+      winTop,
+    };
+  }, [sideLightStyle, W, L, H, topTierY]);
+
+  useEffect(() => {
+    return () => {
+      if (!parametricObsidianWall) return;
+      [
+        parametricObsidianWall.leftWall,
+        parametricObsidianWall.rightWall,
+        parametricObsidianWall.rearLeft,
+        parametricObsidianWall.rearRight,
+        parametricObsidianWall.rearSpandrel,
+      ].forEach((part) => {
+        if (!part) return;
+        part.lightSlateGeo.dispose();
+        part.midCharcoalGeo.dispose();
+        part.obsidianGeo.dispose();
+        part.violetWashGeo.dispose();
+        part.violetCoreGeo.dispose();
+      });
     };
   }, [parametricObsidianWall]);
 
@@ -4639,133 +5300,89 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           );
         })}
 
-      {/* Dolby Cobalt Veil 250: Continuous Smooth Matte-Black & Deep Cobalt-Blue Acoustically Transparent Fabric Veil + Deeply Recessed Laser-Blue LED Horizontal Architectural Slices */}
-      {sideLightStyle === 'cobalt_veil_laser_recess' && cobaltVeilWall && (
+      {/* Dolby Cobalt Veil 250: Continuous Interlocked Faceted 3D Acoustic Wall Blocks + Sweeping Molten-Amber & Dual Celestial-Violet Indirect Cove Channels */}
+      {sideLightStyle === 'cobalt_veil_laser_recess' && cobaltVeilWall && eclipseResources && (
         <group>
-          {[-1, 1].map((side) => {
+          {([-1, 1] as const).map((side) => {
             const wallX = side * (W / 2 - 0.21);
             const inDir = -side;
+            const wall = side === -1 ? cobaltVeilWall.leftWall : cobaltVeilWall.rightWall;
             return (
-              <group key={`dolby-cobalt-veil-side-${side}`}>
-                {/* Deep Pitch-Black Acoustic Pocket Cavity Behind Continuous Fabric Veil */}
+              <group key={`dolby-eclipse-side-${side}`} position={[wallX, 0, 0]}>
+                {/* Deep Acoustic Suede Backing Behind Reveal Gaps */}
                 <mesh
-                  position={[wallX + inDir * 0.012, H * 0.5, cobaltVeilWall.zCenter]}
+                  position={[inDir * 0.012, H * 0.5, cobaltVeilWall.zCenter]}
                   material={mats.cobaltVeilShadowMat}
                 >
                   <boxGeometry args={[0.024, H * 0.96, cobaltVeilWall.wallLen]} />
                 </mesh>
 
-                {/* Lower Continuous Smooth Matte-Black Fabric Veil */}
-                <mesh
-                  position={[wallX, 0, cobaltVeilWall.zCenter]}
-                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
-                  geometry={cobaltVeilWall.lowerVeilGeo}
-                  material={mats.matteBlackVeilMat}
-                  receiveShadow
-                />
+                {/* Faceted 3D Polygonal Architectural Blocks (Carbon Fiber, Charcoal Suede & Charcoal Slate) */}
+                <mesh geometry={wall.carbonGeo} material={eclipseResources.carbonFiberScaleMat} castShadow receiveShadow />
+                <mesh geometry={wall.suedeGeo} material={eclipseResources.charcoalSuedeScaleMat} castShadow receiveShadow />
+                <mesh geometry={wall.slateGeo} material={eclipseResources.charcoalSlateFacetMat} castShadow receiveShadow />
 
-                {/* Mid Continuous Smooth Deep Cobalt-Blue Fabric Veil */}
-                <mesh
-                  position={[wallX, 0, cobaltVeilWall.zCenter]}
-                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
-                  geometry={cobaltVeilWall.midCobaltVeilGeo}
-                  material={mats.deepCobaltVeilMat}
-                  receiveShadow
-                />
+                {/* Sweeping Lower Molten-Amber Architectural Cove & Recessed LED Crease */}
+                <mesh geometry={wall.amberCoveGeo} material={eclipseResources.amberCoveWashMat} />
+                <mesh geometry={wall.amberLipGeo} material={eclipseResources.amberLipEmitterMat} />
 
-                {/* Upper Continuous Smooth Matte-Black Fabric Veil */}
-                <mesh
-                  position={[wallX, 0, cobaltVeilWall.zCenter]}
-                  rotation={[0, side === 1 ? Math.PI : 0, 0]}
-                  geometry={cobaltVeilWall.upperVeilGeo}
-                  material={mats.matteBlackVeilMat}
-                  receiveShadow
-                />
-
-                {/* Sharp Angular Horizontal Architectural Recess Slots + Deeply Recessed Laser-Blue LED Accent Light Bars */}
-                {[cobaltVeilWall.slice1Center, cobaltVeilWall.slice2Center].map((sy, si) => (
-                  <group
-                    key={`cobalt-veil-recess-${side}-${si}`}
-                    position={[wallX + inDir * 0.032, sy, cobaltVeilWall.zCenter]}
-                  >
-                    {/* Deep Matte-Black Recess Shadow Throat */}
-                    <mesh material={mats.cobaltVeilShadowMat}>
-                      <boxGeometry args={[0.04, 0.34, cobaltVeilWall.wallLen - 0.12]} />
-                    </mesh>
-                    {/* Sharp Angular Upper & Lower Matte-Black Knife-Edge Recess Lips */}
-                    <mesh position={[inDir * 0.04, 0.135, 0]} material={mats.cobaltVeilShadowMat}>
-                      <boxGeometry args={[0.09, 0.032, cobaltVeilWall.wallLen - 0.16]} />
-                    </mesh>
-                    <mesh position={[inDir * 0.04, -0.135, 0]} material={mats.cobaltVeilShadowMat}>
-                      <boxGeometry args={[0.09, 0.032, cobaltVeilWall.wallLen - 0.16]} />
-                    </mesh>
-                    {/* Deeply Recessed Continuous Laser-Blue LED Light Bar (Fades to Pitch-Black During Movie) */}
-                    <mesh position={[inDir * 0.022, 0, 0]} material={mats.primaryEmitterMat}>
-                      <boxGeometry args={[0.022, 0.072, cobaltVeilWall.wallLen - 0.24]} />
-                    </mesh>
-                  </group>
-                ))}
+                {/* Dual Sweeping Upper Celestial-Violet Architectural Coves & Recessed LED Creases */}
+                <mesh geometry={wall.violet1CoveGeo} material={eclipseResources.violetCoveWashMat} />
+                <mesh geometry={wall.violet2CoveGeo} material={eclipseResources.violetCoveWashMat} />
+                <mesh geometry={wall.violet1LipGeo} material={eclipseResources.violetLipEmitterMat} />
+                <mesh geometry={wall.violet2LipGeo} material={eclipseResources.violetLipEmitterMat} />
               </group>
             );
           })}
 
-          {/* Rear Wall Continuous Smooth Matte-Black & Deep Cobalt-Blue Fabric Veil Flanking Doors & Projection Window */}
-          {(() => {
-            const boothY = Math.min(H - 1.4, topTierY + 3.25);
-            const boothWinW = Math.min(4.8, W * 0.42);
-            const boothWinH = Math.min(1.42, H * 0.24);
-            const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
-            const winBot = Math.max(0.25, boothY - boothWinH / 2);
-            const wingW = Math.max(1.2, (W - boothWinW) * 0.5 - 0.36);
-            const wingCenterX = boothWinW * 0.5 + wingW * 0.5 + 0.1;
-            const midBandH = Math.max(0.6, cobaltVeilWall.s2Bot - cobaltVeilWall.s1Top);
-            const midBandY = (cobaltVeilWall.s1Top + cobaltVeilWall.s2Bot) * 0.5;
-            return (
-              <group position={[0, 0, backZ - 0.22]}>
-                {/* Left & Right Rear Wing Cobalt-Blue Smooth Fabric Veil Panels */}
-                {[-1, 1].map((side) => (
-                  <group key={`rear-veil-wing-${side}`} position={[side * wingCenterX, 0, 0]}>
-                    <mesh
-                      position={[0, cobaltVeilWall.s1Bot * 0.5, 0]}
-                      material={mats.matteBlackVeilMat}
-                      receiveShadow
-                    >
-                      <boxGeometry args={[wingW, cobaltVeilWall.s1Bot, 0.04]} />
-                    </mesh>
-                    <mesh position={[0, midBandY, -0.015]} material={mats.deepCobaltVeilMat} receiveShadow>
-                      <boxGeometry args={[wingW, midBandH, 0.05]} />
-                    </mesh>
-                    <mesh
-                      position={[0, (cobaltVeilWall.s2Top + H) * 0.5, 0]}
-                      material={mats.matteBlackVeilMat}
-                      receiveShadow
-                    >
-                      <boxGeometry args={[wingW, H - cobaltVeilWall.s2Top, 0.04]} />
-                    </mesh>
-                  </group>
-                ))}
-                {/* Center Rear Upper Veil Between Doors & Projection Window */}
-                {winBot > topTierY + 2.5 && (
-                  <mesh
-                    position={[0, (topTierY + 2.48 + winBot) * 0.5, -0.01]}
-                    material={mats.deepCobaltVeilMat}
-                    receiveShadow
-                  >
-                    <boxGeometry args={[boothWinW + 0.24, Math.max(0.2, winBot - (topTierY + 2.48)), 0.04]} />
-                  </mesh>
-                )}
-                {H - winTop > 0.2 && (
-                  <mesh
-                    position={[0, (winTop + H) * 0.5, 0]}
-                    material={mats.matteBlackVeilMat}
-                    receiveShadow
-                  >
-                    <boxGeometry args={[boothWinW + 0.24, H - winTop, 0.04]} />
-                  </mesh>
-                )}
-              </group>
-            );
-          })()}
+          {/* Rear Wall Faceted 3D Blocks & Cove Wings Framed Strictly Around Open Projection Booth Window & Rear Doors */}
+          <group position={[0, 0, backZ - 0.22]}>
+            {/* Left & Right Rear Wing Shadow Backing (leaves center booth window & doors 100% open) */}
+            {([-1, 1] as const).map((wSide) => {
+              const wingW = Math.max(0.5, W * 0.5 - 0.18 - cobaltVeilWall.boothClearHalfW);
+              const wingCx = wSide * (cobaltVeilWall.boothClearHalfW + wingW * 0.5);
+              return (
+                <mesh
+                  key={`rear-wing-back-${wSide}`}
+                  position={[wingCx, H * 0.5, 0.012]}
+                  material={mats.cobaltVeilShadowMat}
+                >
+                  <boxGeometry args={[wingW, H * 0.96, 0.024]} />
+                </mesh>
+              );
+            })}
+            {cobaltVeilWall.yCeil - (cobaltVeilWall.winTop + 0.12) > 0.25 && (
+              <mesh
+                position={[0, (cobaltVeilWall.winTop + 0.12 + cobaltVeilWall.yCeil) * 0.5, 0.012]}
+                material={mats.cobaltVeilShadowMat}
+              >
+                <boxGeometry
+                  args={[
+                    cobaltVeilWall.boothClearHalfW * 2,
+                    cobaltVeilWall.yCeil - (cobaltVeilWall.winTop + 0.12),
+                    0.024,
+                  ]}
+                />
+              </mesh>
+            )}
+
+            <mesh geometry={cobaltVeilWall.rearCarbonGeo} material={eclipseResources.carbonFiberScaleMat} castShadow receiveShadow />
+            <mesh geometry={cobaltVeilWall.rearSuedeGeo} material={eclipseResources.charcoalSuedeScaleMat} castShadow receiveShadow />
+            <mesh geometry={cobaltVeilWall.rearSlateGeo} material={eclipseResources.charcoalSlateFacetMat} castShadow receiveShadow />
+
+            {cobaltVeilWall.rearAmberCoves.map((g, gi) => (
+              <mesh key={`rear-amber-cove-${gi}`} geometry={g} material={eclipseResources.amberCoveWashMat} />
+            ))}
+            {cobaltVeilWall.rearVioletCoves.map((g, gi) => (
+              <mesh key={`rear-violet-cove-${gi}`} geometry={g} material={eclipseResources.violetCoveWashMat} />
+            ))}
+            {cobaltVeilWall.rearAmberLips.map((g, gi) => (
+              <mesh key={`rear-amber-lip-${gi}`} geometry={g} material={eclipseResources.amberLipEmitterMat} />
+            ))}
+            {cobaltVeilWall.rearVioletLips.map((g, gi) => (
+              <mesh key={`rear-violet-lip-${gi}`} geometry={g} material={eclipseResources.violetLipEmitterMat} />
+            ))}
+          </group>
         </group>
       )}
 
@@ -4894,90 +5511,65 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           );
         })}
 
-      {/* Obsidian Wave 550: 3D Flowing Matte Carbon-Grey & Deep Obsidian Parametric Waves on Left, Right & Back Walls + Glare-Free Neon-Purple Fissures */}
-      {sideLightStyle === 'parametric_obsidian_waves' && parametricObsidianWall && (
-        <group>
-          {[-1, 1].map((side) => {
-            const wallX = side * (W / 2 - 0.21);
-            const rotY = side === -1 ? 0 : Math.PI;
-            const ledX = side * (W / 2 - 0.24);
-            return (
-              <group key={`parametric-side-${side}`}>
-                {/* Deep Matte-Obsidian Wall Cavity Backing Behind Sculpted Parametric Wave Ribbons */}
-                <mesh position={[wallX - side * 0.015, H * 0.5, 0]} material={mats.obsidianParametricMat} receiveShadow>
-                  <boxGeometry args={[0.04, H * 0.96, L * 0.96]} />
-                </mesh>
-
-                {/* Undulating 3D Flowing Parametric Acoustic Wave Ribbons */}
-                {parametricObsidianWall.sideBands.map((band, bi) => (
-                  <mesh
-                    key={`pwave-band-${side}-${bi}`}
-                    position={[wallX, band.yMid, 0]}
-                    rotation={[0, rotY, 0]}
-                    geometry={band.geo}
-                    material={band.tone === 'carbon' ? mats.carbonGreyParametricMat : mats.obsidianParametricMat}
-                    castShadow
-                    receiveShadow
-                  />
-                ))}
-
-                {/* Recessed Ultra-Thin Vertical & Diagonal Neon-Purple Fissures (Glare-Shielded Behind Wave Crests) */}
-                {parametricObsidianWall.sideFissures.map((fissure, fi) => (
-                  <ArchitecturalChannelBar
-                    key={`pwave-led-${side}-${fi}`}
-                    start={[ledX, fissure.startZY[1], fissure.startZY[0]]}
-                    end={[ledX, fissure.endZY[1], fissure.endZY[0]]}
-                    thickness={0.018}
-                    depth={0.022}
-                    material={mats.primaryEmitterMat}
-                    housingMaterial={mats.satinBlackShadowMat}
-                    interiorFocusY={H * 0.5}
-                  />
-                ))}
-              </group>
-            );
-          })}
-
-          {/* Back Wall Sculpted 3D Flowing Parametric Waves Flanking Booth & Rear Speakers */}
+      {/* Obsidian Wave 550: Vertical Sculpted S-Wave Acoustic Ribbons in Alternating Slate, Charcoal & Obsidian + Curved Neon-Purple Valley Canyons */}
+      {sideLightStyle === 'parametric_obsidian_waves' &&
+        parametricObsidianWall &&
+        obsidianWaveResources && (
           <group>
-            {parametricObsidianWall.backBands.map((band, bi) => (
-              <mesh
-                key={`pwave-back-band-${bi}`}
-                position={[0, band.yMid, backZ - 0.18]}
-                rotation={[0, Math.PI / 2, 0]}
-                geometry={band.geo}
-                material={band.tone === 'carbon' ? mats.carbonGreyParametricMat : mats.obsidianParametricMat}
-                castShadow
-                receiveShadow
-              />
-            ))}
-
-            {/* Back Wall Vertical & Diagonal Neon-Purple Fissures Facing Auditorium (-Z) */}
-            {parametricObsidianWall.backFissures.map((fissure, fi) => {
-              const dx = fissure.endXY[0] - fissure.startXY[0];
-              const dy = fissure.endXY[1] - fissure.startXY[1];
-              const len = Math.max(0.2, Math.hypot(dx, dy));
-              const mx = (fissure.startXY[0] + fissure.endXY[0]) * 0.5;
-              const my = (fissure.startXY[1] + fissure.endXY[1]) * 0.5;
-              const rotZ = Math.atan2(dy, dx) - Math.PI / 2;
+            {([-1, 1] as const).map((side) => {
+              const wallX = side * (W / 2 - 0.21);
+              const inDir = -side;
+              const wall = side === -1 ? parametricObsidianWall.leftWall : parametricObsidianWall.rightWall;
               return (
-                <group
-                  key={`pwave-back-led-${fi}`}
-                  position={[mx, my, backZ - 0.23]}
-                  rotation={[0, 0, rotZ]}
-                >
-                  <mesh position={[0, 0, 0.012]} material={mats.satinBlackShadowMat}>
-                    <boxGeometry args={[0.036, len + 0.02, 0.026]} />
+                <group key={`parametric-side-${side}`} position={[wallX, 0, 0]}>
+                  {/* Deep Matte-Obsidian Acoustic Wall Backing Behind Wave Ribbons */}
+                  <mesh position={[inDir * 0.015, H * 0.5, 0]} material={obsidianWaveResources.obsidianWaveMat} receiveShadow>
+                    <boxGeometry args={[0.04, H * 0.96, L * 0.96]} />
                   </mesh>
-                  <mesh position={[0, 0, -0.008]} material={mats.primaryEmitterMat}>
-                    <boxGeometry args={[0.018, len, 0.018]} />
-                  </mesh>
+
+                  <mesh geometry={wall.lightSlateGeo} material={obsidianWaveResources.lightSlateWaveMat} castShadow receiveShadow />
+                  <mesh geometry={wall.midCharcoalGeo} material={obsidianWaveResources.midCharcoalWaveMat} castShadow receiveShadow />
+                  <mesh geometry={wall.obsidianGeo} material={obsidianWaveResources.obsidianWaveMat} castShadow receiveShadow />
+                  <mesh geometry={wall.violetWashGeo} material={obsidianWaveResources.violetCanyonWashMat} />
+                  <mesh geometry={wall.violetCoreGeo} material={obsidianWaveResources.violetCoreSplineMat} />
                 </group>
               );
             })}
+
+            {/* Rear Wall Matching Vertical S-Wave Wings Flanking Open Projection Booth & Doors */}
+            <group position={[0, 0, backZ - 0.2]}>
+              {([-1, 1] as const).map((wSide) => {
+                const wingW = parametricObsidianWall.wingMaxAbsX - parametricObsidianWall.wingMinAbsX;
+                const wingCx = wSide * (parametricObsidianWall.wingMinAbsX + wingW * 0.5);
+                return (
+                  <mesh
+                    key={`pwave-rear-backing-${wSide}`}
+                    position={[wingCx, H * 0.5, 0.015]}
+                    material={obsidianWaveResources.obsidianWaveMat}
+                  >
+                    <boxGeometry args={[wingW, H * 0.96, 0.03]} />
+                  </mesh>
+                );
+              })}
+
+              {[
+                parametricObsidianWall.rearLeft,
+                parametricObsidianWall.rearRight,
+                parametricObsidianWall.rearSpandrel,
+              ].map((part, pi) =>
+                part ? (
+                  <group key={`pwave-rear-part-${pi}`}>
+                    <mesh geometry={part.lightSlateGeo} material={obsidianWaveResources.lightSlateWaveMat} castShadow receiveShadow />
+                    <mesh geometry={part.midCharcoalGeo} material={obsidianWaveResources.midCharcoalWaveMat} castShadow receiveShadow />
+                    <mesh geometry={part.obsidianGeo} material={obsidianWaveResources.obsidianWaveMat} castShadow receiveShadow />
+                    <mesh geometry={part.violetWashGeo} material={obsidianWaveResources.violetCanyonWashMat} />
+                    <mesh geometry={part.violetCoreGeo} material={obsidianWaveResources.violetCoreSplineMat} />
+                  </group>
+                ) : null,
+              )}
+            </group>
           </group>
-        </group>
-      )}
+        )}
 
       {/* ===================================================================== */}
       {/* BAY-MOUNTED BESPOKE ARCHITECTURAL SIDE LIGHT DESIGNS                  */}

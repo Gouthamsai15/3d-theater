@@ -5,6 +5,8 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { ShowState, TheaterConfiguration } from '../../types/cinema';
 import { ScreenBounceSample } from '../models/CinemaScreen';
 
+const NEUTRAL_WALL_FILL_TINT = new THREE.Color('#eae6f2');
+
 interface CinemaLightingRigProps {
   config: TheaterConfiguration;
   showState: ShowState;
@@ -31,14 +33,14 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
   const { lightingProfile, auditoriumWidth, auditoriumLength, auditoriumHeight, screenPosition } = config;
   const { scene, gl } = useThree();
 
+  const isCobaltVeil = config.sideLightStyle === 'cobalt_veil_laser_recess';
+
   const ambientRef = useRef<THREE.HemisphereLight>(null);
   const mainCeilingRef = useRef<THREE.DirectionalLight>(null);
-  const rearFillRef = useRef<THREE.PointLight>(null);
-  const midCeilingRef = useRef<THREE.PointLight>(null);
+  const wallFillLeftRef = useRef<THREE.DirectionalLight>(null);
+  const wallFillRightRef = useRef<THREE.DirectionalLight>(null);
   const screenGlowRef = useRef<THREE.PointLight>(null);
   const screenHallBounceRef = useRef<THREE.PointLight>(null);
-  const wallLeftRef = useRef<THREE.PointLight>(null);
-  const wallRightRef = useRef<THREE.PointLight>(null);
 
   const lightFactorRef = useRef(1);
 
@@ -100,36 +102,38 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
     const flashColor = fourDxFlashRef?.current.color ?? '#7dd3fc';
 
     const bounce = screenBounceRef?.current ?? { r: 0.72, g: 0.8, b: 0.95, luminance: 0.25 };
-    // Compensate inverse-square light falloff across 6m Private salons vs 18m IMAX mega-domes
-    const roomScale = Math.pow(Math.max(0.62, auditoriumHeight / 10.6), 1.4);
 
     if (ambientRef.current) {
-      const swBoost = isSoftwareGl ? 1.35 : 1.08;
+      const swBoost = isSoftwareGl ? 1.48 : 1.24;
       ambientRef.current.intensity = 0.003 + f * lightingProfile.ambientOpenIntensity * swBoost;
     }
     if (mainCeilingRef.current) {
-      const mainBoost = isSoftwareGl ? 1.45 : 1.15;
+      const mainBoost = isSoftwareGl ? 1.48 : 1.2;
       mainCeilingRef.current.intensity = f * lightingProfile.mainOpenIntensity * mainBoost;
     }
-    if (rearFillRef.current) {
-      rearFillRef.current.intensity = f * lightingProfile.mainOpenIntensity * 38 * roomScale;
+    if (wallFillLeftRef.current) {
+      if (isCobaltVeil) {
+        wallFillLeftRef.current.intensity = f * 0.44;
+        wallFillLeftRef.current.color.set('#ffdcb4');
+      } else {
+        wallFillLeftRef.current.intensity =
+          f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
+        wallFillLeftRef.current.color
+          .set(flashLevel > 0.05 ? flashColor : lightingProfile.wallColor)
+          .lerp(NEUTRAL_WALL_FILL_TINT, flashLevel > 0.05 ? 0.15 : 0.48);
+      }
     }
-    if (midCeilingRef.current) {
-      midCeilingRef.current.intensity = f * lightingProfile.mainOpenIntensity * 44 * roomScale;
-    }
-    if (wallLeftRef.current) {
-      wallLeftRef.current.intensity =
-        f * lightingProfile.wallOpenIntensity * 24 * roomScale + flashLevel * 18;
-      wallLeftRef.current.color.set(
-        flashLevel > 0.05 ? flashColor : lightingProfile.wallColor,
-      );
-    }
-    if (wallRightRef.current) {
-      wallRightRef.current.intensity =
-        f * lightingProfile.wallOpenIntensity * 24 * roomScale + flashLevel * 18;
-      wallRightRef.current.color.set(
-        flashLevel > 0.05 ? flashColor : lightingProfile.wallColor,
-      );
+    if (wallFillRightRef.current) {
+      if (isCobaltVeil) {
+        wallFillRightRef.current.intensity = f * 0.38;
+        wallFillRightRef.current.color.set('#cbbcf6');
+      } else {
+        wallFillRightRef.current.intensity =
+          f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;
+        wallFillRightRef.current.color
+          .set(flashLevel > 0.05 ? flashColor : lightingProfile.wallColor)
+          .lerp(NEUTRAL_WALL_FILL_TINT, flashLevel > 0.05 ? 0.15 : 0.48);
+      }
     }
 
     if (screenGlowRef.current) {
@@ -163,10 +167,14 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       <color attach="background" args={['#030305']} />
       <fogExp2 attach="fog" args={['#030305', 0.01]} />
 
-      {/* Cool/Warm Hemisphere Fill */}
+      {/* Cool/Warm Hemisphere Fill (smooth ceiling & upward bounce without point hotspots) */}
       <hemisphereLight
         ref={ambientRef}
-        args={[lightingProfile.ceilingColor, '#100e14', lightingProfile.ambientOpenIntensity]}
+        args={[
+          lightingProfile.ceilingColor,
+          isCobaltVeil ? '#544236' : '#3d3746',
+          lightingProfile.ambientOpenIntensity,
+        ]}
       />
 
       {/* Primary Overhead Key Light (shadow caster) */}
@@ -188,43 +196,19 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         shadow-camera-far={auditoriumHeight + 14}
       />
 
-      {/* Mid & Rear Auditorium Ceiling Lights (active across all quality tiers for balanced room depth) */}
-      <pointLight
-        ref={midCeilingRef}
-        position={[0, auditoriumHeight - 1.0, -1.5]}
-        color={lightingProfile.ceilingColor}
-        intensity={44}
-        distance={auditoriumLength * 1.15}
-        decay={1.8}
+      {/* Smooth Parallel Side-Wall Architectural Fills Across All Theaters (zero point-light circular hotspots) */}
+      <directionalLight
+        ref={wallFillLeftRef}
+        position={[-16, auditoriumHeight * 0.72, 4]}
+        color={isCobaltVeil ? '#ffdcb4' : lightingProfile.wallColor}
+        intensity={isCobaltVeil ? 0.44 : lightingProfile.wallOpenIntensity * 0.34}
       />
-      <pointLight
-        ref={rearFillRef}
-        position={[0, auditoriumHeight - 1.0, auditoriumLength * 0.25]}
-        color={lightingProfile.ceilingColor}
-        intensity={38}
-        distance={auditoriumLength * 1.15}
-        decay={1.8}
+      <directionalLight
+        ref={wallFillRightRef}
+        position={[16, auditoriumHeight * 0.72, -4]}
+        color={isCobaltVeil ? '#cbbcf6' : lightingProfile.wallColor}
+        intensity={isCobaltVeil ? 0.38 : lightingProfile.wallOpenIntensity * 0.32}
       />
-      {!isSoftwareGl && (
-        <>
-          <pointLight
-            ref={wallLeftRef}
-            position={[-auditoriumWidth / 2 + 1.4, auditoriumHeight * 0.5, 0]}
-            color={lightingProfile.wallColor}
-            intensity={24}
-            distance={auditoriumWidth * 1.2}
-            decay={1.8}
-          />
-          <pointLight
-            ref={wallRightRef}
-            position={[auditoriumWidth / 2 - 1.4, auditoriumHeight * 0.5, 0]}
-            color={lightingProfile.wallColor}
-            intensity={24}
-            distance={auditoriumWidth * 1.2}
-            decay={1.8}
-          />
-        </>
-      )}
 
       {/* Primary Dynamic Movie Screen Bounce Light */}
       <pointLight

@@ -5,6 +5,7 @@ import {
   applyScreenBounceToMaterial,
   ScreenBounceUniforms,
 } from '../lighting/screenBounceShader';
+import { getDolbyVeilWaveHeights } from './SideWallLighting';
 
 interface CinemaSpeakersProps {
   config: TheaterConfiguration;
@@ -234,6 +235,15 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     const flushCeilingTrimGeo = new THREE.CylinderGeometry(0.165, 0.165, 0.016, 28);
     const flushCeilingGrilleGeo = new THREE.CylinderGeometry(0.138, 0.138, 0.02, 28);
 
+    // Flush architectural Dolby Atmos overhead ceiling modules (Dolby Cobalt Veil 250 matte-espresso ceiling)
+    const cobaltAtmosBezelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.024, 32);
+    const cobaltAtmosTrimGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.028, 32);
+    const cobaltAtmosGrilleGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.032, 32);
+    const cobaltAtmosDriverRimGeo = new THREE.TorusGeometry(0.16, 0.014, 12, 28);
+    cobaltAtmosDriverRimGeo.rotateX(Math.PI / 2);
+    const cobaltAtmosDriverConeGeo = new THREE.CylinderGeometry(0.145, 0.045, 0.024, 24);
+    const cobaltAtmosTweeterGeo = new THREE.CylinderGeometry(0.04, 0.048, 0.024, 18);
+
     return {
       surroundCabinetGeo,
       surroundBaffleGeo,
@@ -274,6 +284,12 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       grilleBarHGeo,
       flushCeilingTrimGeo,
       flushCeilingGrilleGeo,
+      cobaltAtmosBezelGeo,
+      cobaltAtmosTrimGeo,
+      cobaltAtmosGrilleGeo,
+      cobaltAtmosDriverRimGeo,
+      cobaltAtmosDriverConeGeo,
+      cobaltAtmosTweeterGeo,
     };
   }, []);
 
@@ -366,6 +382,34 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       roughness: 0.2,
     });
 
+    const cobaltAtmosBezelMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#2c313b',
+        roughness: 0.4,
+        metalness: 0.62,
+      }),
+      screenBounceUniforms,
+    );
+
+    const cobaltAtmosBronzeTrimMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#5a4230',
+        roughness: 0.44,
+        metalness: 0.56,
+      }),
+      screenBounceUniforms,
+    );
+
+    const cobaltAtmosGrilleMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: speakerGrilleMap,
+        color: '#272c36',
+        roughness: 0.84,
+        metalness: 0.14,
+      }),
+      screenBounceUniforms,
+    );
+
     return {
       cabinetMat,
       baffleMat,
@@ -376,6 +420,9 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       hornThroatMat,
       portVoidMat,
       statusLedMat,
+      cobaltAtmosBezelMat,
+      cobaltAtmosBronzeTrimMat,
+      cobaltAtmosGrilleMat,
     };
   }, [speakerGrilleMap, isWarmBrass, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isDolbyMediumLuxury, lightingProfile.accentColor, screenBounceUniforms, lightFactor]);
 
@@ -385,10 +432,35 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     };
   }, [materials]);
 
-  // Compute safe side-wall surround bay coordinates (concealed in ICE side wall modules, ScreenX panoramic walls, Dolby Cobalt Veil fabric walls & Walnut/Champagne private salons)
+  // Compute safe side-wall surround bay coordinates (concealed in ICE side wall modules, ScreenX panoramic walls & Walnut/Champagne private salons)
   const sideSpeakerPositions = useMemo(() => {
     const arr: { x: number; y: number; z: number; side: -1 | 1; bayIdx: number }[] = [];
-    if (isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isCobaltVeilDolby) return arr;
+    if (isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX) return arr;
+    if (isCobaltVeilDolby) {
+      // 6 symmetrical matte-black directional surround speakers mounted cleanly along the molten-amber wave ridge
+      const countPerSide = 6;
+      const zMin = -L * 0.482;
+      const zMax = L * 0.482;
+      const zStart = Math.max(frontZ + 5.2, config.firstRowZ - 0.8);
+      const zEnd = Math.min(backZ - 2.6, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.4);
+      for (let i = 0; i < countPerSide; i++) {
+        const t = countPerSide > 1 ? i / (countPerSide - 1) : 0.5;
+        const spkZ = THREE.MathUtils.lerp(zStart, zEnd, t);
+        const u = THREE.MathUtils.clamp((spkZ - zMin) / Math.max(1, zMax - zMin), 0, 1);
+        const { amberTopY } = getDolbyVeilWaveHeights(u, H, topTierY);
+        const spkY = amberTopY + 0.36;
+        ([-1, 1] as const).forEach((side) => {
+          arr.push({
+            x: side * (W / 2 - 0.45),
+            y: spkY,
+            z: spkZ,
+            side,
+            bayIdx: i,
+          });
+        });
+      }
+      return arr;
+    }
     if (isMandap2d) {
       const bayCount = 5;
       const zMin = -L * 0.415;
@@ -410,17 +482,20 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return arr;
     }
     if (isParametricObsidian) {
-      const countPerSide = 7;
-      const zStart = Math.max(frontZ + 4.8, config.firstRowZ - 1.2);
-      const zEnd = Math.min(backZ - 2.4, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.4);
-      const channelY = Math.min(H - 2.3, Math.max(topTierY + 1.35, H * 0.61));
+      // 5 rugged matte-black commercial surround speakers per side wall ascending gently toward rear rows
+      const countPerSide = 5;
+      const zStart = Math.max(frontZ + 4.8, config.firstRowZ - 1.0);
+      const zEnd = Math.min(backZ - 2.6, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.2);
+      const yLow = Math.max(4.6, H * 0.32);
+      const yHigh = Math.min(H - 2.6, topTierY + 1.85);
       for (let i = 0; i < countPerSide; i++) {
         const t = countPerSide > 1 ? i / (countPerSide - 1) : 0.5;
         const spkZ = THREE.MathUtils.lerp(zStart, zEnd, t);
+        const spkY = THREE.MathUtils.lerp(yLow, yHigh, t);
         ([-1, 1] as const).forEach((side) => {
           arr.push({
-            x: side * (W / 2 - 0.38),
-            y: channelY,
+            x: side * (W / 2 - 0.68),
+            y: spkY,
             z: spkZ,
             side,
             bayIdx: i,
@@ -588,9 +663,9 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     return arr;
   }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
 
-  // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on private residential rear walls, ScreenX & Dolby Cobalt Veil hidden fabric walls)
+  // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on private residential rear walls & ScreenX 3-wall halls)
   const rearSpeakerPositions = useMemo(() => {
-    if (isPrivateVolcanic || isPrivateChampagne || isScreenX || isCobaltVeilDolby) return [];
+    if (isPrivateVolcanic || isPrivateChampagne || isScreenX) return [];
     const boothY = isIce
       ? Math.min(H - 1.65, Math.max(10.35, topTierY + 5.6))
       : Math.min(H - 1.4, topTierY + 3.25);
@@ -599,7 +674,13 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
     const winBot = Math.max(0.25, boothY - boothWinH / 2);
     const winMidY = (winTop + winBot) / 2;
-    const rearZ = isParametricObsidian ? backZ - 0.42 : isBiophilicMoss ? backZ - 0.31 : backZ - 0.21;
+    const rearZ = isCobaltVeilDolby
+      ? backZ - 0.46
+      : isParametricObsidian
+        ? backZ - 0.68
+        : isBiophilicMoss
+          ? backZ - 0.31
+          : backZ - 0.21;
 
     const list: { x: number; y: number; z: number; yaw: number; pitch: number }[] = [];
 
@@ -649,7 +730,21 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
   // Overhead height speaker coordinates (ICE, ScreenX, Modern Multiplex, Dolby Atmos, IMAX 12-Channel, Private Salons & bespoke 4DX ceilings)
   const atmosSpeakerPositions = useMemo(() => {
     const pts: { x: number; y: number; z: number; side: -1 | 1 }[] = [];
-    if (isCobaltVeilDolby) return pts;
+    if (isCobaltVeilDolby) {
+      const xs = [-W * 0.25, 0, W * 0.25];
+      const zs = [-L * 0.28, -L * 0.095, L * 0.095, L * 0.28];
+      xs.forEach((x, xi) => {
+        zs.forEach((z) => {
+          pts.push({
+            x,
+            y: H - 0.2,
+            z,
+            side: xi === 0 ? -1 : 1,
+          });
+        });
+      });
+      return pts;
+    }
     if (isScreenX) {
       if (config.ceilingLightStyle === 'screenx_stepped_tray_pods') {
         const xs = [-W * 0.145, W * 0.145];
@@ -726,18 +821,18 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return pts;
     }
     if (isParametricObsidian) {
-      const countPerRow = 6;
-      const xs = [-W * 0.22, W * 0.22];
-      const zStart = Math.max(frontZ + 4.4, config.firstRowZ - 3.2);
-      const zEnd = Math.min(backZ - 3.2, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.8);
+      const countPerRow = 4;
+      const xs = [-W * 0.3, -W * 0.1, W * 0.1, W * 0.3];
+      const zStart = Math.max(frontZ + 5.2, config.firstRowZ - 3.0);
+      const zEnd = Math.min(backZ - 3.6, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.4);
       xs.forEach((x, xi) => {
         for (let i = 0; i < countPerRow; i++) {
           const t = countPerRow > 1 ? i / (countPerRow - 1) : 0.5;
           pts.push({
             x,
-            y: H - 0.21,
+            y: H - 0.2,
             z: THREE.MathUtils.lerp(zStart, zEnd, t),
-            side: xi === 0 ? -1 : 1,
+            side: xi < 2 ? -1 : 1,
           });
         }
       });
@@ -911,8 +1006,8 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           />
         ))}
 
-        {/* Subtle Cinema Power Status Badge LED (omitted on Sylva Moss 250 so recessed speakers remain unlit) */}
-        {!isBiophilicMoss && (
+        {/* Subtle Cinema Power Status Badge LED (omitted on Sylva Moss 250 & Dolby Cobalt Veil 250 so surrounds remain sleek matte black) */}
+        {!isBiophilicMoss && !isCobaltVeilDolby && (
           <mesh position={[0, -0.285, 0.186]} material={materials.statusLedMat}>
             <boxGeometry args={[0.045, 0.012, 0.008]} />
           </mesh>
@@ -947,7 +1042,48 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
 
       {/* Overhead Dolby Atmos Ceiling Gimbal Speaker Pods / Concealed Flush Architectural Ceiling Speakers */}
       {atmosSpeakerPositions.map((ap, i) =>
-        isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss ? (
+        isCobaltVeilDolby ? (
+          <group
+            key={`atmos-cobalt-flush-${i}`}
+            position={[ap.x, ap.y, ap.z]}
+          >
+            {/* Outer Anodized Gunmetal Flush Ceiling Ring */}
+            <mesh
+              position={[0, -0.006, 0]}
+              geometry={geometries.cobaltAtmosBezelGeo}
+              material={materials.cobaltAtmosBezelMat}
+            />
+            {/* Satin Dark-Bronze Recessed Trim Ring */}
+            <mesh
+              position={[0, -0.01, 0]}
+              geometry={geometries.cobaltAtmosTrimGeo}
+              material={materials.cobaltAtmosBronzeTrimMat}
+            />
+            {/* Perforated Acoustic Speaker Grille Disc */}
+            <mesh
+              position={[0, -0.014, 0]}
+              geometry={geometries.cobaltAtmosGrilleGeo}
+              material={materials.cobaltAtmosGrilleMat}
+            />
+            {/* Centered Flush Coaxial Atmos Driver */}
+            <group position={[0, -0.022, 0]}>
+              <mesh
+                geometry={geometries.cobaltAtmosDriverRimGeo}
+                material={materials.cobaltAtmosBezelMat}
+              />
+              <mesh
+                position={[0, 0.004, 0]}
+                geometry={geometries.cobaltAtmosDriverConeGeo}
+                material={materials.coneMat}
+              />
+              <mesh
+                position={[0, -0.002, 0]}
+                geometry={geometries.cobaltAtmosTweeterGeo}
+                material={materials.hornThroatMat}
+              />
+            </group>
+          </group>
+        ) : isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d || isBiophilicMoss ? (
           <group
             key={`atmos-flush-${i}`}
             position={[ap.x, ap.y, ap.z]}
@@ -956,7 +1092,7 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
             <mesh
               position={[0, 0.004, 0]}
               geometry={geometries.flushCeilingTrimGeo}
-              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss ? materials.cabinetMat : materials.darkSteelMat}
+              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d || isBiophilicMoss ? materials.cabinetMat : materials.darkSteelMat}
             />
             <mesh
               position={[0, 0.001, 0]}
@@ -1003,9 +1139,11 @@ export const CinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
                 geometry={geometries.atmosTweeterPodGeo}
                 material={materials.hornThroatMat}
               />
-              <mesh position={[0, -0.145, 0.21]} material={materials.statusLedMat}>
-                <boxGeometry args={[0.05, 0.01, 0.01]} />
-              </mesh>
+              {!isParametricObsidian && (
+                <mesh position={[0, -0.145, 0.21]} material={materials.statusLedMat}>
+                  <boxGeometry args={[0.05, 0.01, 0.01]} />
+                </mesh>
+              )}
             </group>
           </group>
         ),

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
 import { SeatData, SeatModelType, TheaterConfiguration } from '../../types/cinema';
-import { createSeatUpholsteryTextures } from '../materials/proceduralTextures';
+import { createMarbleTrayTexture, createSeatUpholsteryTextures } from '../materials/proceduralTextures';
 import {
   applyScreenBounceToMaterial,
   ScreenBounceUniforms,
@@ -802,15 +802,22 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
           ? 'boucle'
           : isIceObsidianRecliner
             ? 'suede'
-            : isIceRecliner || isDolbyObsidianSeat || isDolbyVeilSeat
-              ? 'blue_stitched'
-              : isArctic4dxPod
-                ? 'violet_stitched'
-                : isThunder4dxPod
-                  ? 'perforated'
-                  : 'default',
+            : isDolbyVeilSeat
+              ? 'charcoal_knit'
+              : isIceRecliner || isDolbyObsidianSeat
+                ? 'blue_stitched'
+                : isArctic4dxPod
+                  ? 'violet_stitched'
+                  : isThunder4dxPod
+                    ? 'perforated'
+                    : 'default',
       ),
     [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat],
+  );
+
+  const marbleTrayMap = useMemo(
+    () => (isDolbyVeilSeat ? createMarbleTrayTexture() : null),
+    [isDolbyVeilSeat],
   );
 
   // Group 4-seat hydraulic motion pods so every 4-seat bank sits on an articulated hydraulic chassis deck
@@ -844,8 +851,9 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
   useEffect(() => {
     return () => {
       upholsteryTex.dispose();
+      marbleTrayMap?.dispose();
     };
-  }, [upholsteryTex]);
+  }, [upholsteryTex, marbleTrayMap]);
 
   const materials = useMemo(() => {
     const primaryMat = applyScreenBounceToMaterial(
@@ -853,7 +861,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         color: '#ffffff',
         map: upholsteryTex.map,
         bumpMap: upholsteryTex.bumpMap,
-        bumpScale: isDolbyObsidianSeat || isDolbyCobaltSeat || isDolbyVeilSeat ? 0.008 : isLeather ? 0.009 : 0.014,
+        bumpScale: isDolbyVeilSeat ? 0.011 : isDolbyObsidianSeat || isDolbyCobaltSeat ? 0.008 : isLeather ? 0.009 : 0.014,
         roughness: isIceObsidianRecliner
           ? 0.78
           : isWalnutLoveseat
@@ -869,7 +877,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                     : isParametricPurpleSeat
                       ? 0.9
                       : isDolbyVeilSeat
-                        ? 0.56
+                        ? 0.88
                         : isImaxSolarSeat
                           ? 0.48
                           : isImaxRocker
@@ -879,7 +887,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                               : isLeather
                                 ? 0.28
                                 : 0.72,
-        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.01 : isDolbyVeilSeat ? 0.03 : isImaxRocker ? 0.05 : isLeather ? 0.07 : 0.02,
+        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker ? 0.05 : isLeather ? 0.07 : 0.02,
       }),
       screenBounceUniforms,
     );
@@ -908,19 +916,21 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                           ? '#9d522b'
                           : isChampagneDaybed
                             ? '#0f3b2e'
-                            : isDolbyObsidianSeat || isDolbyVeilSeat
-                              ? '#0b0d12'
-                              : isDolbyCobaltSeat
-                                ? '#1a1412'
-                                : isImaxAuroraSeat
-                                  ? '#2e3440'
-                                  : isImaxSolarSeat
-                                    ? '#134c59'
-                                    : isThunder4dxPod
-                                      ? '#363b44'
-                                      : isAny4dxPod
-                                        ? '#16181f'
-                                        : environmentProfile.seatTrimColor,
+                            : isDolbyVeilSeat
+                              ? '#1a1c22'
+                              : isDolbyObsidianSeat
+                                ? '#0b0d12'
+                                : isDolbyCobaltSeat
+                                  ? '#1a1412'
+                                  : isImaxAuroraSeat
+                                    ? '#2e3440'
+                                    : isImaxSolarSeat
+                                      ? '#134c59'
+                                      : isThunder4dxPod
+                                        ? '#363b44'
+                                        : isAny4dxPod
+                                          ? '#16181f'
+                                          : environmentProfile.seatTrimColor,
         roughness: isIceRecliner
           ? 0.28
           : isIceCobaltArmchair
@@ -944,7 +954,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                             : isThunder4dxPod
                               ? 0.34
                               : isDolbyVeilSeat
-                                ? 0.54
+                                ? 0.52
                                 : isDolbyObsidianSeat || isDolbyCobaltSeat
                                   ? 0.35
                                   : seatModel === '4dx_motion' || isAny4dxPod
@@ -975,7 +985,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                               : isAny4dxPod
                                 ? 0.18
                                 : isDolbyVeilSeat
-                                  ? 0.05
+                                  ? 0.04
                                   : isDolbyObsidianSeat || isDolbyCobaltSeat
                                     ? 0.08
                                     : 0.28,
@@ -984,19 +994,21 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     );
     const charcoalBolsterMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isIceRecliner
-          ? '#475263'
-          : isIceCobaltArmchair
-            ? '#7d6e60'
-            : isIceObsidianRecliner
-              ? '#282c32'
-              : isMultiplexScreenXRocker || isParametricPurpleSeat
-                ? '#1b1e26'
-                : isBiophilicMossSeat
-                  ? '#272c30'
-                  : '#272a31',
-        roughness: isIceObsidianRecliner || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.88 : isIceRecliner || isIceCobaltArmchair ? 0.46 : 0.8,
-        metalness: 0.02,
+        color: isDolbyVeilSeat
+          ? '#c46818'
+          : isIceRecliner
+            ? '#475263'
+            : isIceCobaltArmchair
+              ? '#7d6e60'
+              : isIceObsidianRecliner
+                ? '#282c32'
+                : isMultiplexScreenXRocker || isParametricPurpleSeat
+                  ? '#1b1e26'
+                  : isBiophilicMossSeat
+                    ? '#272c30'
+                    : '#272a31',
+        roughness: isDolbyVeilSeat ? 0.36 : isIceObsidianRecliner || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.88 : isIceRecliner || isIceCobaltArmchair ? 0.46 : 0.8,
+        metalness: isDolbyVeilSeat ? 0.04 : 0.02,
       }),
       screenBounceUniforms,
     );
@@ -1035,8 +1047,10 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
               ? '#c7b28f'
               : isIceObsidianRecliner
                 ? '#1e2228'
-                : isDolbyObsidianSeat || isDolbyVeilSeat
-                  ? '#1a2b4a'
+                : isDolbyVeilSeat
+                  ? '#9a5e24'
+                  : isDolbyObsidianSeat
+                    ? '#1a2b4a'
                   : isDolbyCobaltSeat
                     ? '#242934'
                     : seatModel === 'private_recliner' || isChampagneDaybed
@@ -1106,19 +1120,22 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     });
     const sideTableTopMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isScreenXPit
-          ? '#b8cce0'
-          : isWalnutLoveseat
-            ? '#e2ddd4'
-            : isIceObsidianRecliner
-              ? '#4b2e1b'
-              : isIceCobaltArmchair
-                ? '#6e4e35'
-                : isChampagneDaybed
-                  ? '#352d26'
-                  : '#13161c',
-        roughness: isScreenXPit ? 0.16 : isWalnutLoveseat ? 0.32 : isIceObsidianRecliner ? 0.44 : isChampagneDaybed ? 0.62 : 0.42,
-        metalness: isScreenXPit ? 0.12 : isWalnutLoveseat ? 0.06 : isChampagneDaybed || isIceObsidianRecliner ? 0.08 : 0.26,
+        map: isDolbyVeilSeat && marbleTrayMap ? marbleTrayMap : undefined,
+        color: isDolbyVeilSeat
+          ? '#ffffff'
+          : isScreenXPit
+            ? '#b8cce0'
+            : isWalnutLoveseat
+              ? '#e2ddd4'
+              : isIceObsidianRecliner
+                ? '#4b2e1b'
+                : isIceCobaltArmchair
+                  ? '#6e4e35'
+                  : isChampagneDaybed
+                    ? '#352d26'
+                    : '#13161c',
+        roughness: isDolbyVeilSeat ? 0.2 : isScreenXPit ? 0.16 : isWalnutLoveseat ? 0.32 : isIceObsidianRecliner ? 0.44 : isChampagneDaybed ? 0.62 : 0.42,
+        metalness: isDolbyVeilSeat ? 0.08 : isScreenXPit ? 0.12 : isWalnutLoveseat ? 0.06 : isChampagneDaybed || isIceObsidianRecliner ? 0.08 : 0.26,
         transparent: isScreenXPit,
         opacity: isScreenXPit ? 0.88 : 1.0,
       }),
@@ -1178,6 +1195,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     environmentProfile,
     seatModel,
     upholsteryTex,
+    marbleTrayMap,
     isLeather,
     isIceRecliner,
     isIceCobaltArmchair,
@@ -1282,17 +1300,19 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
           : isIceObsidianRecliner
             ? new THREE.CylinderGeometry(0.016, 0.018, 0.12, 10)
             : new THREE.CylinderGeometry(0.032, 0.055, 0.56, 12);
-    const sideTableTopGeo = isScreenXPit
-      ? new THREE.BoxGeometry(0.155, 0.014, 0.265)
-      : isChampagneDaybed
-        ? new THREE.CylinderGeometry(0.24, 0.24, 0.042, 20)
-        : isWalnutLoveseat
-          ? new THREE.CylinderGeometry(0.2, 0.2, 0.028, 22)
-          : isIceObsidianRecliner
-            ? new THREE.BoxGeometry(0.27, 0.022, 0.34)
-            : isIceCobaltArmchair
-              ? new THREE.CylinderGeometry(0.18, 0.18, 0.032, 18)
-              : new THREE.BoxGeometry(0.36, 0.036, 0.48);
+    const sideTableTopGeo = isDolbyVeilSeat
+      ? new THREE.BoxGeometry(0.19, 0.022, 0.31)
+      : isScreenXPit
+        ? new THREE.BoxGeometry(0.155, 0.014, 0.265)
+        : isChampagneDaybed
+          ? new THREE.CylinderGeometry(0.24, 0.24, 0.042, 20)
+          : isWalnutLoveseat
+            ? new THREE.CylinderGeometry(0.2, 0.2, 0.028, 22)
+            : isIceObsidianRecliner
+              ? new THREE.BoxGeometry(0.27, 0.022, 0.34)
+              : isIceCobaltArmchair
+                ? new THREE.CylinderGeometry(0.18, 0.18, 0.032, 18)
+                : new THREE.BoxGeometry(0.36, 0.036, 0.48);
     const throwPillowGeo = buildErgonomicCushionGeo(0.35, 0.31, 0.12);
     const throwBlanketGeo = buildErgonomicCushionGeo(0.46, 0.065, 0.52);
     const lampStemGeo = new THREE.CylinderGeometry(0.014, 0.022, 0.48, 10);
@@ -1327,7 +1347,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       lampStemGeo,
       lampShadeGeo,
     };
-  }, [props, isScreenXPit, isChampagneDaybed, isWalnutLoveseat, isIceObsidianRecliner, isIceCobaltArmchair, isParametricPurpleSeat]);
+  }, [props, isDolbyVeilSeat, isScreenXPit, isChampagneDaybed, isWalnutLoveseat, isIceObsidianRecliner, isIceCobaltArmchair, isParametricPurpleSeat]);
 
   useEffect(() => {
     return () => {
@@ -1358,6 +1378,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     const cognacAnilineColor = new THREE.Color('#9d522b');
     const cashmereCognacPillow = new THREE.Color('#9d522b');
     const cashmereOatmealPillow = new THREE.Color('#dfd5c4');
+    const dolbyVeilCharcoalHeadrest = new THREE.Color('#21242b');
 
     const setSeatPart = (
       sx: number,
@@ -1424,13 +1445,15 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                       ? charcoalGreyHeadrestColor
                       : isImaxSolarSeat && !isSelected && !isHovered && !isUnavailable
                         ? deepTealHeadrestColor
-                        : (isDolbyObsidianSeat || isDolbyVeilSeat) && !isSelected && !isHovered && !isUnavailable
-                          ? jetBlackColor
-                          : isScreenXPit && !isSelected && !isHovered && !isUnavailable
+                        : isDolbyVeilSeat && !isSelected && !isHovered && !isUnavailable
+                          ? dolbyVeilCharcoalHeadrest
+                          : isDolbyObsidianSeat && !isSelected && !isHovered && !isUnavailable
                             ? jetBlackColor
-                            : (isMultiplexScreenXRocker || isMandapSeat || isBiophilicMossSeat) && !isSelected && !isHovered && !isUnavailable
-                              ? multiplexCharcoalTechColor
-                              : instanceColor;
+                            : isScreenXPit && !isSelected && !isHovered && !isUnavailable
+                              ? jetBlackColor
+                              : (isMultiplexScreenXRocker || isMandapSeat || isBiophilicMossSeat) && !isSelected && !isHovered && !isUnavailable
+                                ? multiplexCharcoalTechColor
+                                : instanceColor;
 
       // Seat cushion (Saddle-Tan Italian leather daybed mattress on Champagne Ivory Lounge)
       setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.cushionPos[0], props.cushionPos[1], props.cushionPos[2], -0.05, 1, 1, 1);
@@ -1448,12 +1471,12 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       headrestRef.current?.setColorAt(idx, headrestColor);
 
       // Left & Right Sculpted Armrests (wide armrests on IMAX Aurora/Obsidian Amber & Dolby halls)
-      const armScaleX = isDolbyCobaltSeat ? 1.24 : isImaxAuroraSeat || isImaxSolarSeat ? 1.22 : isDolbyObsidianSeat || isDolbyVeilSeat ? 1.12 : 1.0;
+      const armScaleX = isDolbyCobaltSeat || isDolbyVeilSeat ? 1.24 : isImaxAuroraSeat || isImaxSolarSeat ? 1.22 : isDolbyObsidianSeat ? 1.12 : 1.0;
       const effectiveArmOffsetX = isDolbyCobaltSeat
         ? props.armOffsetX + 0.018
-        : isImaxAuroraSeat || isImaxSolarSeat
+        : isDolbyVeilSeat || isImaxAuroraSeat || isImaxSolarSeat
           ? props.armOffsetX + 0.014
-          : isDolbyObsidianSeat || isDolbyVeilSeat
+          : isDolbyObsidianSeat
             ? props.armOffsetX + 0.008
             : props.armOffsetX;
       setSeatPart(sx, sy, sz, yaw, cosY, sinY, -effectiveArmOffsetX, props.armPosY, props.armPosZ, 0, armScaleX, 1, 1);
@@ -1504,6 +1527,22 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         );
         footrestRef.current.setMatrixAt(idx, dummy.matrix);
         footrestRef.current.setColorAt(idx, footrestColor);
+      }
+
+      // Dolby Veil 250 Integrated Honed Dark Marble Armrest Tray Mounted Flush on Left Wide Armrest
+      if (isDolbyVeilSeat && sideTableTopRef.current) {
+        setSeatPart(
+          sx,
+          sy,
+          sz,
+          yaw,
+          cosY,
+          sinY,
+          -effectiveArmOffsetX,
+          props.armPosY + props.armHeight * 0.5 + 0.009,
+          props.armPosZ - 0.04,
+        );
+        sideTableTopRef.current.setMatrixAt(idx, dummy.matrix);
       }
 
       // ScreenX Modular Lounge Pit Integrated Frosted-Glass Wireless Charging Panels Mounted Flush on Exposed Armrests
@@ -1677,7 +1716,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         sideTableTopRef.current.setMatrixAt(idx, dummy.matrix);
       }
 
-      if (isImaxVipTwoTone || isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat) {
+      if (isImaxVipTwoTone || isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat) {
         if (leftBolsterRef.current) {
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, -props.backrestWidth * 0.45, props.backrestPos[1] - 0.02, props.backrestPos[2] - 0.06, props.backrestTilt);
           leftBolsterRef.current.setMatrixAt(idx, dummy.matrix);
@@ -1901,27 +1940,27 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         />
       )}
       {(isWalnutLoveseat || isChampagneDaybed || isIceCobaltArmchair || isIceObsidianRecliner || isScreenXPit) && (
-        <>
-          <instancedMesh
-            ref={sideTablePostRef}
-            args={[
-              geometries.sideTablePostGeo,
-              isChampagneDaybed
-                ? materials.sideTableTopMat
-                : isWalnutLoveseat
-                  ? materials.brassLampMat
-                  : materials.baseMat,
-              count,
-            ]}
-            receiveShadow
-          />
-          <instancedMesh
-            ref={sideTableTopRef}
-            args={[geometries.sideTableTopGeo, materials.sideTableTopMat, count]}
-            castShadow
-            receiveShadow
-          />
-        </>
+        <instancedMesh
+          ref={sideTablePostRef}
+          args={[
+            geometries.sideTablePostGeo,
+            isChampagneDaybed
+              ? materials.sideTableTopMat
+              : isWalnutLoveseat
+                ? materials.brassLampMat
+                : materials.baseMat,
+            count,
+          ]}
+          receiveShadow
+        />
+      )}
+      {(isWalnutLoveseat || isChampagneDaybed || isIceCobaltArmchair || isIceObsidianRecliner || isScreenXPit || isDolbyVeilSeat) && (
+        <instancedMesh
+          ref={sideTableTopRef}
+          args={[geometries.sideTableTopGeo, materials.sideTableTopMat, count]}
+          castShadow
+          receiveShadow
+        />
       )}
       {isWalnutLoveseat && (
         <instancedMesh
@@ -1985,13 +2024,13 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
           receiveShadow
         />
       )}
-      {(isImaxVipTwoTone || isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat) && (
+      {(isImaxVipTwoTone || isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat) && (
         <>
           <instancedMesh
             ref={leftBolsterRef}
             args={[
               geometries.bolsterGeo,
-              isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? materials.charcoalBolsterMat : materials.trimMat,
+              isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? materials.charcoalBolsterMat : materials.trimMat,
               count,
             ]}
             receiveShadow
@@ -2000,7 +2039,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
             ref={rightBolsterRef}
             args={[
               geometries.bolsterGeo,
-              isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? materials.charcoalBolsterMat : materials.trimMat,
+              isVolcanicCopperSeat || isAnyIceSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? materials.charcoalBolsterMat : materials.trimMat,
               count,
             ]}
             receiveShadow
