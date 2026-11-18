@@ -3317,3 +3317,286 @@ export function createTBarCeilingGridTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * High-relief preserved moss / stabilized lichen cluster diffuse & bump textures
+ * for Sylva Moss 250 polygonal crystalline acoustic wall panels.
+ */
+export function createMossFoliageTextures(): {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+  dispose: () => void;
+} {
+  const size = 512;
+  const mapCanvas = document.createElement('canvas');
+  mapCanvas.width = size;
+  mapCanvas.height = size;
+  const mCtx = mapCanvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = size;
+  bumpCanvas.height = size;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  // Base deep moss crevice fill
+  mCtx.fillStyle = '#8b8b8b';
+  mCtx.fillRect(0, 0, size, size);
+  bCtx.fillStyle = '#383838';
+  bCtx.fillRect(0, 0, size, size);
+
+  const hash = (a: number, b: number) => {
+    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  // Multi-scale organic coral-like moss tufts wrapped across edges for seamless tiling
+  const drawTuft = (cx: number, cy: number, rad: number, bright: number, dark: number) => {
+    for (let ox = -size; ox <= size; ox += size) {
+      for (let oy = -size; oy <= size; oy += size) {
+        const x = cx + ox;
+        const y = cy + oy;
+        if (x < -rad || x > size + rad || y < -rad || y > size + rad) continue;
+
+        // Shadow pore beneath tuft
+        mCtx.fillStyle = `rgb(${dark},${dark},${dark})`;
+        mCtx.beginPath();
+        mCtx.arc(x + 1.5, y + 2.0, rad * 1.05, 0, Math.PI * 2);
+        mCtx.fill();
+
+        // Highlight tuft crown
+        mCtx.fillStyle = `rgb(${bright},${bright},${bright})`;
+        mCtx.beginPath();
+        mCtx.arc(x, y, rad * 0.78, 0, Math.PI * 2);
+        mCtx.fill();
+
+        // Matching bump height gradient
+        const grad = bCtx.createRadialGradient(x, y, 0, x, y, rad);
+        grad.addColorStop(0, `rgb(${Math.min(255, bright + 24)},${Math.min(255, bright + 24)},${Math.min(255, bright + 24)})`);
+        grad.addColorStop(0.65, `rgb(${Math.max(40, bright - 40)},${Math.max(40, bright - 40)},${Math.max(40, bright - 40)})`);
+        grad.addColorStop(1, 'rgba(32,32,32,0)');
+        bCtx.fillStyle = grad;
+        bCtx.beginPath();
+        bCtx.arc(x, y, rad, 0, Math.PI * 2);
+        bCtx.fill();
+      }
+    }
+  };
+
+  // Coarse foliage clusters
+  for (let i = 0; i < 620; i++) {
+    const cx = hash(i, 1) * size;
+    const cy = hash(i, 2) * size;
+    const rad = 6 + hash(i, 3) * 11;
+    const bright = Math.round(165 + hash(i, 4) * 70);
+    const dark = Math.round(62 + hash(i, 5) * 42);
+    drawTuft(cx, cy, rad, bright, dark);
+  }
+
+  // Fine granular lichen stipple
+  for (let i = 0; i < 3600; i++) {
+    const cx = hash(i, 11) * size;
+    const cy = hash(i, 12) * size;
+    const rad = 1.6 + hash(i, 13) * 3.4;
+    const val = hash(i, 14) > 0.42 ? Math.round(195 + hash(i, 15) * 58) : Math.round(45 + hash(i, 16) * 48);
+    mCtx.fillStyle = `rgb(${val},${val},${val})`;
+    mCtx.fillRect(cx, cy, rad, rad);
+
+    bCtx.fillStyle = `rgb(${val},${val},${val})`;
+    bCtx.fillRect(cx, cy, rad, rad);
+  }
+
+  const map = new THREE.CanvasTexture(mapCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Matte dark-espresso/charcoal suspended acoustic tile ceiling texture with subtle micro-grid seams.
+ */
+export function createEspressoAcousticTileCeilingTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#151311';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 6000; i++) {
+    const px = (i * 79 + (i % 17) * 13) % size;
+    const py = (i * 137 + (i % 23) * 11) % size;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(38, 34, 30, 0.26)' : 'rgba(6, 5, 4, 0.5)';
+    ctx.fillRect(px, py, 2, 2);
+  }
+
+  const step = size / 4;
+  ctx.strokeStyle = '#25211d';
+  ctx.lineWidth = 3;
+  for (let i = 0; i <= 4; i++) {
+    const p = i * step;
+    ctx.beginPath();
+    ctx.moveTo(p, 0);
+    ctx.lineTo(p, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, p);
+    ctx.lineTo(size, p);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(8, 8);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/**
+ * Smooth asymmetric cyan-blue channel wash texture for IMAX Cobalt Horizon
+ * diagonal recessed light slots grazing adjacent dark acoustic wave panels.
+ */
+export function createImaxCyanChannelWashTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0.0, '#04070c');
+  grad.addColorStop(0.24, '#072240');
+  grad.addColorStop(0.45, '#0ea5e9');
+  grad.addColorStop(0.5, '#e0f7ff');
+  grad.addColorStop(0.55, '#0ea5e9');
+  grad.addColorStop(0.76, '#072240');
+  grad.addColorStop(1.0, '#04070c');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 32);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+/**
+ * High-contrast illuminated "IMAX with Laser" architectural wall plaque texture
+ * mounted on the dark acoustic front side-wall margin flanking the screen.
+ */
+export function createImaxWithLaserSignTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 640;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d')!;
+
+  // Matte anodized dark charcoal plaque background
+  ctx.fillStyle = '#0e131d';
+  ctx.fillRect(0, 0, 640, 240);
+
+  // Subtle brushed metal highlight border
+  ctx.strokeStyle = '#243045';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(4, 4, 632, 232);
+
+  // Soft backlit blue halo behind IMAX lettering
+  const halo = ctx.createRadialGradient(320, 102, 24, 320, 102, 270);
+  halo.addColorStop(0, 'rgba(56, 189, 248, 0.36)');
+  halo.addColorStop(0.55, 'rgba(37, 99, 235, 0.16)');
+  halo.addColorStop(1, 'rgba(14, 19, 29, 0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, 640, 240);
+
+  // Crisp glowing "IMAX" block wordmark
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '900 112px "Arial Black", Impact, sans-serif';
+  ctx.shadowColor = '#38bdf8';
+  ctx.shadowBlur = 24;
+  ctx.fillStyle = '#60a5fa';
+  ctx.fillText('IMAX', 320, 98);
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = '#e0f2fe';
+  ctx.fillText('IMAX', 320, 98);
+  ctx.restore();
+
+  // "with Laser" subtitle aligned neatly below the right half
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = '600 34px "Segoe UI", Arial, sans-serif';
+  ctx.shadowColor = '#38bdf8';
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#dbeafe';
+  ctx.fillText('with Laser', 486, 174);
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+/**
+ * Matte obsidian-charcoal acoustic tile grid texture for IMAX Cobalt Horizon ceiling soffits & central tray.
+ */
+export function createImaxAcousticTileCeilingTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#0c1018';
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 5400; i++) {
+    const px = (i * 83 + (i % 19) * 11) % size;
+    const py = (i * 139 + (i % 23) * 9) % size;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(30, 40, 58, 0.24)' : 'rgba(3, 5, 9, 0.48)';
+    ctx.fillRect(px, py, 2, 2);
+  }
+
+  const step = size / 4;
+  ctx.strokeStyle = '#19202e';
+  ctx.lineWidth = 3;
+  for (let i = 0; i <= 4; i++) {
+    const p = i * step;
+    ctx.beginPath();
+    ctx.moveTo(p, 0);
+    ctx.lineTo(p, size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, p);
+    ctx.lineTo(size, p);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(9, 10);
+  tex.anisotropy = 8;
+  return tex;
+}

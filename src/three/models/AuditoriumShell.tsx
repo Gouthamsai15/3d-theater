@@ -5,6 +5,8 @@ import { getAisleWorldXs } from '../../config/seating/seatGenerator';
 import {
   createAuditoriumTextures,
   createCarbonFiberTexture,
+  createEspressoAcousticTileCeilingTexture,
+  createImaxAcousticTileCeilingTexture,
   createRowMarkerTexture,
   createTBarCeilingGridTexture,
 } from '../materials/proceduralTextures';
@@ -79,6 +81,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const isVolcanicCopper2d = sideLightStyle === 'volcanic_copper_ribbons';
   const isMandap2d = sideLightStyle === 'indian_mandap_jali';
   const isParametricObsidian = sideLightStyle === 'parametric_obsidian_waves';
+  const isCobaltHorizonImax = sideLightStyle === 'imax_cobalt_wave';
   const isZeroStageImax =
     sideLightStyle === 'imax_cobalt_wave' ||
     sideLightStyle === 'aurora_ribbon_waves' ||
@@ -119,6 +122,16 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
     [ceilingLightStyle],
   );
 
+  const espressoTileCeilingMap = useMemo(
+    () => (ceilingLightStyle === 'espresso_biophilic_atmos' ? createEspressoAcousticTileCeilingTexture() : null),
+    [ceilingLightStyle],
+  );
+
+  const imaxTileCeilingMap = useMemo(
+    () => (ceilingLightStyle === 'imax_starlight_coves' ? createImaxAcousticTileCeilingTexture() : null),
+    [ceilingLightStyle],
+  );
+
   const rowMarkerTextures = useMemo(() => {
     const arr: THREE.CanvasTexture[] = [];
     for (let r = 0; r < seatingRows; r++) {
@@ -133,9 +146,11 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
       textures.dispose();
       carbonFiberMap?.dispose();
       tBarCeilingGridMap?.dispose();
+      espressoTileCeilingMap?.dispose();
+      imaxTileCeilingMap?.dispose();
       rowMarkerTextures.forEach((t) => t.dispose());
     };
-  }, [textures, carbonFiberMap, tBarCeilingGridMap, rowMarkerTextures]);
+  }, [textures, carbonFiberMap, tBarCeilingGridMap, espressoTileCeilingMap, imaxTileCeilingMap, rowMarkerTextures]);
 
   const aisleXs = useMemo(() => getAisleWorldXs(config), [config]);
 
@@ -223,9 +238,11 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
     );
     const ceilingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        map: tBarCeilingGridMap || undefined,
+        map: tBarCeilingGridMap || espressoTileCeilingMap || imaxTileCeilingMap || undefined,
         color:
-          ceilingLightStyle === 'industrial_open_baffle_atmos'
+          ceilingLightStyle === 'industrial_open_baffle_atmos' ||
+          ceilingLightStyle === 'espresso_biophilic_atmos' ||
+          ceilingLightStyle === 'imax_starlight_coves'
             ? '#ffffff'
             : ceilingLightStyle === 'monolithic_acoustic_plaster'
               ? '#030406'
@@ -647,7 +664,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
       matteIndigoDeepMat,
       laserPodBodyMat,
     };
-  }, [textures, carbonFiberMap, tBarCeilingGridMap, environmentProfile, sideLightStyle, ceilingLightStyle, screenBounceUniforms]);
+  }, [textures, carbonFiberMap, tBarCeilingGridMap, espressoTileCeilingMap, environmentProfile, sideLightStyle, ceilingLightStyle, screenBounceUniforms]);
 
   useEffect(() => {
     return () => {
@@ -1431,7 +1448,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
       )}
 
       {/* Slim Matte Obsidian Acoustic Perimeter Seal Around Wall-to-Wall Floor-to-Ceiling 1.90:1 IMAX Screen */}
-      {isZeroStageImax && (
+      {isZeroStageImax && !isCobaltHorizonImax && (
         <group>
           {[-1, 1].map((side) => (
             <mesh
@@ -1444,6 +1461,37 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           ))}
           <mesh position={[0, H - 0.14, frontZ + 0.52]} material={materials.stageMat}>
             <boxGeometry args={[W, 0.28, 0.56]} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Clean Matte-Obsidian Acoustic Proscenium Margins Framing the Curved 1.90:1 IMAX with Laser Screen (Zero Stage Gap) */}
+      {isCobaltHorizonImax && (
+        <group>
+          {[-1, 1].map((side) => (
+            <mesh
+              key={`imax-cobalt-wing-${side}`}
+              position={[side * (W / 2 - wingWidth / 2 - 0.01), H * 0.5, frontZ + 0.36]}
+              material={materials.stageMat}
+              receiveShadow
+            >
+              <boxGeometry args={[wingWidth + 0.16, H - 0.08, 0.6]} />
+            </mesh>
+          ))}
+          {valanceHeight > 0.18 && (
+            <mesh
+              position={[0, H - valanceHeight / 2 - 0.02, frontZ + 0.36]}
+              material={materials.stageMat}
+              receiveShadow
+            >
+              <boxGeometry args={[W - 0.2, valanceHeight + 0.14, 0.58]} />
+            </mesh>
+          )}
+          <mesh
+            position={[0, Math.max(0.12, (screenPosition[1] - screenHeight / 2) * 0.5), frontZ + 0.36]}
+            material={materials.stageMat}
+          >
+            <boxGeometry args={[screenWidth + 0.5, Math.max(0.24, screenPosition[1] - screenHeight / 2 + 0.08), 0.56]} />
           </mesh>
         </group>
       )}
@@ -2338,6 +2386,8 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isScreenX &&
         !isDolbyVeil &&
         !isParametricObsidian &&
+        !isBiophilicMoss &&
+        !isCobaltHorizonImax &&
         [-0.22, 0.22].map((lzFactor, li) => (
           <mesh
             key={`hvac-vent-${li}`}
@@ -2358,11 +2408,12 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         screenBounceUniforms={screenBounceUniforms}
       />
 
-      {/* Emergency Exit Doors near Front Left & Right + Dim EXIT Sign + Red Fire Extinguisher (omitted on private luxury residences, ScreenX & Dolby Cobalt Veil continuous fabric veil walls) */}
+      {/* Emergency Exit Doors near Front Left & Right + Dim EXIT Sign + Red Fire Extinguisher (omitted on private luxury residences, ScreenX, Dolby Cobalt Veil & IMAX Cobalt Horizon clean corners) */}
       {!isPrivateVolcanic &&
         !isPrivateChampagne &&
         !isScreenX &&
         !isDolbyVeil &&
+        !isCobaltHorizonImax &&
         [-1, 1].map((side) => (
           <group
             key={`exit-${side}`}
@@ -2380,6 +2431,24 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
             </mesh>
           </group>
         ))}
+
+      {/* IMAX Cobalt Horizon: Flush Matte-Black Front Proscenium Exit Door & Dim EXIT Sign Next to Lower-Right Screen Corner */}
+      {isCobaltHorizonImax && (
+        <group position={[W / 2 - 0.96, 1.16, frontZ + 0.69]}>
+          <mesh material={materials.stageMat}>
+            <boxGeometry args={[1.18, 2.36, 0.06]} />
+          </mesh>
+          <mesh position={[0, 0, 0.024]} material={materials.doorMat}>
+            <boxGeometry args={[1.06, 2.26, 0.05]} />
+          </mesh>
+          <mesh position={[0.36, -0.05, 0.055]} material={materials.nosingMat}>
+            <boxGeometry args={[0.14, 0.035, 0.03]} />
+          </mesh>
+          <mesh position={[0, 1.36, 0.042]} material={materials.exitSignMat}>
+            <planeGeometry args={[0.48, 0.18]} />
+          </mesh>
+        </group>
+      )}
 
       {/* ===================================================================== */}
       {/* ARCHITECTURAL SIDE WALL BAYS & 15 DISTINCT REALISTIC LIGHT DESIGNS    */}
@@ -3641,96 +3710,234 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
 
 
 
-      {/* IMAX Cobalt Horizon Ceiling: Recessed Starlight Pin-Spot Downlights, Linear Blue Cove Channels & Speaker Rigging Trusses */}
-      {ceilingLightStyle === 'imax_starlight_coves' && (
-        <group>
-          {/* Matte Obsidian Acoustic Ceiling Baffle Beams */}
-          {Array.from({ length: 7 }, (_, i) => (
-            <mesh
-              key={`imax-baffle-${i}`}
-              position={[0, H - 0.3, frontZ + 2.5 + i * ((L - 5.0) / 6)]}
-              material={materials.stageMat}
-            >
-              <boxGeometry args={[W - 0.6, 0.24, 0.28]} />
-            </mesh>
-          ))}
+      {/* IMAX Cobalt Horizon Ceiling: Stepped Matte Acoustic Tile Soffits, Recessed Central Tray with Indirect Royal-Cobalt Cove Lighting, Pin-Spots, Circular HVAC Diffusers & Suspended Central Steel Box-Truss */}
+      {ceilingLightStyle === 'imax_starlight_coves' && (() => {
+        const trayW = W * 0.52;
+        const trayL = L * 0.8;
+        const soffitW = (W - trayW) * 0.5;
+        const headerL = (L - trayL) * 0.5;
+        const soffitY = H - 0.34;
+        const trussRailX = W * 0.14;
+        const trussStartZ = frontZ + 5.8;
+        const trussEndZ = backZ - 6.0;
+        const trussLen = Math.max(8, trussEndZ - trussStartZ);
+        const trussMidZ = (trussStartZ + trussEndZ) * 0.5;
+        const trussY = H - 0.68;
 
-          {/* Twin Longitudinal Dark Steel IMAX Ceiling Speaker Rigging Trusses (aligned above overhead speakers at ±0.22W) */}
-          {[-W * 0.22, W * 0.22].map((tx, ti) => (
-            <group key={`imax-rig-truss-${ti}`} position={[tx, H - 0.54, 0]}>
-              {[-0.14, 0.14].map((cx, ci) => (
-                <mesh key={`imax-chord-${ci}`} position={[cx, 0, 0]} material={materials.nosingMat}>
-                  <boxGeometry args={[0.055, 0.08, L - 3.6]} />
-                </mesh>
-              ))}
-              {Array.from({ length: 14 }, (_, wi) => (
+        return (
+          <group>
+            {/* Left & Right Outer Stepped Acoustic Tile Ceiling Soffits */}
+            {[-1, 1].map((side) => (
+              <group key={`imax-soffit-side-${side}`}>
                 <mesh
-                  key={`imax-web-${wi}`}
-                  position={[0, 0, frontZ + 2.4 + wi * ((L - 4.8) / 13)]}
-                  material={materials.trimMetalMat}
+                  position={[side * (trayW * 0.5 + soffitW * 0.5), soffitY, 0]}
+                  material={materials.ceilingMat}
+                  receiveShadow
                 >
-                  <boxGeometry args={[0.32, 0.045, 0.055]} />
+                  <boxGeometry args={[soffitW, 0.32, L - 0.2]} />
                 </mesh>
-              ))}
-            </group>
-          ))}
-
-          {/* Signature Linear Electric Cobalt-Blue & Cyan Ceiling Cove Channels */}
-          {[-W * 0.42, -W * 0.13, W * 0.13, W * 0.42].map((lx, li) => (
-            <group key={`imax-blue-cove-${li}`} position={[lx, H - 0.24, 0]}>
-              <mesh material={materials.nosingMat}>
-                <boxGeometry args={[0.16, 0.07, L - 2.4]} />
-              </mesh>
-              <mesh position={[0, -0.028, 0]}>
-                <boxGeometry args={[0.06, 0.03, L - 2.6]} />
-                <meshStandardMaterial
-                  color="#0a1224"
-                  emissive={li === 0 || li === 3 ? lightingProfile.wallColor : lightingProfile.accentColor}
-                  emissiveIntensity={wallAccentIntensity * 1.15}
-                  roughness={0.2}
-                />
-              </mesh>
-            </group>
-          ))}
-
-          {/* Cross-Hall Rear & Mid Linear Blue Cove Accent Strips */}
-          {[-L * 0.34, 0, L * 0.34].map((cz, czi) => (
-            <group key={`imax-cross-cove-${czi}`} position={[0, H - 0.24, cz]}>
-              <mesh material={materials.nosingMat}>
-                <boxGeometry args={[W * 0.84, 0.06, 0.14]} />
-              </mesh>
-              <mesh position={[0, -0.025, 0]}>
-                <boxGeometry args={[W * 0.82, 0.028, 0.05]} />
-                <meshStandardMaterial
-                  color="#0a1224"
-                  emissive={lightingProfile.ceilingColor}
-                  emissiveIntensity={wallAccentIntensity * 0.88}
-                  roughness={0.2}
-                />
-              </mesh>
-            </group>
-          ))}
-
-          {/* Recessed Starlight-Style Pin-Spot Downlights Across Dark Acoustic Ceiling */}
-          {[-W * 0.32, -W * 0.16, 0, W * 0.16, W * 0.32].map((dx, di) =>
-            [-L * 0.34, -L * 0.17, 0, L * 0.17, L * 0.34].map((dz, dzi) => (
-              <group key={`imax-pinspot-${di}-${dzi}`} position={[dx, H - 0.205, dz]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.nosingMat}>
-                  <ringGeometry args={[0.05, 0.09, 14]} />
+                {/* Crisp Matte-Black Inner Cove Lip Facing Central Recessed Tray */}
+                <mesh
+                  position={[side * (trayW * 0.5 + 0.05), soffitY - 0.04, 0]}
+                  material={materials.stageMat}
+                >
+                  <boxGeometry args={[0.1, 0.28, trayL + 0.2]} />
                 </mesh>
-                <mesh position={[0, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <circleGeometry args={[0.05, 14]} />
+                {/* Indirect Royal-Cobalt Cove LED Running Along Inner Tray Edge */}
+                <mesh position={[side * (trayW * 0.5 - 0.04), H - 0.25, 0]}>
+                  <boxGeometry args={[0.09, 0.045, trayL - 0.06]} />
                   <meshStandardMaterial
-                    color="#090d16"
-                    emissive={(di + dzi) % 2 === 0 ? '#dbeafe' : '#60a5fa'}
-                    emissiveIntensity={ceilingPuckIntensity * 1.1}
+                    color="#172554"
+                    emissive={lightingProfile.ceilingColor}
+                    emissiveIntensity={wallAccentIntensity * 1.48}
+                    roughness={0.22}
+                    toneMapped={false}
+                  />
+                </mesh>
+                {/* Indirect Royal-Cobalt Grazing Lip Wash */}
+                <mesh position={[side * (trayW * 0.5 - 0.14), H - 0.215, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <planeGeometry args={[0.26, trayL - 0.06]} />
+                  <meshStandardMaterial
+                    color="#0c1938"
+                    emissive="#1d4ed8"
+                    emissiveIntensity={wallAccentIntensity * 0.92}
+                    roughness={0.4}
+                    side={THREE.DoubleSide}
                   />
                 </mesh>
               </group>
-            )),
-          )}
-        </group>
-      )}
+            ))}
+
+            {/* Front & Rear Ceiling Soffit Headers Closing the Recessed Rectangular Tray */}
+            {[
+              { z: frontZ + headerL * 0.5, edgeZ: -trayL * 0.5 },
+              { z: backZ - headerL * 0.5, edgeZ: trayL * 0.5 },
+            ].map((hdr, hi) => (
+              <group key={`imax-soffit-hdr-${hi}`}>
+                <mesh position={[0, soffitY, hdr.z]} material={materials.ceilingMat} receiveShadow>
+                  <boxGeometry args={[trayW + 0.08, 0.32, headerL]} />
+                </mesh>
+                <mesh position={[0, soffitY - 0.04, hdr.edgeZ + (hi === 0 ? -0.05 : 0.05)]} material={materials.stageMat}>
+                  <boxGeometry args={[trayW + 0.12, 0.28, 0.1]} />
+                </mesh>
+                <mesh position={[0, H - 0.25, hdr.edgeZ + (hi === 0 ? 0.04 : -0.04)]}>
+                  <boxGeometry args={[trayW - 0.06, 0.045, 0.09]} />
+                  <meshStandardMaterial
+                    color="#172554"
+                    emissive={lightingProfile.ceilingColor}
+                    emissiveIntensity={wallAccentIntensity * 1.45}
+                    roughness={0.22}
+                    toneMapped={false}
+                  />
+                </mesh>
+              </group>
+            ))}
+
+            {/* Crisp White Circular Recessed Pin-Spot Downlights Along Soffit Shoulders & Central Tray */}
+            {[
+              -trayW * 0.5 - soffitW * 0.26,
+              -trayW * 0.5 - soffitW * 0.62,
+              trayW * 0.5 + soffitW * 0.26,
+              trayW * 0.5 + soffitW * 0.62,
+            ].map((px, pi) =>
+              [-L * 0.35, -L * 0.17, 0.02, L * 0.2, L * 0.36].map((pz, zi) => (
+                <group key={`imax-soffit-pin-${pi}-${zi}`} position={[px, H - 0.503, pz]}>
+                  <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.nosingMat}>
+                    <ringGeometry args={[0.055, 0.095, 16]} />
+                  </mesh>
+                  <mesh position={[0, -0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                    <circleGeometry args={[0.055, 16]} />
+                    <meshStandardMaterial
+                      color="#111827"
+                      emissive="#fff7ed"
+                      emissiveIntensity={ceilingPuckIntensity * 1.45}
+                      toneMapped={false}
+                    />
+                  </mesh>
+                </group>
+              )),
+            )}
+
+            {/* Central Tray Pin-Spots */}
+            {[-trayW * 0.2, trayW * 0.2].map((px, pi) =>
+              [-L * 0.28, 0.0, L * 0.28].map((pz, zi) => (
+                <group key={`imax-tray-pin-${pi}-${zi}`} position={[px, H - 0.203, pz]}>
+                  <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.nosingMat}>
+                    <ringGeometry args={[0.05, 0.085, 14]} />
+                  </mesh>
+                  <mesh position={[0, -0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                    <circleGeometry args={[0.05, 14]} />
+                    <meshStandardMaterial
+                      color="#111827"
+                      emissive="#f8fafc"
+                      emissiveIntensity={ceilingPuckIntensity * 1.3}
+                      toneMapped={false}
+                    />
+                  </mesh>
+                </group>
+              )),
+            )}
+
+            {/* Circular Matte-Black Concentric-Ring Ceiling HVAC Air Diffusers */}
+            {[-trayW * 0.5 - soffitW * 0.44, trayW * 0.5 + soffitW * 0.44].map((vx, vi) =>
+              [-L * 0.26, -L * 0.06, L * 0.14].map((vz, vzi) => (
+                <group key={`imax-round-hvac-${vi}-${vzi}`} position={[vx, H - 0.506, vz]}>
+                  <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.stageMat}>
+                    <cylinderGeometry args={[0.38, 0.38, 0.03, 24]} />
+                  </mesh>
+                  {[0.14, 0.23, 0.32].map((rad, ri) => (
+                    <mesh
+                      key={`hvac-ring-${ri}`}
+                      position={[0, -0.016, 0]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.nosingMat}
+                    >
+                      <torusGeometry args={[rad, 0.012, 8, 24]} />
+                    </mesh>
+                  ))}
+                </group>
+              )),
+            )}
+
+            {/* Central Suspended Matte-Black Steel Lattice Box-Truss Rigging Frame (Holds Overhead Line-Array Clusters) */}
+            <group>
+              {/* Twin Longitudinal 4-Chord Box-Truss Rails */}
+              {[-trussRailX, trussRailX].map((tx, ti) => (
+                <group key={`imax-box-truss-${ti}`} position={[tx, trussY, trussMidZ]}>
+                  {/* 4 Corner Chords */}
+                  {[
+                    [-0.17, -0.17],
+                    [0.17, -0.17],
+                    [-0.17, 0.17],
+                    [0.17, 0.17],
+                  ].map(([cx, cy], ci) => (
+                    <mesh key={`truss-chord-${ci}`} position={[cx, cy, 0]} material={materials.stageMat}>
+                      <boxGeometry args={[0.045, 0.045, trussLen]} />
+                    </mesh>
+                  ))}
+                  {/* Lattice Cross Web Frames & Diagonal Bracing */}
+                  {Array.from({ length: 16 }, (_, wi) => {
+                    const wz = -trussLen * 0.48 + wi * ((trussLen * 0.96) / 15);
+                    return (
+                      <group key={`truss-web-${wi}`} position={[0, 0, wz]}>
+                        {[-0.17, 0.17].map((sy, si) => (
+                          <mesh key={`tw-h-${si}`} position={[0, sy, 0]} material={materials.nosingMat}>
+                            <boxGeometry args={[0.36, 0.028, 0.028]} />
+                          </mesh>
+                        ))}
+                        {[-0.17, 0.17].map((sx, si) => (
+                          <mesh key={`tw-v-${si}`} position={[sx, 0, 0]} material={materials.nosingMat}>
+                            <boxGeometry args={[0.028, 0.36, 0.028]} />
+                          </mesh>
+                        ))}
+                      </group>
+                    );
+                  })}
+                  {/* Vertical Steel Hanger Drop Rods to Ceiling Deck */}
+                  {[-trussLen * 0.4, 0, trussLen * 0.4].map((hz, hi) => (
+                    <mesh key={`truss-hanger-${hi}`} position={[0, 0.34, hz]} material={materials.nosingMat}>
+                      <cylinderGeometry args={[0.022, 0.022, 0.48, 8]} />
+                    </mesh>
+                  ))}
+                </group>
+              ))}
+
+              {/* 3 Cross-Hall Steel Box-Truss Bridges Connecting Left & Right Truss Rails */}
+              {[-L * 0.22, -L * 0.02, L * 0.18].map((bz, bi) => (
+                <group key={`imax-cross-truss-${bi}`} position={[0, trussY, bz]}>
+                  {[
+                    [-0.17, -0.17],
+                    [0.17, -0.17],
+                    [-0.17, 0.17],
+                    [0.17, 0.17],
+                  ].map(([cy, cz], ci) => (
+                    <mesh key={`ct-chord-${ci}`} position={[0, cy, cz]} material={materials.stageMat}>
+                      <boxGeometry args={[trussRailX * 2, 0.042, 0.042]} />
+                    </mesh>
+                  ))}
+                  {Array.from({ length: 11 }, (_, wi) => {
+                    const wx = -trussRailX * 0.88 + wi * ((trussRailX * 1.76) / 10);
+                    return (
+                      <group key={`ct-web-${wi}`} position={[wx, 0, 0]}>
+                        {[-0.17, 0.17].map((sy, si) => (
+                          <mesh key={`ctw-h-${si}`} position={[0, sy, 0]} material={materials.nosingMat}>
+                            <boxGeometry args={[0.026, 0.026, 0.36]} />
+                          </mesh>
+                        ))}
+                        {[-0.17, 0.17].map((sz, si) => (
+                          <mesh key={`ctw-v-${si}`} position={[0, 0, sz]} material={materials.nosingMat}>
+                            <boxGeometry args={[0.026, 0.36, 0.026]} />
+                          </mesh>
+                        ))}
+                      </group>
+                    );
+                  })}
+                </group>
+              ))}
+            </group>
+          </group>
+        );
+      })()}
 
       {/* IMAX Polar Aurora Ceiling: Clean Hexagonal-and-Linear Acoustic Panel Layout, Overhead IMAX Speakers, Soft Recessed Pin-Spot Downlights & Subtle Cool-Blue Perimeter Cove */}
       {ceilingLightStyle === 'imax_angular_grid' && (
@@ -4251,99 +4458,37 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           )}
         </group>
       )}
-      {/* Sylva Moss 250 Ceiling: Dark Matte-Espresso Acoustic Ceiling Layout with Flush Dolby Atmos Bays & Soft Pin-Spot Downlights */}
+      {/* Sylva Moss 250 Ceiling: Flat Dark Matte-Espresso Acoustic Tile Grid with Recessed Pin-Spot Downlights & Flush HVAC Registers */}
       {ceilingLightStyle === 'espresso_biophilic_atmos' && (
         <group>
-          {/* Matte-Espresso Perimeter Acoustic Soffit Border */}
-          {[-1, 1].map((side) => (
-            <mesh
-              key={`biophilic-soffit-x-${side}`}
-              position={[side * (W * 0.45), H - 0.32, 0]}
-              material={materials.matteEspressoCofferMat}
-              receiveShadow
-            >
-              <boxGeometry args={[W * 0.1, 0.34, L - 0.3]} />
-            </mesh>
-          ))}
-          {[-1, 1].map((end) => (
-            <mesh
-              key={`biophilic-soffit-z-${end}`}
-              position={[0, H - 0.32, end * (L * 0.45)]}
-              material={materials.matteEspressoCofferMat}
-              receiveShadow
-            >
-              <boxGeometry args={[W * 0.82, 0.34, L * 0.1]} />
-            </mesh>
-          ))}
-
-          {/* Concealed Soft Warm-Gold Perimeter Edge Halo Inside Espresso Soffit */}
-          {[-1, 1].map((side) => (
-            <mesh
-              key={`biophilic-ceil-halo-x-${side}`}
-              position={[side * (W * 0.398), H - 0.39, 0]}
-            >
-              <boxGeometry args={[0.032, 0.02, L * 0.8]} />
-              <meshStandardMaterial
-                color="#3b2308"
-                emissive={lightingProfile.ceilingColor}
-                emissiveIntensity={wallAccentIntensity * 0.72}
-                toneMapped={false}
-                roughness={0.26}
-              />
-            </mesh>
-          ))}
-
-          {/* Longitudinal Matte-Espresso Acoustic Spine & Flanking Coffer Rails (clear of Atmos speaker axes at ±0.22W) */}
-          {[-W * 0.33, 0, W * 0.33].map((bx, bi) => (
-            <mesh
-              key={`biophilic-beam-x-${bi}`}
-              position={[bx, H - 0.25, 0]}
-              material={materials.matteEspressoCofferMat}
-              receiveShadow
-            >
-              <boxGeometry args={[0.32, 0.22, L * 0.82]} />
-            </mesh>
-          ))}
-
-          {/* Transverse Matte-Espresso Acoustic Beams Interleaving Flush Atmos Speaker Bays */}
-          {[-L * 0.36, -L * 0.19, -L * 0.02, L * 0.15, L * 0.32].map((bz, bi) => (
-            <mesh
-              key={`biophilic-beam-z-${bi}`}
-              position={[0, H - 0.25, bz]}
-              material={materials.matteEspressoCofferMat}
-              receiveShadow
-            >
-              <boxGeometry args={[W * 0.82, 0.22, 0.28]} />
-            </mesh>
-          ))}
-
-          {/* Recessed Matte-Espresso Acoustic Ceiling Field Panels */}
-          {[-W * 0.165, W * 0.165].map((tx, xi) =>
-            [-L * 0.275, -L * 0.105, L * 0.065, L * 0.235].map((tz, zi) => (
-              <mesh
-                key={`biophilic-ceil-bay-${xi}-${zi}`}
-                position={[tx, H - 0.175, tz]}
-                material={materials.espressoCofferPanelMat}
-                receiveShadow
-              >
-                <boxGeometry args={[W * 0.28, 0.08, L * 0.14]} />
-              </mesh>
+          {/* Twin Columns of Flush Matte-Charcoal HVAC Ceiling Registers */}
+          {[-W * 0.14, W * 0.14].map((hx, hi) =>
+            [-L * 0.24, L * 0.08].map((hz, hzi) => (
+              <group key={`biophilic-hvac-${hi}-${hzi}`} position={[hx, H - 0.204, hz]}>
+                <mesh material={materials.matteEspressoCofferMat}>
+                  <boxGeometry args={[0.68, 0.014, 0.68]} />
+                </mesh>
+                <mesh position={[0, -0.008, 0]} material={materials.stageMat}>
+                  <boxGeometry args={[0.56, 0.008, 0.56]} />
+                </mesh>
+              </group>
             )),
           )}
 
-          {/* Soft Warm Pin-Spot Downlights Embedded Cleanly Along Espresso Ceiling Beams */}
-          {[-W * 0.33, 0, W * 0.33].map((dx, di) =>
-            [-L * 0.36, -L * 0.19, -L * 0.02, L * 0.15, L * 0.32].map((dz, dzi) => (
-              <group key={`biophilic-pinspot-${di}-${dzi}`} position={[dx, H - 0.362, dz]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.espressoTrimMat}>
-                  <ringGeometry args={[0.04, 0.074, 14]} />
+          {/* Crisp Rows of Recessed Warm-White Ceiling Pin-Spot Downlights */}
+          {[-W * 0.34, -W * 0.12, W * 0.12, W * 0.34].map((dx, di) =>
+            [-L * 0.36, -L * 0.18, 0, L * 0.18, L * 0.36].map((dz, dzi) => (
+              <group key={`biophilic-pinspot-${di}-${dzi}`} position={[dx, H - 0.206, dz]}>
+                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.matteTitaniumMat}>
+                  <ringGeometry args={[0.044, 0.082, 16]} />
                 </mesh>
-                <mesh position={[0, -0.004, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <circleGeometry args={[0.04, 14]} />
+                <mesh position={[0, -0.003, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <circleGeometry args={[0.044, 16]} />
                   <meshStandardMaterial
-                    color="#1a120a"
-                    emissive="#fde68a"
-                    emissiveIntensity={ceilingPuckIntensity * 0.82}
+                    color="#1a140d"
+                    emissive="#fef3c7"
+                    emissiveIntensity={ceilingPuckIntensity * 1.05}
+                    toneMapped={false}
                   />
                 </mesh>
               </group>
