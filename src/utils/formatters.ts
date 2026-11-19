@@ -68,12 +68,26 @@ export function computeAdaptiveCinemaFov(
   viewportWidth: number,
   viewportHeight: number,
 ): number {
-  const baseFov = categoryId === 'imax' ? 62 : categoryId === 'screenx' ? 60 : 54;
+  const baseFov =
+    categoryId === 'imax'
+      ? 62
+      : categoryId === 'screenx'
+        ? 60
+        : categoryId === 'beach'
+          ? 58
+          : 54;
   if (viewportWidth <= 0 || viewportHeight <= 0) return baseFov;
   const aspect = viewportWidth / viewportHeight;
   if (aspect >= 1.15) return baseFov;
 
-  const targetHFovDeg = categoryId === 'imax' ? 76 : categoryId === 'screenx' ? 74 : 68;
+  const targetHFovDeg =
+    categoryId === 'imax'
+      ? 76
+      : categoryId === 'screenx'
+        ? 74
+        : categoryId === 'beach'
+          ? 72
+          : 68;
   const halfHTan = Math.tan((targetHFovDeg * Math.PI) / 360);
   const desiredVFovDeg = (2 * Math.atan(halfHTan / Math.max(0.35, aspect)) * 180) / Math.PI;
   return Math.max(baseFov, Math.min(95, desiredVFovDeg));

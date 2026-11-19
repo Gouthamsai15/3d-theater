@@ -11,11 +11,15 @@ import {
   Maximize2,
   Minimize,
   Monitor,
+  Moon,
   Pause,
   Play,
   RotateCcw,
+  RotateCw,
   Sliders,
   Sparkles,
+  Sun,
+  Sunset,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -24,7 +28,11 @@ import { CinemaAuditoriumCanvas } from '../../three/scenes/CinemaAuditoriumCanva
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 import { formatDuration, isMobileDevice } from '../../utils/formatters';
 import { screenWakeLock } from '../../utils/wakeLock';
-import { CameraViewMode } from '../../types/cinema';
+import { AuditoriumLightingPreset, CameraViewMode } from '../../types/cinema';
+import {
+  TheaterWalkthroughTour,
+  hasCompletedTheaterTour,
+} from '../../components/common/TheaterWalkthroughTour';
 
 export const VirtualCinemaPage: React.FC = () => {
   const {
@@ -82,6 +90,12 @@ export const VirtualCinemaPage: React.FC = () => {
   const [sceneReady, setSceneReady] = useState(false);
   const [entranceComplete, setEntranceComplete] = useState(false);
   const [viewMode, setViewMode] = useState<CameraViewMode>('seat');
+  const [openLightingPreset, setOpenLightingPreset] =
+    useState<AuditoriumLightingPreset>('doors_open');
+  const [autoStartPausedByUser, setAutoStartPausedByUser] = useState(false);
+  const [showFirstTimeTour, setShowFirstTimeTour] = useState<boolean>(
+    () => !hasCompletedTheaterTour(),
+  );
   const [hoveredSeatId, setHoveredSeatId] = useState<string | null>(null);
   const [seatShiftToast, setSeatShiftToast] = useState<string | null>(null);
 
@@ -470,9 +484,14 @@ export const VirtualCinemaPage: React.FC = () => {
     }, 1250);
   }, [showState, setShowState, primeVideoForGesture, getActiveVideoEl]);
 
-  // Once entrance walk finishes, smoothly start the show after a brief moment in the lit hall
+  // Once entrance walk finishes, auto-start ONLY for returning visitors who have not switched presets
   useEffect(() => {
-    if (entranceComplete && showState === 'AUDITORIUM_OPEN') {
+    if (
+      entranceComplete &&
+      showState === 'AUDITORIUM_OPEN' &&
+      !showFirstTimeTour &&
+      !autoStartPausedByUser
+    ) {
       autoStartTimerRef.current = window.setTimeout(() => {
         beginShowSequence();
       }, 900);
@@ -480,9 +499,10 @@ export const VirtualCinemaPage: React.FC = () => {
     return () => {
       if (autoStartTimerRef.current) {
         window.clearTimeout(autoStartTimerRef.current);
+        autoStartTimerRef.current = null;
       }
     };
-  }, [entranceComplete, showState, beginShowSequence]);
+  }, [entranceComplete, showState, showFirstTimeTour, autoStartPausedByUser, beginShowSequence]);
 
   useEffect(() => {
     return () => {
@@ -939,27 +959,93 @@ export const VirtualCinemaPage: React.FC = () => {
     };
   }, [bumpHudActivity]);
 
-  // Keyboard shortcuts (Space = Pause/Resume, H = Hide Controls)
+  const isTourBlockingShortcuts =
+    sceneReady && entranceComplete && showState === 'AUDITORIUM_OPEN' && showFirstTimeTour;
+
+  // Keyboard-first cinema controls: Space (Play/Pause), F (Fullscreen), 1/2/3 (Seat/Hall/Full), R (Reset gaze), M (Mute), Arrows (-10s/+10s), H (Hide HUD)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTourBlockingShortcuts || showExitConfirm) return;
+      const targetTag = (e.target as HTMLElement | null)?.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return;
+
       if (e.code === 'KeyH') {
+        e.preventDefault();
         setControlsManuallyHidden((v) => !v);
       } else if (e.code === 'Space' && showState === 'SHOW_PLAYING') {
         e.preventDefault();
         const vid = getActiveVideoEl();
         if (!vid) return;
         if (vid.paused) {
+          cinemaAudioEngine.unlockFromGesture();
           vid.play().catch(() => {});
           setIsPaused(false);
         } else {
           vid.pause();
           setIsPaused(true);
         }
+        bumpHudActivity();
+      } else if (e.code === 'KeyF') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          containerRef.current?.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
+        bumpHudActivity();
+      } else if ((e.code === 'Digit1' || e.code === 'Numpad1') && entranceComplete) {
+        e.preventDefault();
+        setViewMode('seat');
+        bumpHudActivity();
+      } else if ((e.code === 'Digit2' || e.code === 'Numpad2') && entranceComplete) {
+        e.preventDefault();
+        setViewMode('hall');
+        bumpHudActivity();
+      } else if ((e.code === 'Digit3' || e.code === 'Numpad3') && entranceComplete) {
+        e.preventDefault();
+        setViewMode('screen_full');
+        bumpHudActivity();
+      } else if (e.code === 'KeyR' && entranceComplete) {
+        e.preventDefault();
+        setViewMode('seat');
+        setResetViewSignal((n) => n + 1);
+        bumpHudActivity();
+      } else if (e.code === 'KeyM') {
+        e.preventDefault();
+        cinemaAudioEngine.unlockFromGesture();
+        updateAudioSettings({ muted: !audioSettingsRef.current.muted });
+        bumpHudActivity();
+      } else if (
+        (e.code === 'ArrowLeft' || e.code === 'ArrowRight') &&
+        showState === 'SHOW_PLAYING'
+      ) {
+        e.preventDefault();
+        const vid = getActiveVideoEl();
+        if (!vid) return;
+        const delta = e.code === 'ArrowLeft' ? -10 : 10;
+        const maxDur = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : duration;
+        const upperBound = maxDur > 0.25 ? maxDur - 0.05 : Math.max(0, maxDur);
+        const nextTime = Math.max(0, Math.min(upperBound, (vid.currentTime || 0) + delta));
+        vid.currentTime = nextTime;
+        lastUiTimeRef.current = nextTime;
+        setCurrentTime(nextTime);
+        bumpHudActivity();
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [showState, setIsPaused, getActiveVideoEl]);
+  }, [
+    showState,
+    entranceComplete,
+    isTourBlockingShortcuts,
+    showExitConfirm,
+    duration,
+    setIsPaused,
+    updateAudioSettings,
+    getActiveVideoEl,
+    bumpHudActivity,
+  ]);
 
   // Fullscreen listener: re-verify continuous smooth video & audio playback after fullscreen transitions
   useEffect(() => {
@@ -1067,6 +1153,20 @@ export const VirtualCinemaPage: React.FC = () => {
     const nextTime = parseFloat(target.value);
     if (!Number.isFinite(nextTime)) return;
     vid.currentTime = nextTime;
+    lastUiTimeRef.current = nextTime;
+    setCurrentTime(nextTime);
+    bumpHudActivity();
+  };
+
+  const handleSkipBy = (deltaSeconds: number) => {
+    if (showState !== 'SHOW_PLAYING') return;
+    const vid = getActiveVideoEl();
+    if (!vid) return;
+    const maxDur = Number.isFinite(vid.duration) && vid.duration > 0 ? vid.duration : duration;
+    const upperBound = maxDur > 0.25 ? maxDur - 0.05 : Math.max(0, maxDur);
+    const nextTime = Math.max(0, Math.min(upperBound, (vid.currentTime || 0) + deltaSeconds));
+    vid.currentTime = nextTime;
+    lastUiTimeRef.current = nextTime;
     setCurrentTime(nextTime);
     bumpHudActivity();
   };
@@ -1193,9 +1293,11 @@ export const VirtualCinemaPage: React.FC = () => {
         screenFraming={screenFraming}
         viewMode={viewMode}
         showState={showState}
+        openLightingPreset={openLightingPreset}
         isPaused={isPaused}
         graphicsQuality={graphicsQuality}
         fourDxSettings={fourDxSettings}
+        audioSettings={audioSettings}
         screenReflectionBrightness={screenReflectionBrightness}
         entranceComplete={entranceComplete}
         onEntranceComplete={handleEntranceComplete}
@@ -1241,11 +1343,46 @@ export const VirtualCinemaPage: React.FC = () => {
         </div>
       )}
 
-      {/* Seated Pre-Show Start CTA */}
+      {/* Pre-Show Lighting Presets + Start Show Bar */}
       {sceneReady && entranceComplete && showState === 'AUDITORIUM_OPEN' && (
-        <div className="absolute bottom-36 sm:bottom-28 left-1/2 z-30 -translate-x-1/2">
+        <div className="absolute bottom-36 sm:bottom-28 left-1/2 z-30 -translate-x-1/2 flex flex-wrap items-center justify-center gap-2 max-w-[94vw]">
+          <div
+            data-tour-id="lighting_presets"
+            className="flex items-center rounded-lg border border-white/15 bg-[#090A0E]/92 p-1 text-[11px]"
+          >
+            {(
+              [
+                { id: 'doors_open', label: 'Doors Open', Icon: Sun },
+                { id: 'pre_show_dim', label: 'Pre-Show Dim', Icon: Sunset },
+                { id: 'feature_blackout', label: 'Blackout', Icon: Moon },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setOpenLightingPreset(id);
+                  setAutoStartPausedByUser(true);
+                  if (autoStartTimerRef.current) {
+                    window.clearTimeout(autoStartTimerRef.current);
+                    autoStartTimerRef.current = null;
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-medium cursor-pointer transition-colors whitespace-nowrap ${
+                  openLightingPreset === id
+                    ? 'bg-white/14 text-[#E5C158] border border-[#D4AF37]/40'
+                    : 'text-neutral-300 hover:text-white border border-transparent'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+
           <button
             type="button"
+            data-tour-id="start_show"
             onClick={beginShowSequence}
             className="inline-flex items-center gap-2 rounded-md bg-[#D4AF37] px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-[#070709] hover:bg-[#E5C158] cursor-pointer shadow-lg whitespace-nowrap"
           >
@@ -1368,7 +1505,10 @@ export const VirtualCinemaPage: React.FC = () => {
         <div className="flex items-center gap-1.5 sm:gap-2">
           {/* View Mode Switcher: Seat / Hall (Click Any Seat) / Full Screen */}
           {entranceComplete && (
-            <div className="flex items-center rounded-lg border border-white/10 bg-[#090A0E]/88 p-0.5 text-[11px] sm:text-xs">
+            <div
+              data-tour-id="view_modes"
+              className="flex items-center rounded-lg border border-white/10 bg-[#090A0E]/88 p-0.5 text-[11px] sm:text-xs"
+            >
               <button
                 type="button"
                 onClick={() => setViewMode('seat')}
@@ -1412,8 +1552,9 @@ export const VirtualCinemaPage: React.FC = () => {
           {viewMode === 'seat' && (
             <button
               type="button"
+              data-tour-id="reset_view"
               onClick={() => setResetViewSignal((n) => n + 1)}
-              title="Reset View to Screen Center"
+              title="Reset View to Screen Center (R)"
               aria-label="Reset View to Screen Center"
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs text-neutral-200 hover:border-[#D4AF37]/60 cursor-pointer"
             >
@@ -1424,6 +1565,7 @@ export const VirtualCinemaPage: React.FC = () => {
 
           <button
             type="button"
+            data-tour-id="exit_show"
             onClick={() => setShowExitConfirm(true)}
             aria-label="Exit Show"
             className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs text-neutral-200 hover:border-red-400/60 hover:text-red-300 cursor-pointer"
@@ -1638,7 +1780,10 @@ export const VirtualCinemaPage: React.FC = () => {
           {/* Main Compact Control Bar */}
           <div className="rounded-xl border border-white/12 bg-[#090A0E]/92 px-3 py-2.5 sm:px-4 sm:py-3 space-y-2">
             {/* Video Progress Scrubber & Exact Timing */}
-            <div className="flex items-center gap-2 sm:gap-3 text-[11px] font-mono-tabular text-neutral-300">
+            <div
+              data-tour-id="scrubber"
+              className="flex items-center gap-2 sm:gap-3 text-[11px] font-mono-tabular text-neutral-300"
+            >
               <span className="min-w-[38px] text-right shrink-0">
                 {formatDuration(currentTime)}
               </span>
@@ -1664,6 +1809,7 @@ export const VirtualCinemaPage: React.FC = () => {
               <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
                 <button
                   type="button"
+                  data-tour-id="play_pause"
                   onClick={togglePlayPause}
                   disabled={showState !== 'SHOW_PLAYING'}
                   aria-label={isPaused ? 'Resume playback' : 'Pause playback'}
@@ -1678,12 +1824,43 @@ export const VirtualCinemaPage: React.FC = () => {
 
                 <button
                   type="button"
+                  data-tour-id="restart_show"
                   onClick={handleRestartShow}
                   title="Restart Show"
                   aria-label="Restart show"
                   className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer shrink-0"
                 >
                   <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </button>
+
+                <button
+                  type="button"
+                  data-tour-id="seek_back_10"
+                  onClick={() => handleSkipBy(-10)}
+                  disabled={showState !== 'SHOW_PLAYING'}
+                  title="Back 10 seconds (Left Arrow)"
+                  aria-label="Rewind 10 seconds"
+                  className="inline-flex h-8 sm:h-9 items-center justify-center gap-1 rounded-md border border-white/10 px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span className="font-mono-tabular text-[10px] sm:text-[11px] font-semibold leading-none">
+                    10
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  data-tour-id="seek_forward_10"
+                  onClick={() => handleSkipBy(10)}
+                  disabled={showState !== 'SHOW_PLAYING'}
+                  title="Forward 10 seconds (Right Arrow)"
+                  aria-label="Forward 10 seconds"
+                  className="inline-flex h-8 sm:h-9 items-center justify-center gap-1 rounded-md border border-white/10 px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
+                >
+                  <span className="font-mono-tabular text-[10px] sm:text-[11px] font-semibold leading-none">
+                    10
+                  </span>
+                  <RotateCw className="h-3.5 w-3.5" />
                 </button>
 
                 <div className="min-w-0 flex-1 pl-0.5 sm:pl-1">
@@ -1701,6 +1878,7 @@ export const VirtualCinemaPage: React.FC = () => {
                 {/* Screen Fill vs Aspect Fit Toggle */}
                 <button
                   type="button"
+                  data-tour-id="screen_framing"
                   onClick={() =>
                     setScreenFraming(screenFraming === 'fill' ? 'fit' : 'fill')
                   }
@@ -1724,6 +1902,7 @@ export const VirtualCinemaPage: React.FC = () => {
                 {selectedTheaterConfig.supports4dxEffects && (
                   <button
                     type="button"
+                    data-tour-id="fourdx_effects"
                     onClick={() => {
                       setShow4dxPopover((v) => !v);
                       setShowMixerPopover(false);
@@ -1740,40 +1919,44 @@ export const VirtualCinemaPage: React.FC = () => {
                 )}
 
                 {/* Mute & Master Volume */}
+                <div data-tour-id="mute_volume" className="flex items-center gap-1.5 sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cinemaAudioEngine.unlockFromGesture();
+                      updateAudioSettings({ muted: !audioSettings.muted });
+                    }}
+                    title="Mute / Unmute (M)"
+                    aria-label={audioSettings.muted ? 'Unmute' : 'Mute'}
+                    className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                  >
+                    {audioSettings.muted ? (
+                      <VolumeX className="h-4 w-4 text-red-400" />
+                    ) : (
+                      <Volume2 className="h-4 w-4" />
+                    )}
+                  </button>
+
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={audioSettings.muted ? 0 : audioSettings.masterVolume}
+                    onChange={(e) =>
+                      updateAudioSettings({
+                        masterVolume: parseFloat(e.target.value),
+                        muted: false,
+                      })
+                    }
+                    aria-label="Master Volume"
+                    className="hidden md:block w-20 accent-[#D4AF37] cursor-pointer"
+                  />
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => {
-                    cinemaAudioEngine.unlockFromGesture();
-                    updateAudioSettings({ muted: !audioSettings.muted });
-                  }}
-                  aria-label={audioSettings.muted ? 'Unmute' : 'Mute'}
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
-                >
-                  {audioSettings.muted ? (
-                    <VolumeX className="h-4 w-4 text-red-400" />
-                  ) : (
-                    <Volume2 className="h-4 w-4" />
-                  )}
-                </button>
-
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={audioSettings.muted ? 0 : audioSettings.masterVolume}
-                  onChange={(e) =>
-                    updateAudioSettings({
-                      masterVolume: parseFloat(e.target.value),
-                      muted: false,
-                    })
-                  }
-                  aria-label="Master Volume"
-                  className="hidden md:block w-20 accent-[#D4AF37] cursor-pointer"
-                />
-
-                <button
-                  type="button"
+                  data-tour-id="audio_mixer"
                   onClick={() => {
                     setShowMixerPopover((v) => !v);
                     setShow4dxPopover(false);
@@ -1787,6 +1970,7 @@ export const VirtualCinemaPage: React.FC = () => {
 
                 <button
                   type="button"
+                  data-tour-id="hide_controls"
                   onClick={() => setControlsManuallyHidden(true)}
                   title="Hide Controls (H)"
                   aria-label="Hide controls"
@@ -1797,8 +1981,9 @@ export const VirtualCinemaPage: React.FC = () => {
 
                 <button
                   type="button"
+                  data-tour-id="fullscreen"
                   onClick={toggleFullscreen}
-                  title={isFullscreen ? 'Exit Browser Fullscreen' : 'Enter Browser Fullscreen'}
+                  title={isFullscreen ? 'Exit Browser Fullscreen (F)' : 'Enter Browser Fullscreen (F)'}
                   aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
                   className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
                 >
@@ -1876,6 +2061,19 @@ export const VirtualCinemaPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* First-Time Visitor Interactive Auditorium Guide (blocks auto-start until all steps finish) */}
+      {sceneReady &&
+        entranceComplete &&
+        showState === 'AUDITORIUM_OPEN' &&
+        showFirstTimeTour && (
+          <TheaterWalkthroughTour
+            supports4dxEffects={Boolean(selectedTheaterConfig.supports4dxEffects)}
+            onCompleteAndStartShow={() => {
+              setShowFirstTimeTour(false);
+              beginShowSequence();
+            }}
+          />
+        )}
     </div>
   );
 };

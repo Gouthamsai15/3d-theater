@@ -45,6 +45,9 @@ class CinemaAudioEngine {
   private reverbNode: ConvolverNode | null = null;
   private reverbWetGain: GainNode | null = null;
   private lfeGain: GainNode | null = null;
+  private beachLeftFeed: GainNode | null = null;
+  private beachRightFeed: GainNode | null = null;
+  private beachPositionalActive = false;
 
   private videoSources = new Map<HTMLVideoElement, MediaElementAudioSourceNode>();
   private pendingVideos = new Set<HTMLVideoElement>();
@@ -267,6 +270,14 @@ class CinemaAudioEngine {
     this.splitter.connect(rMainGain, 1);
     lMainGain.connect(panL);
     rMainGain.connect(panR);
+
+    // 1b. Outdoor Beach PA Stereo Feeds (used by Three.js PositionalAudio on L/R PA stacks)
+    this.beachLeftFeed = ctx.createGain();
+    this.beachLeftFeed.gain.value = 1.0;
+    this.beachRightFeed = ctx.createGain();
+    this.beachRightFeed.gain.value = 1.0;
+    this.splitter.connect(this.beachLeftFeed, 0);
+    this.splitter.connect(this.beachRightFeed, 1);
 
     // 2. Center Screen Dialogue Channel (balanced L+R mid -> warm vocal presence -> Center Panner)
     const cMixL = ctx.createGain();
@@ -787,11 +798,16 @@ class CinemaAudioEngine {
     const master = settings.muted ? 0 : settings.masterVolume;
     this.masterGain.gain.setTargetAtTime(master, now, 0.08);
 
-    // Crossfade cleanly between full 3D Dolby speaker array and direct stereo bypass
+    // Crossfade cleanly between full 3D Dolby speaker array, Beach PA PositionalAudio, and direct stereo bypass
     if (this.dolbyBusGain && this.stereoDirectGain) {
       this.lastSpatialEnabled = settings.spatialSimulation;
-      this.dolbyBusGain.gain.setTargetAtTime(settings.spatialSimulation ? 0.95 : 0, now, 0.12);
-      this.stereoDirectGain.gain.setTargetAtTime(settings.spatialSimulation ? 0 : 1, now, 0.12);
+      if (this.beachPositionalActive && settings.spatialSimulation && !this.videoHijackDisabled) {
+        this.dolbyBusGain.gain.setTargetAtTime(0, now, 0.08);
+        this.stereoDirectGain.gain.setTargetAtTime(0, now, 0.08);
+      } else {
+        this.dolbyBusGain.gain.setTargetAtTime(settings.spatialSimulation ? 0.95 : 0, now, 0.12);
+        this.stereoDirectGain.gain.setTargetAtTime(settings.spatialSimulation ? 0 : 1, now, 0.12);
+      }
     }
 
     // Pure movie soundtrack output (zero artificial pink-noise ambience or wind static)
@@ -860,6 +876,9 @@ class CinemaAudioEngine {
     this.reverbNode = null;
     this.reverbWetGain = null;
     this.lfeGain = null;
+    this.beachLeftFeed = null;
+    this.beachRightFeed = null;
+    this.beachPositionalActive = false;
     this.currentProfile = null;
     this.currentConfig = null;
     this.lastMixState = null;
@@ -868,6 +887,27 @@ class CinemaAudioEngine {
     this.videoHijackDisabled = isIosDevice();
     this.lastPose.px = Number.NaN;
     this.notifyStateChange();
+  }
+
+  public getRawContext(): AudioContext | null {
+    return this.ctx;
+  }
+
+  public getAnalyserNode(): AnalyserNode | null {
+    return this.signalAnalyser;
+  }
+
+  public getBeachSpeakerFeeds(): { left: GainNode | null; right: GainNode | null } {
+    return { left: this.beachLeftFeed, right: this.beachRightFeed };
+  }
+
+  public setBeachPositionalActive(active: boolean): void {
+    if (this.beachPositionalActive === active) return;
+    this.beachPositionalActive = active;
+    if (this.lastMixState) {
+      const { settings, showState, windActive, windIntensity } = this.lastMixState;
+      this.updateMix(settings, showState, windActive, windIntensity);
+    }
   }
 
   private notifyStateChange(): void {

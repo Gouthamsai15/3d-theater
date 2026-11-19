@@ -445,7 +445,8 @@ export function createCarpetTexture(
     ctx.globalAlpha = 1;
   } else if (
     sideLightStyle === 'crimson_velocity_4dx' ||
-    sideLightStyle === 'arctic_parametric_fins'
+    sideLightStyle === 'arctic_parametric_fins' ||
+    sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
   ) {
     // Dark non-slip waterproof acoustic flooring: rubberized matte carbon deck with subtle diamond-tread & waterproof tile seams
     ctx.fillStyle = '#0c0d11';
@@ -632,7 +633,8 @@ export function createCarpetBumpTexture(sideLightStyle?: SideLightStyle): THREE.
     }
   } else if (
     sideLightStyle === 'crimson_velocity_4dx' ||
-    sideLightStyle === 'arctic_parametric_fins'
+    sideLightStyle === 'arctic_parametric_fins' ||
+    sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
   ) {
     // Tactile non-slip waterproof rubberized diamond tread lugs
     for (let y = 6; y < 256; y += 16) {
@@ -1202,6 +1204,53 @@ export function createAcousticWallTexture(
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(3, 1);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  if (sideLightStyle === 'exoskeleton_crimson_matrix_4dx') {
+    // Deep-charcoal porous commercial acoustic wire-mesh perforated panel finish
+    ctx.fillStyle = '#12151b';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle brushed steel backing sheen beneath wire mesh
+    const bg = ctx.createLinearGradient(0, 0, 512, 512);
+    bg.addColorStop(0, '#14171e');
+    bg.addColorStop(0.5, '#191d26');
+    bg.addColorStop(1, '#101319');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Porous staggered hexagonal/round perforation matrix
+    ctx.fillStyle = '#050608';
+    for (let y = 4; y < 512; y += 8) {
+      const offset = ((y / 8) % 2) * 4;
+      for (let x = 4; x < 512; x += 8) {
+        ctx.beginPath();
+        ctx.arc((x + offset) % 512, y, 2.0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Fine carbon-steel acoustic seam lines dividing modular wall cassettes
+    ctx.strokeStyle = '#07080b';
+    ctx.lineWidth = 4;
+    for (let i = 0; i <= 512; i += 128) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 512);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(512, i);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 2.5);
     tex.anisotropy = 8;
     return tex;
   }
@@ -1827,6 +1876,29 @@ export function createAcousticWallBumpTexture(
     ctx.moveTo(175, 158);
     ctx.lineTo(95, 256);
     ctx.stroke();
+  } else if (sideLightStyle === 'exoskeleton_crimson_matrix_4dx') {
+    // Tactile perforated porous acoustic mesh micro-holes + cassette grooves
+    ctx.fillStyle = '#3c3c3c';
+    for (let y = 4; y < 256; y += 8) {
+      const offset = ((y / 8) % 2) * 4;
+      for (let x = 4; x < 256; x += 8) {
+        ctx.beginPath();
+        ctx.arc((x + offset) % 256, y, 1.9, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.strokeStyle = '#202020';
+    ctx.lineWidth = 3;
+    for (let i = 0; i <= 256; i += 64) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 256);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i);
+      ctx.lineTo(256, i);
+      ctx.stroke();
+    }
   } else if (sideLightStyle === 'arctic_parametric_fins') {
     ctx.fillStyle = '#606060';
     for (let y = 3; y < 256; y += 6) {
@@ -1930,7 +2002,7 @@ export function createSeatUpholsteryTextures(
   isLeather: boolean,
   isQuilted = false,
   isRedStitched = false,
-  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' = 'default',
+  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' | 'crimson_tech_leather' = 'default',
 ): SeatUpholsteryTextureSet {
   const mapCanvas = document.createElement('canvas');
   mapCanvas.width = 256;
@@ -2071,7 +2143,8 @@ export function createSeatUpholsteryTextures(
       isRedStitched ||
       styleVariant === 'violet_stitched' ||
       styleVariant === 'orange_stitched' ||
-      styleVariant === 'blue_stitched'
+      styleVariant === 'blue_stitched' ||
+      styleVariant === 'crimson_tech_leather'
     ) {
       // Heavy-duty leather bolster seams with crisp red, violet, orange, or blue twin-needle stitching
       const stitchHex =
@@ -2335,6 +2408,28 @@ export function createAmberVioletGradientTexture(reverse = false): THREE.CanvasT
   return tex;
 }
 
+export function createCrimsonStormGradientTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 512, 0, 0);
+  grad.addColorStop(0, '#ff1f38');
+  grad.addColorStop(0.28, '#ef4444');
+  grad.addColorStop(0.54, '#a64d68');
+  grad.addColorStop(0.78, '#7c8ba1');
+  grad.addColorStop(1, '#cbd5e1');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 32, 512);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 export function createAmberCoveWashTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 64;
@@ -2438,8 +2533,11 @@ export function createStandbyScreenTexture(
   const drawStandbyArtwork = () => {
     ctx.clearRect(0, 0, W, H);
 
-    if (sideLightStyle === 'screenx_silver_baffles') {
-      // Clean floating wall-to-wall matte white acoustically transparent primary canvas (no logos, text, or frames)
+    if (
+      sideLightStyle === 'screenx_silver_baffles' ||
+      sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
+    ) {
+      // Clean floating matte-white acoustically transparent primary canvas (no ornate gold frames or logos)
       const whiteGrad = ctx.createRadialGradient(cx, cy, 80, cx, cy, 1280);
       whiteGrad.addColorStop(0, '#eef1f6');
       whiteGrad.addColorStop(0.65, '#e2e6ee');

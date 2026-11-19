@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
-import { SeatData, SeatModelType, TheaterConfiguration } from '../../types/cinema';
+import { CameraViewMode, SeatData, SeatModelType, TheaterConfiguration } from '../../types/cinema';
+import { getFourSeatPodGroupKey } from '../../config/seating/seatGenerator';
 import { createMarbleTrayTexture, createSeatUpholsteryTextures } from '../materials/proceduralTextures';
 import {
   applyScreenBounceToMaterial,
   ScreenBounceUniforms,
 } from '../lighting/screenBounceShader';
+import { BeachSeats } from './BeachSeats';
+import { ReservedSeatMarker } from './ReservedSeatMarker';
 
 interface SeatModelsProps {
   config: TheaterConfiguration;
@@ -16,6 +19,7 @@ interface SeatModelsProps {
   fourDxVibration: number; // 0..1 active motion intensity
   isPlaying: boolean;
   lightFactor?: number; // 0 = dark show, 1 = house lights on
+  viewMode?: CameraViewMode;
   interactive?: boolean;
   enableHover?: boolean;
   screenBounceUniforms?: ScreenBounceUniforms;
@@ -390,6 +394,32 @@ function getSeatProportions(model: SeatModelType, widthScale = 1): SeatPartOffse
         pedestalPos: [0, 0.32, 0.03],
         is4dxPod: true,
       };
+    case '4dx_exoskeleton_pod':
+      return {
+        cushionWidth: 0.59 * s,
+        cushionHeight: 0.185,
+        cushionDepth: 0.56,
+        cushionPos: [0, 0.58, 0],
+        backrestWidth: 0.57 * s,
+        backrestHeight: 0.78,
+        backrestDepth: 0.17,
+        backrestPos: [0, 0.98, 0.22],
+        backrestTilt: 0.1,
+        headrestWidth: 0.44 * s,
+        headrestHeight: 0.26,
+        headrestDepth: 0.16,
+        headrestPos: [0, 1.4, 0.27],
+        armWidth: 0.11,
+        armHeight: 0.125,
+        armDepth: 0.58,
+        armOffsetX: 0.35 * s,
+        armPosY: 0.74,
+        armPosZ: 0.02,
+        pedestalRadius: 0.13,
+        pedestalHeight: 0.36,
+        pedestalPos: [0, 0.32, 0.03],
+        is4dxPod: true,
+      };
     case '4dx_motion':
       return {
         cushionWidth: 0.58 * s,
@@ -715,7 +745,7 @@ function buildSculptedArmrestGeo(w: number, h: number, d: number): THREE.BufferG
   return geo;
 }
 
-export const SeatModels: React.FC<SeatModelsProps> = ({
+const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   config,
   seats,
   selectedSeatId,
@@ -723,6 +753,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
   fourDxVibration,
   isPlaying,
   lightFactor = 1,
+  viewMode = 'seat',
   interactive = false,
   enableHover = false,
   screenBounceUniforms,
@@ -778,7 +809,8 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
   const isCrimson4dxPod = seatModel === '4dx_crimson_pod';
   const isArctic4dxPod = seatModel === '4dx_arctic_pod';
   const isThunder4dxPod = seatModel === '4dx_thunder_pod';
-  const isAny4dxPod = isCrimson4dxPod || isArctic4dxPod || isThunder4dxPod;
+  const isExoskeleton4dxPod = seatModel === '4dx_exoskeleton_pod';
+  const isAny4dxPod = isCrimson4dxPod || isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod;
   const isMultiplexStadium = seatModel === 'multiplex_stadium';
   const isMandapSeat = seatModel === 'mandap_royal_stadium';
   const isParametricPurpleSeat = seatModel === 'charcoal_purple_stadium';
@@ -808,11 +840,13 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                 ? 'blue_stitched'
                 : isArctic4dxPod
                   ? 'violet_stitched'
-                  : isThunder4dxPod
-                    ? 'perforated'
-                    : 'default',
+                  : isExoskeleton4dxPod
+                    ? 'crimson_tech_leather'
+                    : isThunder4dxPod
+                      ? 'perforated'
+                      : 'default',
       ),
-    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat],
+    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat],
   );
 
   const marbleTrayMap = useMemo(
@@ -820,13 +854,12 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     [isDolbyVeilSeat],
   );
 
-  // Group 4-seat hydraulic motion pods so every 4-seat bank sits on an articulated hydraulic chassis deck
+  // Group modular synchronized 4DX motion pods so every 4-seat (or 3-seat center) bank sits on an articulated hydraulic chassis deck
   const fourSeatPods = useMemo(() => {
     if (!isAny4dxPod) return [];
     const podMap = new Map<string, { sumX: number; minX: number; maxX: number; y: number; z: number; yaw: number; count: number }>();
     seats.forEach((seat) => {
-      const podIdx = Math.floor((seat.seatNumber - 1) / 4);
-      const key = `${seat.rowIndex}-${podIdx}`;
+      const key = getFourSeatPodGroupKey(seat.rowIndex, seat.seatNumber, config);
       const [sx, sy, sz] = seat.worldPosition;
       const existing = podMap.get(key);
       if (!existing) {
@@ -844,9 +877,9 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       y: val.y,
       z: val.z,
       yaw: val.yaw,
-      width: Math.max(2.4, val.maxX - val.minX + 0.86),
+      width: Math.max(1.85, val.maxX - val.minX + 0.84),
     }));
-  }, [isAny4dxPod, seats]);
+  }, [isAny4dxPod, seats, config]);
 
   useEffect(() => {
     return () => {
@@ -861,7 +894,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         color: '#ffffff',
         map: upholsteryTex.map,
         bumpMap: upholsteryTex.bumpMap,
-        bumpScale: isDolbyVeilSeat ? 0.011 : isDolbyObsidianSeat || isDolbyCobaltSeat ? 0.008 : isLeather ? 0.009 : 0.014,
+        bumpScale: isDolbyVeilSeat || isExoskeleton4dxPod ? 0.011 : isDolbyObsidianSeat || isDolbyCobaltSeat ? 0.008 : isLeather ? 0.009 : 0.014,
         roughness: isIceObsidianRecliner
           ? 0.78
           : isWalnutLoveseat
@@ -878,16 +911,18 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                       ? 0.9
                       : isDolbyVeilSeat
                         ? 0.88
-                        : isImaxSolarSeat
-                          ? 0.48
-                          : isImaxRocker
-                            ? 0.54
-                            : isDolbyObsidianSeat || isDolbyCobaltSeat
-                              ? 0.36
-                              : isLeather
-                                ? 0.28
-                                : 0.72,
-        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker ? 0.05 : isLeather ? 0.07 : 0.02,
+                        : isExoskeleton4dxPod
+                          ? 0.46
+                          : isImaxSolarSeat
+                            ? 0.48
+                            : isImaxRocker
+                              ? 0.54
+                              : isDolbyObsidianSeat || isDolbyCobaltSeat
+                                ? 0.36
+                                : isLeather
+                                  ? 0.28
+                                  : 0.72,
+        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker || isExoskeleton4dxPod ? 0.05 : isLeather ? 0.07 : 0.02,
       }),
       screenBounceUniforms,
     );
@@ -928,9 +963,11 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                                       ? '#134c59'
                                       : isThunder4dxPod
                                         ? '#363b44'
-                                        : isAny4dxPod
-                                          ? '#16181f'
-                                          : environmentProfile.seatTrimColor,
+                                        : isExoskeleton4dxPod
+                                          ? '#13151b'
+                                          : isAny4dxPod
+                                            ? '#16181f'
+                                            : environmentProfile.seatTrimColor,
         roughness: isIceRecliner
           ? 0.28
           : isIceCobaltArmchair
@@ -1022,9 +1059,11 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
               ? '#c9a861'
               : isThunder4dxPod
                 ? '#9aa3b2'
-                : isAny4dxPod
-                  ? '#1a1d24'
-                  : '#121318',
+                : isExoskeleton4dxPod
+                  ? '#181b22'
+                  : isAny4dxPod
+                    ? '#1a1d24'
+                    : '#121318',
         roughness: isThunder4dxPod ? 0.26 : isScreenXPit ? 0.32 : isWalnutLoveseat || isChampagneDaybed ? 0.28 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.8 : 0.36,
         metalness: isThunder4dxPod ? 0.88 : isScreenXPit ? 0.82 : isWalnutLoveseat || isChampagneDaybed ? 0.85 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.15 : 0.78,
       }),
@@ -1057,7 +1096,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
                       ? '#b89446'
                       : isWalnutLoveseat
                         ? '#5e432c'
-                        : isCrimson4dxPod
+                        : isCrimson4dxPod || isExoskeleton4dxPod
                           ? '#b91c1c'
                           : isArctic4dxPod
                             ? '#8b5cf6'
@@ -1072,11 +1111,11 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       screenBounceUniforms,
     );
     const nozzleMat = new THREE.MeshStandardMaterial({
-      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
-      emissive: isArctic4dxPod ? '#8b5cf6' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
-      emissiveIntensity: isThunder4dxPod ? 0.25 : 0.35,
-      roughness: 0.25,
-      metalness: 0.82,
+      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
+      emissive: isArctic4dxPod ? '#8b5cf6' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
+      emissiveIntensity: isThunder4dxPod || isExoskeleton4dxPod ? 0.26 : 0.35,
+      roughness: 0.24,
+      metalness: 0.86,
     });
     const armControlMat = new THREE.MeshStandardMaterial({
       color: '#1e293b',
@@ -1087,7 +1126,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     });
     const pipingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isCrimson4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
+        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
         emissive: isParametricPurpleSeat ? '#7e22ce' : '#000000',
         emissiveIntensity: isParametricPurpleSeat ? 0.26 : 0,
         roughness: isThunder4dxPod ? 0.26 : 0.28,
@@ -1105,7 +1144,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     );
     const lumbarMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isThunder4dxPod ? '#323740' : '#16181f',
+        color: isThunder4dxPod ? '#323740' : isExoskeleton4dxPod ? '#15181f' : '#16181f',
         roughness: 0.38,
         metalness: 0.04,
       }),
@@ -1207,6 +1246,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
     isCrimson4dxPod,
     isArctic4dxPod,
     isThunder4dxPod,
+    isExoskeleton4dxPod,
     isAny4dxPod,
     isMultiplexStadium,
     isMandapSeat,
@@ -1668,7 +1708,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         );
         pipingRef.current.setMatrixAt(idx, dummy.matrix);
       }
-      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod) && backShellRef.current) {
+      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod) && backShellRef.current) {
         setSeatPart(
           sx,
           sy,
@@ -1757,11 +1797,11 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.cushionWidth * 0.38, 0.38, -0.31, -0.35);
           steelFootHangerRightRef.current.setMatrixAt(idx, dummy.matrix);
         }
-        if ((isArctic4dxPod || isThunder4dxPod) && lumbarCushionRef.current) {
+        if ((isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod) && lumbarCushionRef.current) {
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] - 0.21, props.backrestPos[2] - 0.095, props.backrestTilt);
           lumbarCushionRef.current.setMatrixAt(idx, dummy.matrix);
         }
-        if (isThunder4dxPod && leftActuatorRef.current && rightActuatorRef.current) {
+        if ((isThunder4dxPod || isExoskeleton4dxPod) && leftActuatorRef.current && rightActuatorRef.current) {
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, -props.backrestWidth * 0.51, props.backrestPos[1] - 0.12, props.backrestPos[2] - 0.04, props.backrestTilt);
           leftActuatorRef.current.setMatrixAt(idx, dummy.matrix);
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.backrestWidth * 0.51, props.backrestPos[1] - 0.12, props.backrestPos[2] - 0.04, props.backrestTilt);
@@ -1812,7 +1852,7 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
       m.computeBoundingSphere();
     });
-  }, [seats, selectedSeatId, hoveredSeatId, props, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat]);
+  }, [seats, selectedSeatId, hoveredSeatId, props, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat]);
 
   useFrame(({ clock }) => {
     const grp = seatGroupRef.current;
@@ -2009,14 +2049,14 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
           args={[geometries.pipingGeo, materials.pipingMat, count]}
         />
       )}
-      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod) && (
+      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod) && (
         <instancedMesh
           ref={backShellRef}
           args={[
             geometries.backShellGeo,
             isVolcanicCopperSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
               ? materials.charcoalBolsterMat
-              : isThunder4dxPod
+              : isThunder4dxPod || isExoskeleton4dxPod
                 ? materials.baseMat
                 : materials.trimMat,
             count,
@@ -2064,14 +2104,14 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
             ref={redStitchTrimRef}
             args={[geometries.redStitchTrimGeo, materials.pipingMat, count]}
           />
-          {(isArctic4dxPod || isThunder4dxPod) && (
+          {(isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod) && (
             <instancedMesh
               ref={lumbarCushionRef}
               args={[geometries.lumbarCushionGeo, materials.lumbarMat, count]}
               receiveShadow
             />
           )}
-          {isThunder4dxPod && (
+          {(isThunder4dxPod || isExoskeleton4dxPod) && (
             <>
               <instancedMesh
                 ref={leftActuatorRef}
@@ -2139,19 +2179,31 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
         </>
       )}
 
-      {/* Gold beacon ring on reserved seat only when house lights are up */}
-      {selectedSeat && !isPlaying && lightFactor > 0.15 && (
-        <mesh
-          position={[
-            selectedSeat.worldPosition[0],
-            selectedSeat.worldPosition[1] + 0.58,
-            selectedSeat.worldPosition[2],
+      {/* Grounded brass/cyan 3D Reserved plaque, folded screening program, and hall ring */}
+      {selectedSeat && (
+        <ReservedSeatMarker
+          position={selectedSeat.worldPosition}
+          yaw={selectedSeat.yaw ?? 0}
+          plaqueLocalPos={[
+            Math.min(0.18, props.cushionWidth * 0.22),
+            props.cushionPos[1] + props.cushionHeight * 0.5 + 0.004,
+            props.cushionPos[2] - props.cushionDepth * 0.18,
           ]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <ringGeometry args={[0.17, 0.23, 32]} />
-          <meshBasicMaterial color="#d4af37" transparent opacity={0.85 * lightFactor} />
-        </mesh>
+          seatLabel={selectedSeat.id}
+          accentHex={
+            config.categoryId === 'ice' || config.categoryId === 'screenx'
+              ? '#22d3ee'
+              : '#d4af37'
+          }
+          lightFactor={lightFactor}
+          isPlaying={isPlaying}
+          viewMode={viewMode}
+          floorRingYOffset={0.016}
+          floorRingRadius={[
+            Math.max(0.42, props.cushionWidth * 0.64),
+            Math.max(0.47, props.cushionWidth * 0.64 + 0.05),
+          ]}
+        />
       )}
 
       {/* Cyan hover target ring when hovering seats in Hall View */}
@@ -2170,4 +2222,14 @@ export const SeatModels: React.FC<SeatModelsProps> = ({
       )}
     </group>
   );
+};
+
+export const SeatModels: React.FC<SeatModelsProps> = (props) => {
+  if (
+    props.config.seatModel === 'beach_lounger_beanbag' ||
+    props.config.seatModel === 'beach_bioluminescent_lounge'
+  ) {
+    return <BeachSeats {...props} />;
+  }
+  return <IndoorSeatModels {...props} />;
 };

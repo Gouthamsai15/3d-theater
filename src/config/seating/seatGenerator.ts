@@ -1,6 +1,45 @@
 import { SeatData, SeatStatus, TheaterConfiguration } from '../../types/cinema';
+import { beachHeightAt } from '../../three/models/beachTerrain';
 
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+export function isFourSeatPodBreakAfter(seatNumber: number, config: TheaterConfiguration): boolean {
+  if (config.aisleAfterSeats.includes(seatNumber) || seatNumber >= config.seatsPerRow) {
+    return false;
+  }
+  if (
+    config.seatsPerRow === 22 &&
+    config.aisleAfterSeats.length === 2 &&
+    config.aisleAfterSeats[0] === 8 &&
+    config.aisleAfterSeats[1] === 14
+  ) {
+    // Symmetric modular blocks: [1-4][5-8] | [9-11][12-14] | [15-18][19-22]
+    return seatNumber === 4 || seatNumber === 11 || seatNumber === 18;
+  }
+  return seatNumber % 4 === 0;
+}
+
+export function getFourSeatPodGroupKey(
+  rowIndex: number,
+  seatNumber: number,
+  config: TheaterConfiguration,
+): string {
+  if (
+    config.seatsPerRow === 22 &&
+    config.aisleAfterSeats.length === 2 &&
+    config.aisleAfterSeats[0] === 8 &&
+    config.aisleAfterSeats[1] === 14
+  ) {
+    let podIdx = 5;
+    if (seatNumber <= 4) podIdx = 0;
+    else if (seatNumber <= 8) podIdx = 1;
+    else if (seatNumber <= 11) podIdx = 2;
+    else if (seatNumber <= 14) podIdx = 3;
+    else if (seatNumber <= 18) podIdx = 4;
+    return `${rowIndex}-${podIdx}`;
+  }
+  return `${rowIndex}-${Math.floor((seatNumber - 1) / 4)}`;
+}
 
 function computeBaseRowXs(config: TheaterConfiguration): {
   centeredXs: number[];
@@ -19,8 +58,10 @@ function computeBaseRowXs(config: TheaterConfiguration): {
         // Pair seats (1,2), (3,4), ... closely together with a wider gap between pods
         currentX += s % 2 === 1 ? seatSpacing * 0.84 : seatSpacing * 1.28;
       } else if (seatPattern === 'four_seat_pods') {
-        // Group seats into cohesive 4-seat 4DX hydraulic motion pods with wide clearance between pods
-        currentX += s % 4 === 0 ? seatSpacing * 1.48 : seatSpacing * 0.88;
+        // Group seats into cohesive modular 4DX hydraulic motion pods with clearance between blocks
+        currentX += isFourSeatPodBreakAfter(s, config)
+          ? seatSpacing * 1.38
+          : seatSpacing * 0.88;
       } else {
         currentX += seatSpacing;
       }
@@ -64,8 +105,10 @@ export function generateSeatsForTheater(config: TheaterConfiguration): SeatData[
     unavailableSeatIds,
     screenPosition,
     seatPattern,
+    environmentProfile,
   } = config;
 
+  const isBeach = environmentProfile.architectureStyle === 'beach';
   const { centeredXs, aisleXs } = computeBaseRowXs(config);
 
   const maxHalfX = Math.max(
@@ -73,12 +116,17 @@ export function generateSeatsForTheater(config: TheaterConfiguration): SeatData[
     Math.abs(centeredXs[0] ?? 0),
     Math.abs(centeredXs[centeredXs.length - 1] ?? 0),
   );
-  const arcDepth = seatPattern === 'curved_arc' ? Math.min(0.42, rowSpacing * 0.28) : 0;
+  const arcDepth =
+    seatPattern === 'curved_arc'
+      ? isBeach
+        ? Math.min(1.55, rowSpacing * 0.9)
+        : Math.min(0.42, rowSpacing * 0.28)
+      : 0;
 
   for (let r = 0; r < seatingRows; r++) {
     const rowLabel = ROW_LABELS[r] || `R${r + 1}`;
     const baseRowZ = firstRowZ + r * rowSpacing;
-    const tierY = Number((r * rowElevationStep).toFixed(3));
+    const baseTierY = Number((r * rowElevationStep).toFixed(3));
     const staggerShift =
       seatPattern === 'staggered'
         ? r % 2 === 1
@@ -96,9 +144,13 @@ export function generateSeatsForTheater(config: TheaterConfiguration): SeatData[
         // Gently concave toward the screen: outer wings step forward slightly while staying safely inside tier tread
         seatZNum = baseRowZ + arcDepth * 0.38 - arcDepth * normX * normX;
         const distZ = Math.max(4, seatZNum - screenPosition[2]);
-        yaw = Number((Math.atan2(-seatX, distZ) * 0.62).toFixed(4));
+        yaw = Number((Math.atan2(-seatX, distZ) * (isBeach ? 0.72 : 0.62)).toFixed(4));
       }
       const seatZ = Number(seatZNum.toFixed(3));
+      const beachVariant = theaterId === 'beach_bioluminescent' ? 'bioluminescent' : 'sunset';
+      const tierY = isBeach
+        ? Number(beachHeightAt(seatX, seatZ, beachVariant).toFixed(3))
+        : baseTierY;
 
       let status: SeatStatus = 'available';
       if (unavailableSeatIds.includes(seatId)) {
@@ -119,7 +171,12 @@ export function generateSeatsForTheater(config: TheaterConfiguration): SeatData[
         }
       }
 
-      const eyeY = Number((tierY + seatEyeOffsetY).toFixed(3));
+      const effectiveEyeOffset = isBeach
+        ? r <= 1
+          ? 0.72
+          : 0.62
+        : seatEyeOffsetY;
+      const eyeY = Number((tierY + effectiveEyeOffset).toFixed(3));
       const eyeX = Number(seatX.toFixed(3));
       const eyeZ = Number((seatZ + 0.08).toFixed(3));
 

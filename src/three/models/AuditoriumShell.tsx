@@ -16,11 +16,15 @@ import {
 } from '../lighting/screenBounceShader';
 import { CinemaSpeakers } from './CinemaSpeakers';
 import { SideWallLighting } from './SideWallLighting';
+import { BeachEnvironment } from './BeachEnvironment';
+import { ScreenBounceSample } from './CinemaScreen';
 
 interface AuditoriumShellProps {
   config: TheaterConfiguration;
   lightFactor: number; // 0 = dark show playing, 1 = auditorium open
   screenBounceUniforms?: ScreenBounceUniforms;
+  screenBounceRef?: React.MutableRefObject<ScreenBounceSample>;
+  isSoftwareGl?: boolean;
 }
 
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -48,7 +52,63 @@ function buildPleatedCurtainGeometry(
   return geom;
 }
 
-export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
+const BeachShell: React.FC<AuditoriumShellProps> = ({
+  config,
+  lightFactor,
+  screenBounceUniforms,
+  screenBounceRef,
+  isSoftwareGl = false,
+}) => {
+  const speakerGrilleMap = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#0e1118';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#050608';
+    for (let y = 0; y < 64; y += 4) {
+      for (let x = 0; x < 64; x += 4) {
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 6);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      speakerGrilleMap.dispose();
+    };
+  }, [speakerGrilleMap]);
+
+  return (
+    <group>
+      <BeachEnvironment
+        config={config}
+        lightFactor={lightFactor}
+        screenBounceUniforms={screenBounceUniforms}
+        screenBounceRef={screenBounceRef}
+        isSoftwareGl={isSoftwareGl}
+      />
+      <CinemaSpeakers
+        config={config}
+        wallBayZs={[]}
+        topTierY={0}
+        lightFactor={lightFactor}
+        speakerGrilleMap={speakerGrilleMap}
+        screenBounceUniforms={screenBounceUniforms}
+      />
+    </group>
+  );
+};
+
+const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   config,
   lightFactor,
   screenBounceUniforms,
@@ -89,6 +149,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const isCrimson4dx = sideLightStyle === 'crimson_velocity_4dx';
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
+  const isExoskeleton4dx = sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
   const isDolbyObsidian = sideLightStyle === 'obsidian_slat_grazers';
   const isDolbyCobalt = sideLightStyle === 'diagonal_parabolic_ribs';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
@@ -113,12 +174,16 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
   );
 
   const carbonFiberMap = useMemo(
-    () => (isObsidianScreenX ? createCarbonFiberTexture() : null),
-    [isObsidianScreenX],
+    () => (isObsidianScreenX || isExoskeleton4dx ? createCarbonFiberTexture() : null),
+    [isObsidianScreenX, isExoskeleton4dx],
   );
 
   const tBarCeilingGridMap = useMemo(
-    () => (ceilingLightStyle === 'industrial_open_baffle_atmos' ? createTBarCeilingGridTexture() : null),
+    () =>
+      ceilingLightStyle === 'industrial_open_baffle_atmos' ||
+      ceilingLightStyle === 'hexagonal_acoustic_4dx'
+        ? createTBarCeilingGridTexture()
+        : null,
     [ceilingLightStyle],
   );
 
@@ -241,6 +306,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         map: tBarCeilingGridMap || espressoTileCeilingMap || imaxTileCeilingMap || undefined,
         color:
           ceilingLightStyle === 'industrial_open_baffle_atmos' ||
+          ceilingLightStyle === 'hexagonal_acoustic_4dx' ||
           ceilingLightStyle === 'espresso_biophilic_atmos' ||
           ceilingLightStyle === 'imax_starlight_coves'
             ? '#ffffff'
@@ -824,8 +890,8 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
               );
             })}
 
-          {/* Continuous Linear LED Safety Strip Along Every Tiered Step Edge (Neon-Blue on Multiplex ScreenX, Golden-Yellow on Mandap Heritage 2D, Neon-Purple on Obsidian Wave 550, Warm-Gold on Sylva Moss 250) */}
-          {(isMultiplexScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss) && (
+          {/* Continuous Linear LED Safety Strip Along Every Tiered Step Edge (Neon-Blue on Multiplex ScreenX, Golden-Yellow on Mandap Heritage 2D, Neon-Purple on Obsidian Wave 550, Warm-Gold on Sylva Moss 250, Vibrant Crimson on 4DX Exo-Skeleton 550) */}
+          {(isMultiplexScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isExoskeleton4dx) && (
             <group position={[0, tier.y + 0.014, tier.z - tier.depth / 2 + 0.026]}>
               <mesh position={[0, -0.008, 0]} material={isBiophilicMoss ? materials.espressoTrimMat : materials.nosingMat}>
                 <boxGeometry args={[W - 0.56, 0.018, 0.048]} />
@@ -833,9 +899,9 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
               <mesh position={[0, 0.003, -0.004]}>
                 <boxGeometry args={[W - 0.64, 0.016, 0.024]} />
                 <meshStandardMaterial
-                  color={isMandap2d ? '#ca8a04' : isBiophilicMoss ? '#d97706' : isParametricObsidian ? '#9333ea' : '#1d4ed8'}
+                  color={isExoskeleton4dx ? '#dc2626' : isMandap2d ? '#ca8a04' : isBiophilicMoss ? '#d97706' : isParametricObsidian ? '#9333ea' : '#1d4ed8'}
                   emissive={lightingProfile.stepLightColor}
-                  emissiveIntensity={stepEmissiveIntensity * 1.18}
+                  emissiveIntensity={stepEmissiveIntensity * 1.2}
                   toneMapped={false}
                   roughness={0.18}
                 />
@@ -859,7 +925,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                           : materials.nosingMat
                 }
               >
-                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss ? 1.28 : 0.96, 0.022, 0.06]} />
+                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
               </mesh>
 
               {/* Always-on recessed safety step LED line */}
@@ -870,7 +936,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                   tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : 0.026),
                 ]}
               >
-                <boxGeometry args={[isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss ? 1.14 : 0.88, isDolbyVeil ? 0.008 : 0.014, isDolbyVeil ? 0.011 : 0.024]} />
+                <boxGeometry args={[isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil ? 0.008 : 0.014, isDolbyVeil ? 0.011 : 0.024]} />
                 <meshStandardMaterial
                   color={lightingProfile.stepLightColor}
                   emissive={lightingProfile.stepLightColor}
@@ -912,15 +978,15 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 </mesh>
               )}
 
-              {/* Compact aisle safety handrail posts (brushed aluminum on 4DX Thunder Arena, dark metallic on Crimson/Arctic) */}
-              {(isCrimson4dx || isArctic4dx || isThunder4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
+              {/* Compact aisle safety handrail posts (brushed aluminum on 4DX Thunder Arena, dark metallic on Crimson/Arctic/Exo-Skeleton) */}
+              {(isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
                 <group position={[ax + (ax >= 0 ? 0.52 : -0.52), tier.y, tier.z - tier.depth / 2 + 0.14]}>
                   <mesh
                     position={[0, 0.38, 0]}
                     material={
                       isThunder4dx
                         ? materials.brushedAluminumMat
-                        : isCrimson4dx || isArctic4dx
+                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx
                           ? materials.nosingMat
                           : materials.trimMetalMat
                     }
@@ -939,14 +1005,14 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                     material={
                       isThunder4dx
                         ? materials.brushedAluminumMat
-                        : isCrimson4dx || isArctic4dx
+                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx
                           ? materials.nosingMat
                           : materials.trimMetalMat
                     }
                   >
                     <boxGeometry args={[0.038, 0.03, Math.hypot(rowSpacing, rowElevationStep) * 1.02]} />
                   </mesh>
-                  {(isCrimson4dx || isArctic4dx) && (
+                  {(isCrimson4dx || isArctic4dx || isExoskeleton4dx) && (
                     <mesh position={[0, 0.46, rowSpacing * 0.48]} rotation={[Math.atan2(rowElevationStep, rowSpacing), 0, 0]} material={materials.trimMetalMat}>
                       <boxGeometry args={[0.02, 0.018, Math.hypot(rowSpacing, rowElevationStep) * 1.02]} />
                     </mesh>
@@ -969,6 +1035,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isCrimson4dx ||
                 isArctic4dx ||
                 isThunder4dx ||
+                isExoskeleton4dx ||
                 isPrivateVolcanic ||
                 isScreenX ||
                 isMandap2d ||
@@ -1020,8 +1087,8 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
             </group>
           )}
 
-          {/* Dark Metallic Safety Guardrails Along Stepped Stadium Tier Drop-Edges (Crimson Velocity & Arctic Storm) */}
-          {(isCrimson4dx || isArctic4dx) &&
+          {/* Dark Metallic Safety Guardrails Along Stepped Stadium Tier Drop-Edges (Crimson Velocity & 4DX Exo-Skeleton 550) */}
+          {(isCrimson4dx || isExoskeleton4dx) &&
             tier.row >= 1 &&
             aisleXs.length === 2 &&
             [
@@ -1114,8 +1181,8 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* Low Front Fog-Machine Stage Riser (4DX Crimson Velocity & Arctic Storm) */}
-      {(isCrimson4dx || isArctic4dx) && (
+      {/* Low Front Fog-Machine Stage Riser (4DX Crimson Velocity) */}
+      {isCrimson4dx && (
         <group position={[0, 0.13, screenPosition[2] + 0.92]}>
           <mesh receiveShadow material={materials.stageMat}>
             <boxGeometry args={[W - 1.2, 0.26, 1.7]} />
@@ -1154,6 +1221,88 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
+      {/* 4DX Arctic Storm: Raised Matte-Black Front Stage + Dual Cyan-Lit Side Stairs + 4 Brushed-Silver Commercial Fogger Units */}
+      {isArctic4dx && (
+        <group position={[0, 0, screenPosition[2] + 0.96]}>
+          {/* Main Matte-Black Stage Platform */}
+          <mesh position={[0, 0.21, 0]} receiveShadow castShadow material={materials.stageMat}>
+            <boxGeometry args={[W - 4.2, 0.42, 1.88]} />
+          </mesh>
+          {/* Matte Gunmetal Front Stage Lip */}
+          <mesh position={[0, 0.41, 0.92]} material={materials.nosingMat}>
+            <boxGeometry args={[W - 4.2, 0.025, 0.06]} />
+          </mesh>
+
+          {/* Left & Right 3-Step Stage Access Stairs with Glowing Ice-Cyan LED Step Nosings */}
+          {[-1, 1].map((side) => {
+            const stairX = side * (W * 0.5 - 1.48);
+            return (
+              <group key={`arctic-stage-stairs-${side}`} position={[stairX, 0, 0]}>
+                {[0, 1, 2].map((stepIdx) => {
+                  const stepH = 0.14 * (3 - stepIdx);
+                  const stepZ = -0.38 + stepIdx * 0.36;
+                  return (
+                    <group key={`arctic-step-${side}-${stepIdx}`} position={[0, stepH * 0.5, stepZ]}>
+                      <mesh receiveShadow material={materials.stageMat}>
+                        <boxGeometry args={[1.28, stepH, 0.36]} />
+                      </mesh>
+                      <mesh position={[0, stepH * 0.5 - 0.012, 0.175]}>
+                        <boxGeometry args={[1.22, 0.018, 0.022]} />
+                        <meshStandardMaterial
+                          color="#ccfbf1"
+                          emissive="#22d3ee"
+                          emissiveIntensity={Math.max(0.7, stepEmissiveIntensity * 1.15)}
+                          toneMapped={false}
+                          roughness={0.2}
+                        />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+            );
+          })}
+
+          {/* 4 Brushed-Silver Commercial 4DX Fog/Smoke Machines Sitting on Front Edge of Stage */}
+          {[-W * 0.27, -W * 0.09, W * 0.09, W * 0.27].map((fx, fi) => (
+            <group key={`arctic-fogger-${fi}`} position={[fx, 0.42, 0.48]}>
+              {/* Rubber Isolator Feet */}
+              {[
+                [-0.19, -0.2],
+                [0.19, -0.2],
+                [-0.19, 0.2],
+                [0.19, 0.2],
+              ].map(([px, pz], pi) => (
+                <mesh key={`fog-foot-${pi}`} position={[px, 0.012, pz]} material={materials.nosingMat}>
+                  <cylinderGeometry args={[0.024, 0.028, 0.024, 10]} />
+                </mesh>
+              ))}
+              {/* Brushed-Silver Aluminum Housing */}
+              <mesh position={[0, 0.145, 0]} castShadow receiveShadow material={materials.brushedAluminumMat}>
+                <boxGeometry args={[0.46, 0.24, 0.54]} />
+              </mesh>
+              {/* Dark Intake Grille Sides */}
+              {[-0.232, 0.232].map((sx, si) => (
+                <mesh key={`fog-grille-${si}`} position={[sx, 0.145, -0.02]} material={materials.speakerMat}>
+                  <boxGeometry args={[0.012, 0.16, 0.34]} />
+                </mesh>
+              ))}
+              {/* Top Steel Carry Handle */}
+              <mesh position={[0, 0.285, -0.04]} material={materials.nosingMat}>
+                <boxGeometry args={[0.24, 0.032, 0.036]} />
+              </mesh>
+              {/* Forward Cylindrical Discharge Nozzle & Shroud */}
+              <mesh position={[0, 0.135, 0.29]} rotation={[Math.PI / 2 - 0.16, 0, 0]} material={materials.nosingMat}>
+                <cylinderGeometry args={[0.065, 0.085, 0.11, 16]} />
+              </mesh>
+              <mesh position={[0, 0.15, 0.35]} rotation={[Math.PI / 2 - 0.16, 0, 0]} material={materials.brushedAluminumMat}>
+                <cylinderGeometry args={[0.044, 0.058, 0.08, 16]} />
+              </mesh>
+            </group>
+          ))}
+        </group>
+      )}
+
       {/* Raised Front Stage Apron */}
       {!isIce &&
         !isScreenX &&
@@ -1161,6 +1310,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
+        !isExoskeleton4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -1354,6 +1504,155 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
+      {/* 4DX Exo-Skeleton 550: Deep Matte-Black Shadow Cavity + Heavy-Duty Structural Front Environmental Effects Box Truss (Wind Turbines, Fog Nozzles & Strobe Pods) */}
+      {isExoskeleton4dx &&
+        (() => {
+          const topTrussY = screenPosition[1] + screenHeight * 0.5 + 1.08;
+          const botTrussY = Math.max(0.85, screenPosition[1] - screenHeight * 0.5 - 0.65);
+          const flankX = Math.min(W * 0.44, screenWidth * 0.5 + 0.92);
+          const trussZ = screenPosition[2] + 0.52;
+          const towerH = Math.max(4, H - 0.4);
+          return (
+            <group>
+              {/* Deep Matte-Black Acoustic Shadow Cavity Behind Colossal Floating Screen */}
+              <mesh position={[0, H * 0.5, screenPosition[2] - 0.45]} material={materials.stageMat}>
+                <boxGeometry args={[W - 0.22, H, 0.3]} />
+              </mesh>
+              <mesh position={[0, 0.06, frontZ + 1.25]} receiveShadow material={materials.stageMat}>
+                <boxGeometry args={[W - 0.4, 0.12, 2.5]} />
+              </mesh>
+
+              {/* Top Overhead Matte-Black Structural Environmental Effects Box Truss */}
+              <group position={[0, topTrussY, trussZ]}>
+                {[
+                  [-0.22, -0.22],
+                  [0.22, -0.22],
+                  [-0.22, 0.22],
+                  [0.22, 0.22],
+                ].map(([cy, cz], ci) => (
+                  <mesh key={`exo-top-chord-${ci}`} position={[0, cy, cz]} material={materials.carbonFiberMat}>
+                    <boxGeometry args={[flankX * 2 + 0.6, 0.075, 0.075]} />
+                  </mesh>
+                ))}
+                {Array.from({ length: 17 }, (_, wi) => {
+                  const wx = THREE.MathUtils.lerp(-flankX, flankX, wi / 16);
+                  return (
+                    <group key={`exo-top-web-${wi}`} position={[wx, 0, 0]}>
+                      <mesh material={materials.nosingMat}>
+                        <boxGeometry args={[0.048, 0.48, 0.48]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+
+              {/* Lower Front Fog Manifold Truss Beam Below Floating Screen */}
+              <group position={[0, botTrussY, trussZ]}>
+                <mesh material={materials.carbonFiberMat}>
+                  <boxGeometry args={[flankX * 2 + 0.4, 0.26, 0.36]} />
+                </mesh>
+                {/* Integrated Industrial Fog Discharge Manifolds & Dual Flared Nozzles */}
+                {[-W * 0.32, -W * 0.11, W * 0.11, W * 0.32].map((fx, fi) => (
+                  <group key={`exo-front-fog-${fi}`} position={[fx, 0.06, 0.2]}>
+                    <mesh material={materials.nosingMat}>
+                      <boxGeometry args={[1.35, 0.18, 0.14]} />
+                    </mesh>
+                    {[-0.36, 0.36].map((nx, ni) => (
+                      <mesh
+                        key={`exo-fog-noz-${ni}`}
+                        position={[nx, 0.02, 0.1]}
+                        rotation={[Math.PI / 2, 0, 0]}
+                        material={materials.brushedAluminumMat}
+                      >
+                        <cylinderGeometry args={[0.042, 0.064, 0.12, 12]} />
+                      </mesh>
+                    ))}
+                  </group>
+                ))}
+              </group>
+
+              {/* Left & Right Flanking Vertical Structural Effect Truss Columns */}
+              {[-flankX, flankX].map((fx, si) => (
+                <group key={`exo-flank-tower-${si}`} position={[fx, H * 0.5 - 0.1, trussZ]}>
+                  {[
+                    [-0.22, -0.22],
+                    [0.22, -0.22],
+                    [-0.22, 0.22],
+                    [0.22, 0.22],
+                  ].map(([cx, cz], ci) => (
+                    <mesh key={`flank-chord-${ci}`} position={[cx, 0, cz]} material={materials.carbonFiberMat}>
+                      <boxGeometry args={[0.072, towerH, 0.072]} />
+                    </mesh>
+                  ))}
+                  {Array.from({ length: 10 }, (_, bi) => (
+                    <mesh
+                      key={`flank-tie-${bi}`}
+                      position={[0, -towerH * 0.45 + bi * (towerH * 0.1), 0]}
+                      material={materials.nosingMat}
+                    >
+                      <boxGeometry args={[0.48, 0.05, 0.48]} />
+                    </mesh>
+                  ))}
+                </group>
+              ))}
+
+              {/* 4 Heavy-Duty Shrouded Storm-Wind Axial Turbine Housings (Synced to FourDxEffectsRig Rotors) */}
+              {[
+                { x: -W * 0.22, y: topTrussY, radius: 0.66 },
+                { x: W * 0.22, y: topTrussY, radius: 0.66 },
+                { x: -flankX, y: screenPosition[1] + 1.4, radius: 0.58 },
+                { x: flankX, y: screenPosition[1] + 1.4, radius: 0.58 },
+              ].map((fan, fi) => (
+                <group key={`exo-turbine-shroud-${fi}`} position={[fan.x, fan.y, trussZ]}>
+                  {/* Heavy-Duty Open Cylindrical Fan Cowling Ring */}
+                  <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.nosingMat} castShadow>
+                    <cylinderGeometry args={[fan.radius + 0.05, fan.radius + 0.05, 0.42, 24, 1, true]} />
+                  </mesh>
+                  {/* Front & Rear Protective Flange Rings */}
+                  {[-0.2, 0.2].map((fz, fzi) => (
+                    <mesh
+                      key={`fan-flange-${fzi}`}
+                      position={[0, 0, fz]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.trimMetalMat}
+                    >
+                      <torusGeometry args={[fan.radius + 0.03, 0.036, 10, 24]} />
+                    </mesh>
+                  ))}
+                  {/* Protective Radial Cross Safety Struts */}
+                  {[0, Math.PI / 2].map((ang, ai) => (
+                    <mesh key={`fan-guard-${ai}`} position={[0, 0, 0.2]} rotation={[0, 0, ang]} material={materials.nosingMat}>
+                      <boxGeometry args={[fan.radius * 2, 0.035, 0.025]} />
+                    </mesh>
+                  ))}
+                </group>
+              ))}
+
+              {/* Overhead Fog Nozzles & Armored High-Output Strobe Pods Along Upper Front Truss */}
+              {[-W * 0.34, -W * 0.1, W * 0.1, W * 0.34].map((px, pi) => (
+                <group key={`exo-top-strobe-${pi}`} position={[px, topTrussY - 0.32, trussZ + 0.12]}>
+                  <mesh material={materials.nosingMat}>
+                    <boxGeometry args={[0.68, 0.16, 0.2]} />
+                  </mesh>
+                  <mesh position={[0, -0.02, 0.105]}>
+                    <planeGeometry args={[0.54, 0.09]} />
+                    <meshStandardMaterial
+                      color="#1e2430"
+                      emissive={pi % 2 === 0 ? '#ef4444' : '#e2e8f0'}
+                      emissiveIntensity={lightFactor * 0.42}
+                      roughness={0.2}
+                    />
+                  </mesh>
+                  {/* Paired Overhead Mist/Fog Discharge Nozzle Beside Strobe Pod */}
+                  <mesh position={[0.42, 0.04, 0.04]} rotation={[Math.PI / 2, 0, 0]} material={materials.brushedAluminumMat}>
+                    <cylinderGeometry args={[0.032, 0.048, 0.14, 10]} />
+                  </mesh>
+                </group>
+              ))}
+            </group>
+          );
+        })()}
+
       {/* Low Minimalist Dark-Stone Stage Riser (Grand Crimson Palace 2D Redesign) */}
       {isVolcanicCopper2d && (
         <group position={[0, 0.16, screenPosition[2] + 0.85]}>
@@ -1382,7 +1681,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
       </mesh>
 
       {/* Minimalist Matte/Satin-Black Acoustic Border Masking Framing Wide Screen */}
-      {(isModernMultiplex || isCrimson4dx || isArctic4dx || isVolcanicCopper2d || isPrivateVolcanic) && (
+      {(isModernMultiplex || isCrimson4dx || isVolcanicCopper2d || isPrivateVolcanic) && (
         <group>
           {[-1, 1].map((side) => (
             <mesh
@@ -1409,6 +1708,38 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           >
             <boxGeometry
               args={[screenWidth + 0.5, Math.max(0.25, screenPosition[1] - screenHeight / 2), 0.42]}
+            />
+          </mesh>
+        </group>
+      )}
+
+      {/* 4DX Arctic Storm: Matte-Black Upper/Lower Screen Masking + Pleated Black Side Velvet Curtains */}
+      {isArctic4dx && (
+        <group>
+          {[-1, 1].map((side) => (
+            <mesh
+              key={`arctic-wing-curtain-${side}`}
+              position={[side * (W / 2 - wingWidth / 2 - 0.1), H * 0.5, frontZ + 0.52]}
+              geometry={curtainGeos.sideCurtainGeo}
+              material={materials.curtainMat}
+              receiveShadow
+            />
+          ))}
+          {valanceHeight > 0.2 && (
+            <mesh
+              position={[0, H - valanceHeight / 2 - 0.04, frontZ + 0.42]}
+              material={materials.stageMat}
+              receiveShadow
+            >
+              <boxGeometry args={[W - 0.2, valanceHeight + 0.14, 0.44]} />
+            </mesh>
+          )}
+          <mesh
+            position={[0, (screenPosition[1] - screenHeight / 2) * 0.5 + 0.18, frontZ + 0.4]}
+            material={materials.stageMat}
+          >
+            <boxGeometry
+              args={[screenWidth + 0.5, Math.max(0.25, screenPosition[1] - screenHeight / 2), 0.4]}
             />
           </mesh>
         </group>
@@ -1504,6 +1835,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
+        !isExoskeleton4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -1553,6 +1885,7 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
+        !isExoskeleton4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -1797,13 +2130,15 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </mesh>
       )}
 
-      {/* Symmetrical Vertical Acoustic Diffuser Slats on Rear Wall Flanking Booth & Doors (omitted in private luxury residential suites, ScreenX, Obsidian Wave 550, Sylva Moss 250 & Dolby Cobalt Veil) */}
+      {/* Symmetrical Vertical Acoustic Diffuser Slats on Rear Wall Flanking Booth & Doors (omitted in private luxury residential suites, ScreenX, Obsidian Wave 550, Sylva Moss 250, Dolby Cobalt Veil, 4DX Exo-Skeleton 550 & 4DX Arctic Storm) */}
       {!isPrivateVolcanic &&
         !isPrivateChampagne &&
         !isScreenX &&
         !isParametricObsidian &&
         !isBiophilicMoss &&
         !isDolbyVeil &&
+        !isExoskeleton4dx &&
+        !isArctic4dx &&
         [-1, 1].map((side) =>
           Array.from({ length: 4 }, (_, si) => {
             const slatX = side * (boothWinW / 2 + 1.55 + si * 0.42);
@@ -1870,6 +2205,8 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
             !isParametricObsidian &&
             !isBiophilicMoss &&
             !isDolbyVeil &&
+            !isExoskeleton4dx &&
+            !isArctic4dx &&
             [-1, 1].map((pside) => (
               <group key={`rear-poster-${pside}`} position={[pside * Math.min(2.25, W * 0.22), 0.12, 0.04]}>
                 <mesh material={materials.trimMetalMat}>
@@ -3177,11 +3514,12 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* 4DX Overhead Wind/Strobe Rig Truss (generic 4DX halls, replaced by bespoke ceilings in Crimson, Arctic & Thunder 4DX) */}
+      {/* 4DX Overhead Wind/Strobe Rig Truss (generic 4DX halls, replaced by bespoke ceilings in Crimson, Arctic, Thunder & Exo-Skeleton 4DX) */}
       {environmentProfile.architectureStyle === '4dx' &&
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
+        !isExoskeleton4dx &&
         Array.from({ length: 4 }, (_, i) => (
           <group key={`4dx-rig-${i}`} position={[0, H - 0.58, firstRowZ + i * 3.6]}>
             <mesh material={materials.trimMetalMat}>
@@ -3198,104 +3536,107 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           </group>
         ))}
 
-      {/* 4DX Arctic Storm Ceiling: Bold Geometric Angular Acoustic Grid, Rain-Mist Nozzles, Lightning Strobe Bars & Linear Violet/Cyan LED Channels */}
+      {/* 4DX Arctic Storm Ceiling: Flat T-Bar Grid, Flush Square HVAC Diffusers, Crisscross Diagonal Violet/Cyan LEDs, Linear White Strobe Bars & Longitudinal Mist Pipe Manifolds */}
       {ceilingLightStyle === 'hexagonal_acoustic_4dx' && (
         <group>
-          {/* Bold Dark Geometric Angular Acoustic Grid Beams (Crisscross Diagonal Lattice) */}
-          {Array.from({ length: 6 }, (_, i) => {
-            const cz = frontZ + 3.2 + i * ((L - 6.4) / 5);
-            const diagSpan = Math.hypot(W * 0.46, 3.8);
-            const yawAng = Math.atan2(3.8, W * 0.46);
+          {/* Flush Square Matte-Black HVAC Grille Diffusers */}
+          {[-W * 0.24, W * 0.24].map((hx, hi) =>
+            [-L * 0.22, L * 0.14].map((hz, hzi) => (
+              <group key={`arctic-hvac-${hi}-${hzi}`} position={[hx, H - 0.208, hz]}>
+                <mesh material={materials.nosingMat}>
+                  <boxGeometry args={[0.72, 0.022, 0.72]} />
+                </mesh>
+                <mesh position={[0, -0.008, 0]} material={materials.speakerMat}>
+                  <boxGeometry args={[0.6, 0.012, 0.6]} />
+                </mesh>
+              </group>
+            )),
+          )}
+
+          {/* Razor-Thin Diagonal Electric-Violet & Ice-Cyan Recessed LED Strips Across Ceiling Grid */}
+          {[
+            { a: [-W * 0.48, frontZ + 2.2], b: [W * 0.24, backZ - 2.6], isCyan: false },
+            { a: [W * 0.48, frontZ + 2.2], b: [-W * 0.24, backZ - 2.6], isCyan: true },
+            { a: [-W * 0.48, -1.6], b: [W * 0.48, backZ - 4.4], isCyan: true },
+            { a: [W * 0.48, -1.6], b: [-W * 0.48, backZ - 4.4], isCyan: false },
+            { a: [-W * 0.48, frontZ + 6.4], b: [W * 0.48, -3.2], isCyan: false },
+            { a: [W * 0.48, frontZ + 6.4], b: [-W * 0.48, -3.2], isCyan: true },
+          ].map((track, ti) => {
+            const dx = track.b[0] - track.a[0];
+            const dz = track.b[1] - track.a[1];
+            const len = Math.hypot(dx, dz);
+            const mx = (track.a[0] + track.b[0]) * 0.5;
+            const mz = (track.a[1] + track.b[1]) * 0.5;
+            const yaw = Math.atan2(dx, dz);
             return (
-              <group key={`arctic-angular-bay-${i}`} position={[0, H - 0.36, cz]}>
-                {/* Left & Right Angled Crisscross Acoustic Grid Ribs */}
-                {[-1, 1].map((side) => (
-                  <group key={`ang-rib-${side}`} position={[side * W * 0.23, 0, 0]} rotation={[0, side * yawAng, 0]}>
-                    <mesh material={materials.obsidianRevealMat}>
-                      <boxGeometry args={[diagSpan, 0.22, 0.18]} />
-                    </mesh>
-                    {/* Recessed Electric-Violet & Bright Cyan LED Channels Tracing Geometric Grid */}
-                    <mesh position={[0, -0.115, 0]}>
-                      <boxGeometry args={[diagSpan - 0.3, 0.022, 0.055]} />
-                      <meshStandardMaterial
-                        color="#100a1c"
-                        emissive={i % 2 === 0 ? lightingProfile.wallColor : lightingProfile.accentColor}
-                        emissiveIntensity={wallAccentIntensity * 1.15}
-                        roughness={0.2}
-                      />
-                    </mesh>
-                  </group>
-                ))}
-                {/* Counter-Angled Cross Grid Ribs Forming Diamond Ceiling Lattice */}
-                {[-1, 1].map((side) => (
-                  <group key={`ang-cross-${side}`} position={[side * W * 0.23, 0, 0]} rotation={[0, -side * yawAng, 0]}>
-                    <mesh material={materials.stageMat}>
-                      <boxGeometry args={[diagSpan, 0.2, 0.16]} />
-                    </mesh>
-                    <mesh position={[0, -0.105, 0]}>
-                      <boxGeometry args={[diagSpan - 0.35, 0.02, 0.048]} />
-                      <meshStandardMaterial
-                        color="#08141a"
-                        emissive={i % 2 === 0 ? lightingProfile.accentColor : lightingProfile.wallColor}
-                        emissiveIntensity={wallAccentIntensity * 1.05}
-                        roughness={0.2}
-                      />
-                    </mesh>
-                  </group>
-                ))}
-
-                {/* Overhead Rain-Mist Nozzle Manifolds */}
-                {[-W * 0.28, 0, W * 0.28].map((nx, ni) => (
-                  <group key={`arctic-rain-mist-${ni}`} position={[nx, -0.22, 0]}>
-                    <mesh material={materials.trimMetalMat}>
-                      <boxGeometry args={[1.05, 0.045, 0.045]} />
-                    </mesh>
-                    {[-0.32, 0, 0.32].map((mx, mi) => (
-                      <mesh key={`arctic-mist-tip-${mi}`} position={[mx, -0.06, 0]} material={materials.projectorChromeMat}>
-                        <cylinderGeometry args={[0.016, 0.032, 0.08, 10]} />
-                      </mesh>
-                    ))}
-                  </group>
-                ))}
-
-                {/* Mounted Overhead Lightning Strobe Light Bars */}
-                {[-W * 0.15, W * 0.15].map((sx, si) => (
-                  <group key={`arctic-strobe-bar-${si}`} position={[sx, -0.2, 0.16]}>
-                    <mesh material={materials.nosingMat}>
-                      <boxGeometry args={[1.22, 0.07, 0.1]} />
-                    </mesh>
-                    <mesh position={[0, -0.038, 0]}>
-                      <boxGeometry args={[1.08, 0.022, 0.06]} />
-                      <meshStandardMaterial
-                        color="#101424"
-                        emissive="#a855f7"
-                        emissiveIntensity={lightFactor * 0.45}
-                        roughness={0.18}
-                      />
-                    </mesh>
-                  </group>
-                ))}
+              <group key={`arctic-ceil-diag-${ti}`} position={[mx, H - 0.214, mz]} rotation={[0, yaw, 0]}>
+                <mesh material={materials.nosingMat}>
+                  <boxGeometry args={[0.045, 0.02, len]} />
+                </mesh>
+                <mesh position={[0, -0.01, 0]}>
+                  <boxGeometry args={[0.022, 0.014, len - 0.04]} />
+                  <meshStandardMaterial
+                    color={track.isCyan ? '#e0faff' : '#f3e8ff'}
+                    emissive={track.isCyan ? '#22d3ee' : '#a855f7'}
+                    emissiveIntensity={wallAccentIntensity * 1.15}
+                    toneMapped={false}
+                    roughness={0.2}
+                  />
+                </mesh>
               </group>
             );
           })}
 
-          {/* Longitudinal Violet & Cyan Linear Accent Spine Channels */}
-          {[-W * 0.36, W * 0.36].map((lx, li) => (
-            <group key={`arctic-long-violet-${li}`} position={[lx, H - 0.5, 0]}>
-              <mesh material={materials.nosingMat}>
-                <boxGeometry args={[0.1, 0.04, L - 2.6]} />
-              </mesh>
-              <mesh position={[0, -0.022, 0]}>
-                <boxGeometry args={[0.045, 0.022, L - 2.7]} />
-                <meshStandardMaterial
-                  color="#12091d"
-                  emissive={lightingProfile.wallColor}
-                  emissiveIntensity={wallAccentIntensity * 1.15}
-                  roughness={0.2}
-                />
-              </mesh>
-            </group>
-          ))}
+          {/* Crisp Cool-White Linear Overhead LED Strobe Light Bars */}
+          {[-W * 0.34, -W * 0.11, W * 0.11, W * 0.34].map((sx, si) =>
+            [frontZ + 4.8, -1.2, 5.4].map((sz, szi) => (
+              <group key={`arctic-strobe-bar-${si}-${szi}`} position={[sx, H - 0.228, sz]}>
+                <mesh material={materials.nosingMat}>
+                  <boxGeometry args={[0.068, 0.036, 1.38]} />
+                </mesh>
+                <mesh position={[0, -0.019, 0]}>
+                  <boxGeometry args={[0.038, 0.012, 1.28]} />
+                  <meshStandardMaterial
+                    color="#eef6ff"
+                    emissive="#dbeafe"
+                    emissiveIntensity={0.42 + lightFactor * 1.45}
+                    toneMapped={false}
+                    roughness={0.18}
+                  />
+                </mesh>
+              </group>
+            )),
+          )}
+
+          {/* 3 Longitudinal Dark-Steel Overhead 4DX Rain-Mist Pipe Manifolds with Drop Stems & Atomizer Nozzles */}
+          {[-W * 0.28, 0, W * 0.28].map((rx, ri) => {
+            const railZ0 = firstRowZ - 0.8;
+            const railZ1 = backZ - 2.4;
+            const railLen = Math.max(8, railZ1 - railZ0);
+            const railMidZ = (railZ0 + railZ1) * 0.5;
+            return (
+              <group key={`arctic-mist-manifold-${ri}`}>
+                {/* Longitudinal Supply Pipe */}
+                <mesh position={[rx, H - 0.36, railMidZ]} rotation={[Math.PI / 2, 0, 0]} material={materials.nosingMat}>
+                  <cylinderGeometry args={[0.016, 0.016, railLen, 10]} />
+                </mesh>
+                {/* Drop Stems + Downward Mist Atomizer Heads */}
+                {Array.from({ length: 7 }, (_, mi) => {
+                  const mz = THREE.MathUtils.lerp(railZ0 + 0.5, railZ1 - 0.5, mi / 6);
+                  return (
+                    <group key={`arctic-mist-head-${ri}-${mi}`} position={[rx, H - 0.28, mz]}>
+                      <mesh material={materials.nosingMat}>
+                        <cylinderGeometry args={[0.012, 0.012, 0.16, 8]} />
+                      </mesh>
+                      <mesh position={[0, -0.1, 0]} material={materials.projectorChromeMat}>
+                        <cylinderGeometry args={[0.02, 0.028, 0.055, 10]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+            );
+          })}
         </group>
       )}
 
@@ -4558,6 +4899,135 @@ export const AuditoriumShell: React.FC<AuditoriumShellProps> = ({
           )}
         </group>
       )}
+
+      {/* 4DX Exo-Skeleton 550 Ceiling: Open Industrial Structural Matte-Black Truss Layout, Heavy-Duty Atmos Speaker Support Grids & Overhead 4DX Rain/Snow Arrays */}
+      {ceilingLightStyle === 'industrial_exoskeleton_4dx' && (
+        <group>
+          {/* 5 Longitudinal Open Matte-Black Structural Box Girders */}
+          {[-W * 0.38, -W * 0.2, 0, W * 0.2, W * 0.38].map((tx, ti) => (
+            <group key={`exo-long-girder-${ti}`} position={[tx, H - 0.48, 0]}>
+              {[-0.14, 0.14].map((cx, ci) => (
+                <mesh key={`exo-lg-chord-${ci}`} position={[cx, 0, 0]} material={materials.carbonFiberMat}>
+                  <boxGeometry args={[0.06, 0.11, L - 1.8]} />
+                </mesh>
+              ))}
+              {Array.from({ length: 16 }, (_, wi) => (
+                <mesh
+                  key={`exo-lg-tie-${wi}`}
+                  position={[0, 0, frontZ + 1.4 + wi * ((L - 2.8) / 15)]}
+                  material={materials.nosingMat}
+                >
+                  <boxGeometry args={[0.32, 0.05, 0.055]} />
+                </mesh>
+              ))}
+            </group>
+          ))}
+
+          {/* 7 Transverse Open-Web Structural Steel Trusses Spanning Auditorium Width */}
+          {Array.from({ length: 7 }, (_, i) => {
+            const tz = frontZ + 2.8 + i * ((L - 5.6) / 6);
+            return (
+              <group key={`exo-trans-truss-${i}`} position={[0, H - 0.44, tz]}>
+                {[-0.15, 0.15].map((dy, di) => (
+                  <mesh key={`exo-tr-chord-${di}`} position={[0, dy, 0]} material={materials.carbonFiberMat}>
+                    <boxGeometry args={[W - 0.8, 0.068, 0.18]} />
+                  </mesh>
+                ))}
+                {Array.from({ length: 14 }, (_, bi) => (
+                  <mesh
+                    key={`exo-tr-brace-${bi}`}
+                    position={[-W * 0.42 + bi * ((W * 0.84) / 13), 0, 0]}
+                    rotation={[0, 0, bi % 2 === 0 ? 0.56 : -0.56]}
+                    material={materials.nosingMat}
+                  >
+                    <boxGeometry args={[0.045, 0.34, 0.07]} />
+                  </mesh>
+                ))}
+              </group>
+            );
+          })}
+
+          {/* 3 Longitudinal Overhead 4DX Rain-Jet Pipe Manifolds with Downward Atomizer Nozzles */}
+          {[-W * 0.26, 0, W * 0.26].map((rx, ri) => (
+            <group key={`exo-rain-manifold-${ri}`} position={[rx, H - 0.68, 0]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.brushedAluminumMat}>
+                <cylinderGeometry args={[0.036, 0.036, L - 5.4, 10]} />
+              </mesh>
+              {Array.from({ length: 11 }, (_, ni) => {
+                const nz = frontZ + 4.2 + ni * ((L - 7.8) / 10);
+                return (
+                  <group key={`exo-rain-noz-${ni}`} position={[0, -0.055, nz]}>
+                    <mesh material={materials.nosingMat}>
+                      <cylinderGeometry args={[0.045, 0.045, 0.04, 10]} />
+                    </mesh>
+                    <mesh position={[0, -0.055, 0]} material={materials.brushedAluminumMat}>
+                      <cylinderGeometry args={[0.014, 0.032, 0.075, 10]} />
+                    </mesh>
+                  </group>
+                );
+              })}
+            </group>
+          ))}
+
+          {/* 6 Overhead 4DX Snow-Dispersal Blower Pods Mounted to Central Structural Catwalks */}
+          {[-W * 0.14, W * 0.14].map((sx, si) =>
+            [-L * 0.24, 0.0, L * 0.24].map((sz, szi) => (
+              <group key={`exo-snow-pod-${si}-${szi}`} position={[sx, H - 0.68, sz]}>
+                {/* Matte-Black Cylindrical Snow Drum Housing */}
+                <mesh material={materials.carbonFiberMat} castShadow>
+                  <cylinderGeometry args={[0.24, 0.24, 0.34, 18]} />
+                </mesh>
+                {/* Brushed Aluminum Flared Snow Dispersal Nozzle Cone */}
+                <mesh position={[0, -0.24, 0]} material={materials.brushedAluminumMat}>
+                  <cylinderGeometry args={[0.14, 0.26, 0.16, 18, 1, true]} />
+                </mesh>
+                {/* Twin Truss Hanger Arms */}
+                {[-0.18, 0.18].map((hx, hi) => (
+                  <mesh key={`snow-hang-${hi}`} position={[hx, 0.2, 0]} material={materials.nosingMat}>
+                    <boxGeometry args={[0.04, 0.26, 0.05]} />
+                  </mesh>
+                ))}
+              </group>
+            )),
+          )}
+
+          {/* Recessed Crimson & Storm-Grey Structural Truss Accent Light Channels */}
+          {[-W * 0.38, W * 0.38].map((lx, li) => (
+            <group key={`exo-ceil-led-${li}`} position={[lx, H - 0.56, 0]}>
+              <mesh material={materials.nosingMat}>
+                <boxGeometry args={[0.08, 0.035, L - 2.4]} />
+              </mesh>
+              <mesh position={[0, -0.02, 0]}>
+                <boxGeometry args={[0.036, 0.018, L - 2.6]} />
+                <meshStandardMaterial
+                  color="#1a060a"
+                  emissive="#ef4444"
+                  emissiveIntensity={wallAccentIntensity * 1.15}
+                  toneMapped={false}
+                  roughness={0.2}
+                />
+              </mesh>
+            </group>
+          ))}
+          <mesh position={[0, H - 0.56, 0]}>
+            <boxGeometry args={[0.036, 0.018, L - 2.8]} />
+            <meshStandardMaterial
+              color="#1e242c"
+              emissive="#cbd5e1"
+              emissiveIntensity={wallAccentIntensity * 0.72}
+              toneMapped={false}
+              roughness={0.22}
+            />
+          </mesh>
+        </group>
+      )}
     </group>
   );
+};
+
+export const AuditoriumShell: React.FC<AuditoriumShellProps> = (props) => {
+  if (props.config.environmentProfile.architectureStyle === 'beach') {
+    return <BeachShell {...props} />;
+  }
+  return <IndoorAuditoriumShell {...props} />;
 };

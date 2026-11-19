@@ -11,6 +11,10 @@ import { ScreenBounceUniforms } from '../lighting/screenBounceShader';
 import { isMobileDevice } from '../../utils/formatters';
 import { IceSidePanels } from './IceSidePanels';
 import { ScreenXSideWalls } from './ScreenXSideWalls';
+import {
+  BEACH_BIO_PROJECTOR_LENSES,
+  BEACH_SUNSET_PROJECTOR_LENS,
+} from './BeachEnvironment';
 
 export interface ScreenBounceSample {
   r: number;
@@ -104,6 +108,8 @@ function buildProjectorFrustumGeometry(
   screenWidth: number,
   screenHeight: number,
   innerScale = 1.0,
+  baseLensHalfW = 0.19,
+  baseLensHalfH = 0.11,
 ): THREE.BufferGeometry {
   const geom = new THREE.BufferGeometry();
   const positions: number[] = [];
@@ -111,8 +117,8 @@ function buildProjectorFrustumGeometry(
   const beamTs: number[] = [];
   const indices: number[] = [];
 
-  const lensHalfW = 0.19 * innerScale;
-  const lensHalfH = 0.11 * innerScale;
+  const lensHalfW = baseLensHalfW * innerScale;
+  const lensHalfH = baseLensHalfH * innerScale;
   const scrHalfW = (screenWidth * 0.5) * innerScale;
   const scrHalfH = (screenHeight * 0.5) * innerScale;
 
@@ -220,6 +226,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const isCrimson4dx = sideLightStyle === 'crimson_velocity_4dx';
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
+  const isExoskeleton4dx = sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
   const isDolbyFloating =
     sideLightStyle === 'obsidian_slat_grazers' ||
@@ -243,11 +250,15 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     : 0;
   const effectiveScreenWidth = isScreenX ? screenWidth - screenXCornerRadius * 2 : screenWidth;
 
+  const isBeach = config.environmentProfile.architectureStyle === 'beach';
+  const isBioluminescentBeach = config.theaterId === 'beach_bioluminescent';
   const surfaceMeshRef = useRef<THREE.Mesh>(null);
   const shaderMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const outerBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const innerBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const lensFlareMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const beachOuterBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const beachInnerBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
 
   const texARef = useRef<THREE.VideoTexture | null>(null);
   const texBRef = useRef<THREE.VideoTexture | null>(null);
@@ -257,12 +268,23 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const lastActiveTexRef = useRef<THREE.Texture | null>(null);
   const lastUploadMsRef = useRef(0);
   const lastSamplerMsRef = useRef(0);
+  const lastRgbReadMsRef = useRef(0);
   const lastSamplerTexRef = useRef<THREE.Texture | null>(null);
   const uploadedDeckRef = useRef<{ A: boolean; B: boolean }>({ A: false, B: false });
   const lastVideoSrcByDeckRef = useRef<{ A: string; B: string }>({ A: '', B: '' });
   const currentBounceGainRef = useRef(0);
   const isVideoActiveRef = useRef(false);
   const isMobile = useMemo(() => isMobileDevice(), []);
+
+  // Tiny pre-allocated 8x4 offscreen canvas for zero-stall real-time average video RGB + luminance sampling
+  const rgbSamplerCanvas = useMemo(() => {
+    if (typeof document === 'undefined') return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = 4;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    return ctx ? { canvas, ctx } : null;
+  }, []);
 
   const standbyTexture = useMemo(
     () =>
@@ -500,10 +522,10 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
 
   const silverBezelGeo = useMemo(
     () =>
-      isArctic4dx || isThunder4dx || isCrimson4dx
+      isThunder4dx || isCrimson4dx
         ? buildCurvedScreenGeometry(screenWidth + 0.06, screenHeight + 0.06, screenCurvature, 48, 4)
         : null,
-    [isArctic4dx, isThunder4dx, isCrimson4dx, screenWidth, screenHeight, screenCurvature],
+    [isThunder4dx, isCrimson4dx, screenWidth, screenHeight, screenCurvature],
   );
 
   useEffect(() => {
@@ -762,7 +784,87 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     };
   }, [outerBeamGeo, innerBeamGeo, outerBeamMaterial, innerBeamMaterial, lensFlareMaterial]);
 
-  // Unified cinema projection shader (exact sRGB decode & optical lens uniformity)
+  // Outdoor Beach Theater real-time video-mapped rectangular projector frustums (per-pixel synced to playing movie)
+  const beachLensOrigins = useMemo<[number, number, number][]>(() => {
+    if (!isBeach) return [];
+    if (isBioluminescentBeach) {
+      return [
+        [...BEACH_BIO_PROJECTOR_LENSES[0]],
+        [...BEACH_BIO_PROJECTOR_LENSES[1]],
+      ];
+    }
+    return [[...BEACH_SUNSET_PROJECTOR_LENS]];
+  }, [isBeach, isBioluminescentBeach]);
+
+  const beachBeamAssets = useMemo(() => {
+    if (!isBeach || beachLensOrigins.length === 0) return null;
+
+    const frustums = beachLensOrigins.map((origin) => ({
+      origin,
+      outerGeo: buildProjectorFrustumGeometry(
+        origin,
+        screenPosition,
+        effectiveScreenWidth * scaleX,
+        screenHeight * scaleY,
+        1.0,
+        0.072,
+        0.05,
+      ),
+      innerGeo: buildProjectorFrustumGeometry(
+        origin,
+        screenPosition,
+        effectiveScreenWidth * scaleX,
+        screenHeight * scaleY,
+        0.64,
+        0.072,
+        0.05,
+      ),
+    }));
+
+    return { frustums };
+  }, [
+    isBeach,
+    beachLensOrigins,
+    screenPosition,
+    effectiveScreenWidth,
+    screenHeight,
+    scaleX,
+    scaleY,
+  ]);
+
+  const beachOuterBeamMaterial = useMemo(() => {
+    const mat = createBeamMaterial(1.55);
+    beachOuterBeamMatRef.current = mat;
+    return mat;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpuLightSampler]);
+
+  const beachInnerBeamMaterial = useMemo(() => {
+    const mat = createBeamMaterial(1.3);
+    beachInnerBeamMatRef.current = mat;
+    return mat;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpuLightSampler]);
+
+  useEffect(() => {
+    return () => {
+      if (beachBeamAssets) {
+        beachBeamAssets.frustums.forEach((f) => {
+          f.outerGeo.dispose();
+          f.innerGeo.dispose();
+        });
+      }
+    };
+  }, [beachBeamAssets]);
+
+  useEffect(() => {
+    return () => {
+      beachOuterBeamMaterial.dispose();
+      beachInnerBeamMaterial.dispose();
+    };
+  }, [beachOuterBeamMaterial, beachInnerBeamMaterial]);
+
+  // Unified cinema projection shader (exact sRGB decode + optical lens uniformity + optional inverse-ACES HDR calibration)
   const screenShaderMaterial = useMemo(() => {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
@@ -773,6 +875,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         uIsVideo: { value: 0 },
         uScreenXFitRatio: { value: 1.0 },
         uScreenXFrontWidth: { value: effectiveScreenWidth },
+        uHdrBloomMode: { value: isBioluminescentBeach && !isSoftwareGl ? 1.0 : 0.0 },
+        uToneMappingExposure: { value: 1.05 },
       },
       vertexShader: `
         varying vec2 vUv;
@@ -790,6 +894,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         uniform float uIsVideo;
         uniform float uScreenXFitRatio;
         uniform float uScreenXFrontWidth;
+        uniform float uHdrBloomMode;
+        uniform float uToneMappingExposure;
 
         vec3 srgbToLinear(vec3 c) {
           vec3 lo = c / 12.92;
@@ -802,6 +908,24 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           vec3 lo = clamped * 12.92;
           vec3 hi = 1.055 * pow(clamped, vec3(1.0 / 2.4)) - 0.055;
           return mix(lo, hi, step(vec3(0.0031308), clamped));
+        }
+
+        // Analytic inverse of Three.js ACESFilmicToneMapping RRT+ODT curve, capped strictly below UnrealBloom threshold (2.18)
+        vec3 inverseACESFilmic(vec3 y) {
+          vec3 yc = clamp(y, vec3(0.0), vec3(0.965));
+          vec3 A = vec3(2.51);
+          vec3 B = vec3(0.03);
+          vec3 C = vec3(2.43);
+          vec3 D = vec3(0.59);
+          vec3 E = vec3(0.14);
+          vec3 a = C * yc - A;
+          vec3 b = D * yc - B;
+          vec3 c = E * yc;
+          vec3 disc = max(b * b - 4.0 * a * c, vec3(0.0));
+          vec3 x = (-b - sqrt(disc)) / min(2.0 * a, vec3(-1e-4));
+          // Undo Three.js pre-curve 0.6 scale + renderer exposure
+          vec3 lin = max(x / (0.6 * max(uToneMappingExposure, 0.1)), vec3(0.0));
+          return min(lin, vec3(2.11));
         }
 
         float mirrorCoord(float x) {
@@ -846,14 +970,20 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           float projectorFalloff = 1.0 - radial * 0.025;
 
           vec3 finalCol = linearRgb * uBrightness * projectorFalloff;
-          gl_FragColor = vec4(linearToSrgb(finalCol), 1.0);
+          if (uHdrBloomMode > 0.5) {
+            // Convert target sRGB appearance through inverse ACES so OutputPass reproduces exact cinema image with zero bloom halo
+            vec3 desiredSrgb = linearToSrgb(finalCol);
+            gl_FragColor = vec4(inverseACESFilmic(desiredSrgb), 1.0);
+          } else {
+            gl_FragColor = vec4(linearToSrgb(finalCol), 1.0);
+          }
         }
       `,
       toneMapped: false,
     });
     shaderMatRef.current = mat;
     return mat;
-  }, [standbyTexture, effectiveScreenWidth]);
+  }, [standbyTexture, effectiveScreenWidth, isBioluminescentBeach, isSoftwareGl]);
 
   useEffect(() => {
     return () => {
@@ -997,9 +1127,62 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       gl.autoClear = prevAutoClear;
     }
 
-    // Strong deterministic screen bounce reflections on seats scaled by user brightness preference
-    const baseBounceGain =
-      showState === 'SHOW_PLAYING' && isVideo
+    // Real-time average video RGB & luminance readout (~22Hz, zero WebGL pipeline stall)
+    if (screenBounceRef) {
+      if (isVideo && activeVideo && activeVideo.readyState >= 2 && rgbSamplerCanvas) {
+        if (nowMs - lastRgbReadMsRef.current >= 45) {
+          lastRgbReadMsRef.current = nowMs;
+          try {
+            rgbSamplerCanvas.ctx.drawImage(activeVideo, 0, 0, 8, 4);
+            const data = rgbSamplerCanvas.ctx.getImageData(0, 0, 8, 4).data;
+            let rSum = 0;
+            let gSum = 0;
+            let bSum = 0;
+            const pxCount = 32;
+            for (let i = 0; i < data.length; i += 4) {
+              rSum += data[i];
+              gSum += data[i + 1];
+              bSum += data[i + 2];
+            }
+            const rAvg = rSum / (pxCount * 255);
+            const gAvg = gSum / (pxCount * 255);
+            const bAvg = bSum / (pxCount * 255);
+            const lum = 0.2126 * rAvg + 0.7152 * gAvg + 0.0722 * bAvg;
+            screenBounceRef.current.r = THREE.MathUtils.damp(screenBounceRef.current.r, rAvg, 8, dt);
+            screenBounceRef.current.g = THREE.MathUtils.damp(screenBounceRef.current.g, gAvg, 8, dt);
+            screenBounceRef.current.b = THREE.MathUtils.damp(screenBounceRef.current.b, bAvg, 8, dt);
+            screenBounceRef.current.luminance = THREE.MathUtils.damp(
+              screenBounceRef.current.luminance,
+              isPaused ? lum * 0.45 : lum,
+              8,
+              dt,
+            );
+          } catch {
+            // Ignore cross-origin drawImage if any external URL ever appears
+          }
+        }
+      } else {
+        const restR = isBioluminescentBeach ? 0.34 : 0.72;
+        const restG = isBioluminescentBeach ? 0.68 : 0.8;
+        const restB = isBioluminescentBeach ? 0.92 : 0.95;
+        screenBounceRef.current.r = THREE.MathUtils.damp(screenBounceRef.current.r, restR, 4, dt);
+        screenBounceRef.current.g = THREE.MathUtils.damp(screenBounceRef.current.g, restG, 4, dt);
+        screenBounceRef.current.b = THREE.MathUtils.damp(screenBounceRef.current.b, restB, 4, dt);
+        screenBounceRef.current.luminance = THREE.MathUtils.damp(
+          screenBounceRef.current.luminance,
+          showState === 'SHOW_PLAYING' && !isPaused ? 0.34 : 0.14,
+          4,
+          dt,
+        );
+      }
+    }
+
+    // Calibrated screen bounce reflections on seats (kept dark & moody on Beach Theaters)
+    const baseBounceGain = isBeach
+      ? showState === 'SHOW_PLAYING' && isVideo
+        ? (isPaused ? 0.14 : 0.38) * lightingProfile.screenGlowStrength
+        : 0.08 * lightingProfile.screenGlowStrength
+      : showState === 'SHOW_PLAYING' && isVideo
         ? isPaused
           ? 0.45 * lightingProfile.screenGlowStrength
           : 2.9 * lightingProfile.screenGlowStrength
@@ -1021,17 +1204,14 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       screenBounceUniforms.uScreenBounceGain.value = currentBounceGainRef.current;
     }
 
-    if (screenBounceRef) {
-      screenBounceRef.current.luminance =
-        showState === 'SHOW_PLAYING' && !isPaused ? 0.38 : 0.16;
-    }
-
     if (shaderMatRef.current) {
       shaderMatRef.current.uniforms.uMap.value = activeTex;
       shaderMatRef.current.uniforms.uBrightness.value = screenBrightnessRef.current;
       shaderMatRef.current.uniforms.uIsVideo.value = isVideo ? 1.0 : 0.0;
       shaderMatRef.current.uniforms.uScreenXFitRatio.value = isVideo ? screenXFitRatio : 1.0;
       shaderMatRef.current.uniforms.uScreenXFrontWidth.value = effectiveScreenWidth;
+      shaderMatRef.current.uniforms.uHdrBloomMode.value =
+        isBioluminescentBeach && !isSoftwareGl ? 1.0 : 0.0;
       shaderMatRef.current.uniforms.uRepeat.value.set(
         isVideo ? uvRepeatX : 1,
         isVideo ? uvRepeatY : 1,
@@ -1053,17 +1233,25 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     frontWidthRef.current = effectiveScreenWidth;
     fitRatioRef.current = isVideo ? screenXFitRatio : 1;
 
-    // Calibrated volumetric projector beam: clearly visible and cinematic on desktop, restrained on mobile
+    // Calibrated volumetric projector beam: strictly zero on beach standby, RGB-synced during playback
     const beamActive = showState === 'SHOW_PLAYING' && isVideo;
     const outerTarget = beamActive ? (isPaused ? 0.045 : isMobile ? 0.075 : 0.185) : 0.0;
     const innerTarget = beamActive ? (isPaused ? 0.03 : isMobile ? 0.052 : 0.135) : 0.0;
-    const flareTarget = beamActive ? (isPaused ? 0.16 : isMobile ? 0.24 : 0.48) : 0.04;
+    const flareTarget = beamActive
+      ? isPaused
+        ? 0.16
+        : isMobile
+          ? 0.24
+          : 0.48
+      : isBeach
+        ? 0.0
+        : 0.04;
 
     if (outerBeamMatRef.current) {
       outerBeamMatRef.current.uniforms.uScreenLightTex.value = gpuLightSampler.rt.texture;
       outerBeamMatRef.current.uniforms.uOpacity.value = THREE.MathUtils.damp(
         outerBeamMatRef.current.uniforms.uOpacity.value,
-        outerTarget,
+        isBeach ? 0 : outerTarget,
         3.2,
         dt,
       );
@@ -1072,7 +1260,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       innerBeamMatRef.current.uniforms.uScreenLightTex.value = gpuLightSampler.rt.texture;
       innerBeamMatRef.current.uniforms.uOpacity.value = THREE.MathUtils.damp(
         innerBeamMatRef.current.uniforms.uOpacity.value,
-        innerTarget,
+        isBeach ? 0 : innerTarget,
         3.2,
         dt,
       );
@@ -1085,6 +1273,55 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         3.2,
         dt,
       );
+    }
+
+    // Update Beach volumetric projector frustum beams directly from uScreenLightTex (zero randomness)
+    if (isBeach) {
+      const beachOuterTarget = beamActive
+        ? isBioluminescentBeach
+          ? isPaused
+            ? 0.028
+            : isMobile
+              ? 0.05
+              : 0.095
+          : isPaused
+            ? 0.04
+            : isMobile
+              ? 0.072
+              : 0.145
+        : 0.0;
+      const beachInnerTarget = beamActive
+        ? isBioluminescentBeach
+          ? isPaused
+            ? 0.02
+            : isMobile
+              ? 0.036
+              : 0.068
+          : isPaused
+            ? 0.028
+            : isMobile
+              ? 0.052
+              : 0.105
+        : 0.0;
+
+      if (beachOuterBeamMatRef.current) {
+        beachOuterBeamMatRef.current.uniforms.uScreenLightTex.value = gpuLightSampler.rt.texture;
+        beachOuterBeamMatRef.current.uniforms.uOpacity.value = THREE.MathUtils.damp(
+          beachOuterBeamMatRef.current.uniforms.uOpacity.value,
+          beachOuterTarget,
+          3.6,
+          dt,
+        );
+      }
+      if (beachInnerBeamMatRef.current) {
+        beachInnerBeamMatRef.current.uniforms.uScreenLightTex.value = gpuLightSampler.rt.texture;
+        beachInnerBeamMatRef.current.uniforms.uOpacity.value = THREE.MathUtils.damp(
+          beachInnerBeamMatRef.current.uniforms.uOpacity.value,
+          beachInnerTarget,
+          3.6,
+          dt,
+        );
+      }
     }
 
     if (surfaceMeshRef.current) {
@@ -1104,8 +1341,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   return (
     <group>
       <group position={screenPosition}>
-        {/* Sleek Matte/Satin Black Acoustic Outer Frame (omitted for seamless frameless floating Dolby, ScreenX 270, Mandap, Obsidian Wave & Sylva Moss floating 2D screens) */}
-        {!isDolbyFloating && !isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && (
+        {/* Sleek Matte/Satin Black Acoustic Outer Frame (omitted for seamless frameless floating Dolby, ScreenX 270, Mandap, Obsidian Wave, Sylva Moss, 4DX Exo-Skeleton & Beach truss screens) */}
+        {!isBeach && !isDolbyFloating && !isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && !isExoskeleton4dx && (
           <mesh geometry={outerFrameGeo} position={[0, 0, -0.05]}>
             <meshStandardMaterial
               color={
@@ -1176,8 +1413,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           </mesh>
         )}
 
-        {/* Deep Light-Absorbing Satin-Black / Matte-Espresso / Charcoal Velvet Border Masking (omitted on seamless ScreenX, floating Mandap, Obsidian Wave, Sylva Moss & Dolby Cobalt Veil screens) */}
-        {!isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && !isDolbyVeil && (
+        {/* Deep Light-Absorbing Satin-Black / Matte-Espresso / Charcoal Velvet Border Masking */}
+        {!isBeach && !isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && !isDolbyVeil && !isExoskeleton4dx && (
           <mesh geometry={velvetMaskGeo} position={[0, 0, -0.01]}>
             <meshStandardMaterial
               color={
@@ -1223,13 +1460,15 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           material={screenShaderMaterial}
         />
 
-        {/* Subtle Under-Screen Stage Footlight Wash (omitted on ICE, ScreenX, zero-stage-gap IMAX, flush-deck 4DX, floating Dolby, volcanic-copper 2D, Mandap, Obsidian Wave, Sylva Moss & private luxury salons) */}
-        {!isIce &&
+        {/* Subtle Under-Screen Stage Footlight Wash */}
+        {!isBeach &&
+          !isIce &&
           !isScreenX &&
           !isZeroStageImax &&
           !isCrimson4dx &&
           !isArctic4dx &&
           !isThunder4dx &&
+          !isExoskeleton4dx &&
           !isDolbyFloating &&
           !isVolcanicCopper2d &&
           !isMandap2d &&
@@ -1281,18 +1520,47 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         />
       )}
 
-      {/* Real-Time Video-Matched Volumetric Projector Frustum Beam (Booth -> Screen) */}
-      <mesh geometry={outerBeamGeo} material={outerBeamMaterial} renderOrder={4} />
-      <mesh geometry={innerBeamGeo} material={innerBeamMaterial} renderOrder={5} />
+      {/* Real-Time Video-Matched Volumetric Projector Frustum Beam (Indoor Booth -> Screen) */}
+      {!isBeach && (
+        <>
+          <mesh geometry={outerBeamGeo} material={outerBeamMaterial} renderOrder={4} />
+          <mesh geometry={innerBeamGeo} material={innerBeamMaterial} renderOrder={5} />
+          <mesh
+            position={[boothLensPos[0], boothLensPos[1], boothLensPos[2] - 0.04]}
+            material={lensFlareMaterial}
+            renderOrder={6}
+          >
+            <planeGeometry args={[0.46, 0.28]} />
+          </mesh>
+        </>
+      )}
 
-      {/* Projector Booth Optical Lens Glow Halo */}
-      <mesh
-        position={[boothLensPos[0], boothLensPos[1], boothLensPos[2] - 0.04]}
-        material={lensFlareMaterial}
-        renderOrder={6}
-      >
-        <planeGeometry args={[0.46, 0.28]} />
-      </mesh>
+      {/* Outdoor Beach Theater Real-Time Video-Mapped Projector Beams */}
+      {isBeach && beachBeamAssets && (
+        <group>
+          {beachBeamAssets.frustums.map((frustum, fi) => (
+            <React.Fragment key={`beach-beam-frustum-${fi}`}>
+              <mesh
+                geometry={frustum.outerGeo}
+                material={beachOuterBeamMaterial}
+                renderOrder={4}
+              />
+              <mesh
+                geometry={frustum.innerGeo}
+                material={beachInnerBeamMaterial}
+                renderOrder={5}
+              />
+              <mesh
+                position={[frustum.origin[0], frustum.origin[1], frustum.origin[2] - 0.025]}
+                material={lensFlareMaterial}
+                renderOrder={6}
+              >
+                <planeGeometry args={[0.26, 0.18]} />
+              </mesh>
+            </React.Fragment>
+          ))}
+        </group>
+      )}
     </group>
   );
 };

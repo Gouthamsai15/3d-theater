@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import {
+  AudioSettings,
+  AuditoriumLightingPreset,
   CameraViewMode,
   FourDxSettings,
   GraphicsQuality,
@@ -11,10 +13,14 @@ import {
   TheaterConfiguration,
 } from '../../types/cinema';
 import { AuditoriumShell } from '../models/AuditoriumShell';
+import { BeachPositionalAudioRig } from '../models/BeachEnvironment';
 import { SeatModels } from '../models/SeatModels';
 import { CinemaScreen, ScreenBounceSample } from '../models/CinemaScreen';
 import { FourDxEffectsRig } from '../models/FourDxEffectsRig';
-import { CinemaLightingRig } from '../lighting/CinemaLightingRig';
+import {
+  BioluminescentBloomComposer,
+  CinemaLightingRig,
+} from '../lighting/CinemaLightingRig';
 import { createScreenBounceUniforms } from '../lighting/screenBounceShader';
 import { FirstPersonCameraRig } from '../cameras/FirstPersonCameraRig';
 import {
@@ -37,9 +43,11 @@ interface CinemaAuditoriumCanvasProps {
   screenFraming: ScreenFramingMode;
   viewMode: CameraViewMode;
   showState: ShowState;
+  openLightingPreset?: AuditoriumLightingPreset;
   isPaused: boolean;
   graphicsQuality: GraphicsQuality;
   fourDxSettings: FourDxSettings;
+  audioSettings: AudioSettings;
   screenReflectionBrightness?: number;
   entranceComplete: boolean;
   onEntranceComplete: () => void;
@@ -62,9 +70,11 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
   screenFraming,
   viewMode,
   showState,
+  openLightingPreset = 'doors_open',
   isPaused,
   graphicsQuality,
   fourDxSettings,
+  audioSettings,
   screenReflectionBrightness = 1,
   entranceComplete,
   onEntranceComplete,
@@ -203,7 +213,11 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
         }}
-        camera={{ fov: initialFov, near: 0.1, far: 140 }}
+        camera={{
+          fov: initialFov,
+          near: 0.1,
+          far: config.categoryId === 'beach' ? 2600 : 140,
+        }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = THREE.SRGBColorSpace;
           const canvas = gl.domElement;
@@ -220,6 +234,7 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
         <CinemaLightingRig
           config={config}
           showState={showState}
+          openLightingPreset={openLightingPreset}
           isPaused={isPaused}
           isFullscreen={isFullscreen}
           isSoftwareGl={webglInfo.isSoftwareGl || graphicsQuality === 'low'}
@@ -233,6 +248,8 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           config={config}
           lightFactor={lightFactor}
           screenBounceUniforms={screenBounceUniforms}
+          screenBounceRef={screenBounceRef}
+          isSoftwareGl={webglInfo.isSoftwareGl || graphicsQuality === 'low'}
         />
 
         <SeatModels
@@ -243,6 +260,7 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           fourDxVibration={active4dxVibration}
           isPlaying={isPlaying}
           lightFactor={lightFactor}
+          viewMode={viewMode}
           interactive={entranceComplete && viewMode !== 'screen_full'}
           enableHover={!isMobile && entranceComplete && viewMode === 'hall'}
           screenBounceUniforms={screenBounceUniforms}
@@ -291,6 +309,20 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           isSoftwareGl={webglInfo.isSoftwareGl}
           fourDxCameraIntensity={active4dxCamera}
         />
+
+        {config.categoryId === 'beach' && (
+          <BeachPositionalAudioRig
+            audioSettings={audioSettings}
+            showState={showState}
+            isPaused={isPaused}
+            hasCampfire={config.theaterId === 'beach'}
+            isBioluminescent={config.theaterId === 'beach_bioluminescent'}
+          />
+        )}
+
+        {config.theaterId === 'beach_bioluminescent' &&
+          !webglInfo.isSoftwareGl &&
+          graphicsQuality !== 'low' && <BioluminescentBloomComposer />}
       </Canvas>
     </div>
   );

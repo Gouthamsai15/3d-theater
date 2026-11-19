@@ -1,7 +1,17 @@
 import React, { useState } from 'react';
-import { Monitor, Trash2, Volume2, X } from 'lucide-react';
+import { Keyboard, Monitor, Trash2, Volume2, X } from 'lucide-react';
 import { useCinemaStore } from '../../store/cinemaStore';
 import { GraphicsQuality } from '../../types/cinema';
+
+const SHORTCUT_ITEMS: readonly { keys: string; label: string }[] = [
+  { keys: 'Space', label: 'Play / Pause' },
+  { keys: '← / →', label: 'Seek -10s / +10s' },
+  { keys: '1 · 2 · 3', label: 'Seat · Hall · Full Screen' },
+  { keys: 'R', label: 'Reset Seat Gaze' },
+  { keys: 'M', label: 'Mute / Unmute' },
+  { keys: 'F', label: 'Toggle Fullscreen' },
+  { keys: 'H', label: 'Hide / Show Controls' },
+];
 
 export const SettingsModal: React.FC = () => {
   const {
@@ -144,6 +154,27 @@ export const SettingsModal: React.FC = () => {
                 onChange={(e) => updateFourDxSettings({ enabled: e.target.checked })}
                 className="h-4 w-4 accent-[#D4AF37]"
               />
+            </div>
+          </section>
+
+          {/* Keyboard Shortcuts Legend */}
+          <section className="space-y-3 border-t border-white/[0.08] pt-5">
+            <div className="flex items-center gap-2 text-sm font-medium text-[#F4F1EA]">
+              <Keyboard className="h-4 w-4 text-[#D4AF37]" />
+              <span>Auditorium Keyboard Shortcuts</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SHORTCUT_ITEMS.map((item) => (
+                <div
+                  key={item.keys}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-xs"
+                >
+                  <span className="text-neutral-300">{item.label}</span>
+                  <kbd className="rounded border border-white/15 bg-[#090A0E] px-2 py-0.5 font-mono-tabular text-[11px] font-semibold text-[#E5C158] whitespace-nowrap">
+                    {item.keys}
+                  </kbd>
+                </div>
+              ))}
             </div>
           </section>
 

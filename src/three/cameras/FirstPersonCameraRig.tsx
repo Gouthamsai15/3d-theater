@@ -6,6 +6,7 @@ import gsap from 'gsap';
 import { CameraViewMode, SeatData, TheaterConfiguration } from '../../types/cinema';
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 import { computeAdaptiveCinemaFov, isMobileDevice } from '../../utils/formatters';
+import { beachHeightAt } from '../models/beachTerrain';
 
 const _listenerFwd = new THREE.Vector3();
 const _listenerUp = new THREE.Vector3();
@@ -27,6 +28,23 @@ function clampInsideHall(
   pos: { x: number; y: number; z: number },
   config: TheaterConfiguration,
 ) {
+  const isBeach = config.environmentProfile.architectureStyle === 'beach';
+  if (isBeach) {
+    const maxHalfX = 24;
+    const minZ = config.screenPosition[2] + 1.5;
+    const maxZ = 22;
+    pos.x = THREE.MathUtils.clamp(pos.x, -maxHalfX, maxHalfX);
+    pos.z = THREE.MathUtils.clamp(pos.z, minZ, maxZ);
+
+    const variant =
+      config.theaterId === 'beach_bioluminescent' ? 'bioluminescent' : 'sunset';
+    const floorY = beachHeightAt(pos.x, pos.z, variant);
+    const minY = floorY + 0.72;
+    const maxY = 18;
+    pos.y = THREE.MathUtils.clamp(pos.y, minY, maxY);
+    return;
+  }
+
   const maxHalfX = Math.max(1.2, config.auditoriumWidth / 2 - 0.72);
   const minZ = config.screenPosition[2] + 1.25;
   const maxZ = config.auditoriumLength / 2 - 0.72;
@@ -450,6 +468,7 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
   const lastListenerPoseRef = useRef<number[] | null>(null);
 
   const syncAudioListener = () => {
+    if (config.categoryId === 'beach') return;
     if (!cinemaAudioEngine.initialized) return;
     _listenerFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
     _listenerUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
@@ -587,10 +606,13 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
   });
 
   if (entranceComplete && viewMode === 'hall' && !isGlidingRef.current) {
-    const hallMaxDistance = Math.max(
-      3.5,
-      Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
-    );
+    const hallMaxDistance =
+      config.environmentProfile.architectureStyle === 'beach'
+        ? 24
+        : Math.max(
+            3.5,
+            Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
+          );
     const mobile = isMobileDevice();
     return (
       <OrbitControls

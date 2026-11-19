@@ -45,9 +45,11 @@ export function findBestSeatForTheater(
         ? 47
         : supports4dxEffects
           ? 44
-          : categoryId === 'private_luxury'
-            ? 38
-            : 42;
+          : categoryId === 'beach'
+            ? 45
+            : categoryId === 'private_luxury'
+              ? 38
+              : 42;
 
   // Format-specific ideal row depth ratio (0 = front row, 1 = back row)
   const targetRowFrac =
@@ -57,9 +59,11 @@ export function findBestSeatForTheater(
         ? 0.62
         : supports4dxEffects
           ? 0.6
-          : categoryId === 'private_luxury'
-            ? 0.55
-            : 0.6;
+          : categoryId === 'beach'
+            ? 0.45
+            : categoryId === 'private_luxury'
+              ? 0.55
+              : 0.6;
 
   const rearWallZ = auditoriumLength / 2;
   const frontWallZ = -auditoriumLength / 2;
@@ -144,11 +148,16 @@ export function findBestSeatForTheater(
   }, zero neck strain (${bestMetrics.verticalAngleDeg >= 0 ? '+' : ''}${bestMetrics.verticalAngleDeg}° eye angle).`;
 
   const audioSummary =
-    'Equidistant L/C/R stage towers, balanced left/right side surrounds, and direct overhead Atmos convergence.';
+    categoryId === 'beach'
+      ? 'Balanced L/R PA line-array stereo spread, sand-coupled subwoofers, soft surf waves, and warm hearth crackle.'
+      : 'Equidistant L/C/R stage towers, balanced left/right side surrounds, and direct overhead Atmos convergence.';
 
   let experienceSummary =
     'Optimal full-frame visual immersion with crisp acoustic localization across every channel.';
-  if (supportsScreenX) {
+  if (categoryId === 'beach') {
+    experienceSummary =
+      'Prime open-air sand curve framing the 16:9 outdoor screen against shimmering twilight ocean waves and warm lantern glow.';
+  } else if (supportsScreenX) {
     experienceSummary =
       'Centered 270° panoramic sweet spot where both micro-perforated side screens wrap seamlessly into peripheral vision.';
   } else if (supports4dxEffects) {

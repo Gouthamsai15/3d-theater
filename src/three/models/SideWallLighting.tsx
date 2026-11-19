@@ -9,6 +9,7 @@ import {
   createAmberCoveWashTexture,
   createAmberVioletGradientTexture,
   createCarbonFiberTexture,
+  createCrimsonStormGradientTexture,
   createImaxCyanChannelWashTexture,
   createImaxWithLaserSignTexture,
   createJaliLatticeTexture,
@@ -90,6 +91,55 @@ export function getBiophilicSpeakerPositions(config: TheaterConfiguration, topTi
   const boothSideX = Math.min(W / 2 - 0.68, bWinW / 2 + 0.78);
   const cornerX = Math.max(boothSideX + 1.45, Math.min(W * 0.38, W / 2 - 1.05));
   const cornerY = Math.min(H - 1.2, Math.max(2.35, wMidY - 0.12));
+
+  const rearSpeakers = [
+    { x: -boothSideX, y: wMidY },
+    { x: boothSideX, y: wMidY },
+    { x: -cornerX, y: cornerY },
+    { x: cornerX, y: cornerY },
+  ];
+
+  return {
+    sideSpeakers,
+    rearSpeakers,
+    bWinW,
+    wTop,
+    wBot,
+  };
+}
+
+/**
+ * Shared side & rear surround speaker coordinates for 4DX Exo-Skeleton 550
+ * so dedicated architectural steel cages and angled speaker cabinets remain locked together.
+ */
+export function getExoskeletonSpeakerPositions(config: TheaterConfiguration, topTierY: number) {
+  const { auditoriumWidth: W, auditoriumLength: L, auditoriumHeight: H } = config;
+  const fZ = -L / 2;
+  const bZ = L / 2;
+
+  const countPerSide = 6;
+  const zStart = Math.max(fZ + 5.8, config.firstRowZ - 0.6);
+  const zEnd = Math.min(bZ - 2.6, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.3);
+  const yLow = Math.max(4.4, H * 0.28);
+  const yHigh = Math.min(H - 2.4, topTierY + 2.2);
+
+  const sideSpeakers = Array.from({ length: countPerSide }, (_, i) => {
+    const t = countPerSide > 1 ? i / (countPerSide - 1) : 0.5;
+    return {
+      z: THREE.MathUtils.lerp(zStart, zEnd, t),
+      y: THREE.MathUtils.lerp(yLow, yHigh, t),
+    };
+  });
+
+  const bY = Math.min(H - 1.4, topTierY + 3.25);
+  const bWinW = Math.min(4.8, W * 0.42);
+  const bWinH = Math.min(1.42, H * 0.24);
+  const wTop = Math.min(H - 0.28, bY + bWinH / 2);
+  const wBot = Math.max(0.25, bY - bWinH / 2);
+  const wMidY = (wTop + wBot) / 2;
+  const boothSideX = Math.min(W / 2 - 0.85, bWinW / 2 + 1.35);
+  const cornerX = Math.max(boothSideX + 2.8, Math.min(W * 0.36, W / 2 - 1.45));
+  const cornerY = Math.min(H - 1.25, Math.max(3.6, wMidY - 0.18));
 
   const rearSpeakers = [
     { x: -boothSideX, y: wMidY },
@@ -206,6 +256,82 @@ function buildWallPolygonGeo(
   geo.rotateY(Math.PI / 2);
   geo.computeVertexNormals();
   return geo;
+}
+
+/**
+ * Clips a 2D convex polygon against half-plane a*x + b*y >= c (Sutherland-Hodgman).
+ */
+function clipPolyHalfPlane(
+  poly: [number, number][],
+  a: number,
+  b: number,
+  c: number,
+): [number, number][] {
+  if (poly.length < 3) return [];
+  const out: [number, number][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i];
+    const nxt = poly[(i + 1) % poly.length];
+    const dCur = a * cur[0] + b * cur[1] - c;
+    const dNxt = a * nxt[0] + b * nxt[1] - c;
+    const inCur = dCur >= -1e-6;
+    const inNxt = dNxt >= -1e-6;
+    if (inCur && inNxt) {
+      out.push(nxt);
+    } else if (inCur && !inNxt) {
+      const t = dCur / (dCur - dNxt);
+      out.push([cur[0] + t * (nxt[0] - cur[0]), cur[1] + t * (nxt[1] - cur[1])]);
+    } else if (!inCur && inNxt) {
+      const t = dCur / (dCur - dNxt);
+      out.push([cur[0] + t * (nxt[0] - cur[0]), cur[1] + t * (nxt[1] - cur[1])]);
+      out.push(nxt);
+    }
+  }
+  return out;
+}
+
+/**
+ * Computes clipped line segment of a*x + b*y = c inside a 2D polygon (returns null if outside).
+ */
+function clipLineInPolygon(
+  poly: [number, number][],
+  a: number,
+  b: number,
+  c: number,
+): [[number, number], [number, number]] | null {
+  const hits: [number, number][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p1 = poly[i];
+    const p2 = poly[(i + 1) % poly.length];
+    const d1 = a * p1[0] + b * p1[1] - c;
+    const d2 = a * p2[0] + b * p2[1] - c;
+    if ((d1 >= 0 && d2 <= 0) || (d1 <= 0 && d2 >= 0)) {
+      const denom = d1 - d2;
+      if (Math.abs(denom) > 1e-6) {
+        const t = d1 / denom;
+        if (t >= -1e-5 && t <= 1 + 1e-5) {
+          hits.push([p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])]);
+        }
+      }
+    }
+  }
+  if (hits.length < 2) return null;
+  let bestA = hits[0];
+  let bestB = hits[1];
+  let maxDistSq = -1;
+  for (let i = 0; i < hits.length; i++) {
+    for (let j = i + 1; j < hits.length; j++) {
+      const dx = hits[j][0] - hits[i][0];
+      const dy = hits[j][1] - hits[i][1];
+      const d2 = dx * dx + dy * dy;
+      if (d2 > maxDistSq) {
+        maxDistSq = d2;
+        bestA = hits[i];
+        bestB = hits[j];
+      }
+    }
+  }
+  return maxDistSq > 0.04 ? [bestA, bestB] : null;
 }
 
 /**
@@ -1462,6 +1588,162 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [imaxCobaltResources]);
 
+  // Dedicated 4DX Exo-Skeleton 550 resources: woven carbon-fiber exo-skeleton ribs, deep-charcoal porous mesh, forged steel cages & recessed crimson/storm-grey vertical LED bars
+  const exoskeletonResources = useMemo(() => {
+    if (sideLightStyle !== 'exoskeleton_crimson_matrix_4dx') return null;
+    const carbonTex = createCarbonFiberTexture();
+    carbonTex.repeat.set(3, 8);
+    const crimsonStormTex = createCrimsonStormGradientTexture();
+
+    const exoCarbonMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: carbonTex,
+        bumpMap: carbonTex,
+        bumpScale: 0.016,
+        color: '#9ca3af',
+        roughness: 0.44,
+        metalness: 0.28,
+      }),
+      screenBounceUniforms,
+    );
+    const porousMeshMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#171b22',
+        roughness: 0.9,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+    const darkSteelCageMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#202530',
+        roughness: 0.34,
+        metalness: 0.78,
+      }),
+      screenBounceUniforms,
+    );
+    const crimsonStormLedMat = new THREE.MeshStandardMaterial({
+      map: crimsonStormTex,
+      emissive: '#ffffff',
+      emissiveMap: crimsonStormTex,
+      emissiveIntensity: 1.95,
+      roughness: 0.2,
+      toneMapped: false,
+    });
+
+    return {
+      carbonTex,
+      crimsonStormTex,
+      exoCarbonMat,
+      porousMeshMat,
+      darkSteelCageMat,
+      crimsonStormLedMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      exoskeletonResources?.exoCarbonMat.dispose();
+      exoskeletonResources?.porousMeshMat.dispose();
+      exoskeletonResources?.darkSteelCageMat.dispose();
+      exoskeletonResources?.crimsonStormLedMat.dispose();
+      exoskeletonResources?.carbonTex.dispose();
+      exoskeletonResources?.crimsonStormTex.dispose();
+    };
+  }, [exoskeletonResources]);
+
+  // Dedicated 4DX Arctic Storm resources: frost-grey, slate-blue, deep cobalt & charcoal-navy acoustic fabric finishes + razor-thin violet & ice-cyan LED strips
+  const arcticResources = useMemo(() => {
+    if (sideLightStyle !== 'arctic_parametric_fins') return null;
+
+    const frostGreyMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#93a2b8',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const slateBlueMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#4e6483',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const cobaltBlueMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1e3c78',
+        roughness: 0.9,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const charcoalNavyMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#181e2c',
+        roughness: 0.92,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const dadoMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#121722',
+        roughness: 0.94,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const seamBackingMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#07090e',
+        roughness: 0.96,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const violetStripMat = new THREE.MeshStandardMaterial({
+      color: '#f3e8ff',
+      emissive: '#a855f7',
+      emissiveIntensity: 1.9,
+      roughness: 0.18,
+      toneMapped: false,
+    });
+    const cyanStripMat = new THREE.MeshStandardMaterial({
+      color: '#e0faff',
+      emissive: '#22d3ee',
+      emissiveIntensity: 1.85,
+      roughness: 0.18,
+      toneMapped: false,
+    });
+
+    return {
+      frostGreyMat,
+      slateBlueMat,
+      cobaltBlueMat,
+      charcoalNavyMat,
+      dadoMat,
+      seamBackingMat,
+      violetStripMat,
+      cyanStripMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      arcticResources?.frostGreyMat.dispose();
+      arcticResources?.slateBlueMat.dispose();
+      arcticResources?.cobaltBlueMat.dispose();
+      arcticResources?.charcoalNavyMat.dispose();
+      arcticResources?.dadoMat.dispose();
+      arcticResources?.seamBackingMat.dispose();
+      arcticResources?.violetStripMat.dispose();
+      arcticResources?.cyanStripMat.dispose();
+    };
+  }, [arcticResources]);
+
   // Smooth dim control (house lighting off cleanly while movie plays)
   const wallAccentIntensity = lightFactor * 1.65;
   mats.primaryEmitterMat.emissiveIntensity = wallAccentIntensity;
@@ -1488,6 +1770,13 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     imaxCobaltResources.cyanWashMat.emissiveIntensity = lightFactor * 1.42;
     imaxCobaltResources.cyanCoreLedMat.emissiveIntensity = lightFactor * 2.45;
     imaxCobaltResources.imaxPlaqueMat.emissiveIntensity = 0.06 + lightFactor * 0.9;
+  }
+  if (exoskeletonResources) {
+    exoskeletonResources.crimsonStormLedMat.emissiveIntensity = lightFactor * 1.95;
+  }
+  if (arcticResources) {
+    arcticResources.violetStripMat.emissiveIntensity = lightFactor * 1.95;
+    arcticResources.cyanStripMat.emissiveIntensity = lightFactor * 1.88;
   }
 
   const sconceY = isPrivate ? Math.min(H * 0.58, 2.55) : Math.min(H * 0.56, topTierY + 2.05);
@@ -2463,21 +2752,28 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [crimson4dxWall]);
 
-  // 4DX Arctic Storm: Interlocking Diamond & Diagonal-Cut Acoustic Panels in Matte Slate-Grey, Deep Indigo & Pitch-Black + Electric-Violet & Bright Cyan LED Strips
+  // 4DX Arctic Storm: High-Contrast Diagonal Geometric Acoustic Panels (Frost Grey, Slate Blue, Cobalt Blue, Charcoal-Navy) + Nested Upper V-Chevron + Sloping Dado + Rear Wings + Razor-Thin Violet/Cyan LEDs
   const arctic4dxWall = useMemo(() => {
     if (sideLightStyle !== 'arctic_parametric_fins') return null;
-    const zMin = -L * 0.445;
-    const zMax = L * 0.445;
-    const yBot = 0.25;
-    const yTop = H - 0.34;
-    const yMid = (yBot + yTop) * 0.52;
-    const bayCount = 6;
-    const bayLen = (zMax - zMin) / bayCount;
-    const gap = 0.05;
+
+    type ArcticTone = 'frost' | 'slate' | 'cobalt' | 'charcoal';
+    const fZ = -L * 0.5;
+    const bZ = L * 0.5;
+    const zFrontPanel = fZ + 1.15;
+    const zExitEnd = fZ + 3.18;
+    const zMax = bZ - 0.24;
+    const yTop = H - 0.22;
+    const yExitClear = 2.78;
+    const yDadoRear = Math.min(H - 2.6, topTierY + 0.96);
+    const yDadoFront = 1.05;
+    const yDadoAt = (z: number) => {
+      if (z <= zExitEnd) return yDadoFront;
+      return THREE.MathUtils.lerp(yDadoFront, yDadoRear, (z - zExitEnd) / Math.max(1, zMax - zExitEnd));
+    };
 
     const panels: {
       geo: THREE.BufferGeometry;
-      tone: 'slate' | 'indigo' | 'pitch';
+      tone: ArcticTone;
       depthOffset: number;
     }[] = [];
     const ledSeamSegments: {
@@ -2486,101 +2782,347 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       isCyan: boolean;
     }[] = [];
 
-    for (let i = 0; i < bayCount; i++) {
-      const z0 = zMin + i * bayLen + gap * 0.5;
-      const z1 = zMin + (i + 1) * bayLen - gap * 0.5;
-      const zMid = (z0 + z1) * 0.5;
+    // Convex wall zones clipped cleanly above sloping dado & exit door
+    const frontUpperPoly: [number, number][] = [
+      [zFrontPanel, yExitClear],
+      [zExitEnd, yExitClear],
+      [zExitEnd, yTop],
+      [zFrontPanel, yTop],
+    ];
+    const mainWallPoly: [number, number][] = [
+      [zExitEnd, yDadoFront],
+      [zMax, yDadoRear],
+      [zMax, yTop],
+      [zExitEnd, yTop],
+    ];
 
-      // Central interlocking diamond acoustic panel
-      panels.push({
-        geo: buildWallPolygonGeo(
-          [
-            [zMid, yTop - 0.06],
-            [z1 - 0.06, yMid],
-            [zMid, yBot + 0.06],
-            [z0 + 0.06, yMid],
-          ],
-          0.082,
-          0.014,
-        ),
-        tone: i % 2 === 0 ? 'indigo' : 'slate',
-        depthOffset: 0.064,
-      });
+    const clipToWallZone = (cellPoly: [number, number][], zone: [number, number][]) => {
+      let cur = cellPoly;
+      for (let i = 0; i < zone.length; i++) {
+        const p1 = zone[i];
+        const p2 = zone[(i + 1) % zone.length];
+        // Zone vertices are CCW in (z, y); inward normal is (-(p2[1]-p1[1]), p2[0]-p1[0])
+        const a = -(p2[1] - p1[1]);
+        const b = p2[0] - p1[0];
+        const c = a * p1[0] + b * p1[1];
+        cur = clipPolyHalfPlane(cur, a, b, c);
+        if (cur.length < 3) return [];
+      }
+      return cur;
+    };
 
-      // Upper-front diagonal-cut triangular facet
-      panels.push({
-        geo: buildWallPolygonGeo(
-          [
-            [z0, yBot + 0.06],
-            [z0, yMid - 0.04],
-            [zMid - 0.04, yTop],
-            [z0, yTop],
-          ],
-          0.06,
-          0.012,
-        ),
-        tone: i % 2 === 0 ? 'slate' : 'pitch',
-        depthOffset: 0.042,
-      });
+    // Sloping dark charcoal-navy lower dado wall along seating tiers
+    const dadoGeo = buildWallPolygonGeo(
+      [
+        [zExitEnd, 0],
+        [zMax, 0],
+        [zMax, yDadoRear],
+        [zExitEnd, yDadoFront],
+      ],
+      0.072,
+      0.01,
+    );
 
-      // Upper-rear diagonal-cut wedge
-      panels.push({
-        geo: buildWallPolygonGeo(
-          [
-            [zMid + 0.04, yTop],
-            [z1, yMid + 0.04],
-            [z1, yTop],
-          ],
-          0.065,
-          0.012,
-        ),
-        tone: i % 2 === 0 ? 'pitch' : 'indigo',
-        depthOffset: 0.046,
-      });
+    const cosA = Math.cos(Math.PI * 0.242);
+    const sinA = Math.sin(Math.PI * 0.242);
+    const du = 2.45;
+    const dv = 2.65;
+    const halfGap = 0.022;
+    const toneOrder: ArcticTone[] = ['frost', 'slate', 'cobalt', 'charcoal'];
+    const depthByTone: Record<ArcticTone, number> = {
+      frost: 0.062,
+      slate: 0.056,
+      cobalt: 0.052,
+      charcoal: 0.046,
+    };
 
-      // Lower-front diagonal-cut wedge
-      panels.push({
-        geo: buildWallPolygonGeo(
-          [
-            [z0, yBot],
-            [zMid - 0.04, yBot],
-            [z0, yMid - 0.05],
-          ],
-          0.064,
-          0.012,
-        ),
-        tone: 'pitch',
-        depthOffset: 0.045,
-      });
+    const cornersZY: [number, number][] = [
+      [zFrontPanel, 0.5],
+      [zMax, 0.5],
+      [zMax, yTop],
+      [zFrontPanel, yTop],
+    ];
+    let uMin = Infinity;
+    let uMax = -Infinity;
+    let vMin = Infinity;
+    let vMax = -Infinity;
+    cornersZY.forEach(([z, y]) => {
+      const u = z * cosA + y * sinA;
+      const v = z * cosA - y * sinA;
+      uMin = Math.min(uMin, u);
+      uMax = Math.max(uMax, u);
+      vMin = Math.min(vMin, v);
+      vMax = Math.max(vMax, v);
+    });
 
-      // Lower-rear diagonal-cut wedge
-      panels.push({
-        geo: buildWallPolygonGeo(
-          [
-            [zMid + 0.04, yBot],
-            [z1, yBot],
-            [z1, yMid - 0.04],
-          ],
-          0.07,
-          0.012,
-        ),
-        tone: i % 2 === 0 ? 'slate' : 'pitch',
-        depthOffset: 0.05,
-      });
+    const iuStart = Math.floor(uMin / du) - 1;
+    const iuEnd = Math.ceil(uMax / du) + 1;
+    const ivStart = Math.floor(vMin / dv) - 1;
+    const ivEnd = Math.ceil(vMax / dv) + 1;
 
-      // Electric-violet and bright cyan recessed linear LEDs tracing every interlocking diamond & diagonal edge
-      ledSeamSegments.push({ startZY: [z0 + 0.04, yMid], endZY: [zMid, yTop - 0.04], isCyan: false });
-      ledSeamSegments.push({ startZY: [zMid, yTop - 0.04], endZY: [z1 - 0.04, yMid], isCyan: true });
-      ledSeamSegments.push({ startZY: [z1 - 0.04, yMid], endZY: [zMid, yBot + 0.04], isCyan: false });
-      ledSeamSegments.push({ startZY: [zMid, yBot + 0.04], endZY: [z0 + 0.04, yMid], isCyan: true });
+    // Nested V-Chevron focal zone centered on upper center-rear side wall (matching reference photo)
+    const zV = L * 0.06;
+    const chevronHeight = Math.min(4.45, (yTop - yDadoAt(zV)) * 0.68);
+    const chevronHalfW = chevronHeight * 0.96;
+    const yVApex = yTop - chevronHeight;
+    const isInsideChevronCone = (z: number, y: number) => {
+      if (y > yTop || y < yVApex) return false;
+      const frac = (yTop - y) / chevronHeight;
+      const hw = chevronHalfW * (1 - frac);
+      return Math.abs(z - zV) < hw - 0.12;
+    };
+
+    for (let iu = iuStart; iu < iuEnd; iu++) {
+      for (let iv = ivStart; iv < ivEnd; iv++) {
+        const u0 = iu * du + halfGap;
+        const u1 = (iu + 1) * du - halfGap;
+        const v0 = iv * dv + halfGap;
+        const v1 = (iv + 1) * dv - halfGap;
+
+        // Solve diamond corner vertices from (u, v) = (z*cosA + y*sinA, z*cosA - y*sinA)
+        const solveZY = (u: number, v: number): [number, number] => [
+          (u + v) / (2 * cosA),
+          (u - v) / (2 * sinA),
+        ];
+        // Ensure CCW orientation in (z, y)
+        const rawDiamond: [number, number][] = [
+          solveZY(u0, v1),
+          solveZY(u1, v1),
+          solveZY(u1, v0),
+          solveZY(u0, v0),
+        ];
+        const toneIdx = (((iu * 3 + iv * 5) % 4) + 4) % 4;
+        const tone = toneOrder[toneIdx];
+
+        [frontUpperPoly, mainWallPoly].forEach((zone) => {
+          const clipped = clipToWallZone(rawDiamond, zone);
+          if (clipped.length >= 3) {
+            panels.push({
+              geo: buildWallPolygonGeo(clipped, depthByTone[tone] + 0.016, 0.01),
+              tone,
+              depthOffset: depthByTone[tone],
+            });
+          }
+        });
+      }
     }
 
-    return { panels, ledSeamSegments };
-  }, [sideLightStyle, L, H]);
+    // Crisscrossing diagonal LED lines along grid seams (skipping inside nested V-chevron focal zone)
+    for (let iu = iuStart + 1; iu <= iuEnd; iu++) {
+      const c = iu * du;
+      const segMain = clipLineInPolygon(mainWallPoly, cosA, sinA, c);
+      if (segMain) {
+        const midZ = (segMain[0][0] + segMain[1][0]) * 0.5;
+        const midY = (segMain[0][1] + segMain[1][1]) * 0.5;
+        if (!isInsideChevronCone(midZ, midY)) {
+          ledSeamSegments.push({
+            startZY: segMain[0],
+            endZY: segMain[1],
+            isCyan: ((iu % 3) + 3) % 3 === 1,
+          });
+        }
+      }
+      const segFront = clipLineInPolygon(frontUpperPoly, cosA, sinA, c);
+      if (segFront) {
+        ledSeamSegments.push({
+          startZY: segFront[0],
+          endZY: segFront[1],
+          isCyan: ((iu % 2) + 2) % 2 === 0,
+        });
+      }
+    }
+    for (let iv = ivStart + 1; iv <= ivEnd; iv++) {
+      const c = iv * dv;
+      const segMain = clipLineInPolygon(mainWallPoly, cosA, -sinA, c);
+      if (segMain) {
+        const midZ = (segMain[0][0] + segMain[1][0]) * 0.5;
+        const midY = (segMain[0][1] + segMain[1][1]) * 0.5;
+        if (!isInsideChevronCone(midZ, midY)) {
+          ledSeamSegments.push({
+            startZY: segMain[0],
+            endZY: segMain[1],
+            isCyan: ((iv % 3) + 3) % 3 === 0,
+          });
+        }
+      }
+    }
+
+    // Nested concentric V-chevron focal motif at upper center-rear (5 nested bands)
+    const chevTones: ArcticTone[] = ['charcoal', 'cobalt', 'frost', 'slate', 'charcoal'];
+    const bandStep = chevronHeight / 5;
+    for (let k = 0; k < 5; k++) {
+      const hOut = chevronHeight - k * bandStep;
+      const hwOut = chevronHalfW * (hOut / chevronHeight);
+      const yApexOut = yTop - hOut;
+      const tone = chevTones[k];
+      if (k === 4) {
+        panels.push({
+          geo: buildWallPolygonGeo(
+            [
+              [zV - hwOut + 0.03, yTop],
+              [zV, yApexOut + 0.03],
+              [zV + hwOut - 0.03, yTop],
+            ],
+            0.095,
+            0.01,
+          ),
+          tone,
+          depthOffset: 0.088,
+        });
+      } else {
+        const hIn = chevronHeight - (k + 1) * bandStep + 0.032;
+        const hwIn = chevronHalfW * (hIn / chevronHeight);
+        const yApexIn = yTop - hIn;
+        // Front (screen-side) chevron arm
+        panels.push({
+          geo: buildWallPolygonGeo(
+            [
+              [zV - hwOut + 0.025, yTop],
+              [zV, yApexOut],
+              [zV, yApexIn],
+              [zV - hwIn - 0.025, yTop],
+            ],
+            0.092,
+            0.01,
+          ),
+          tone,
+          depthOffset: 0.086,
+        });
+        // Rear chevron arm
+        panels.push({
+          geo: buildWallPolygonGeo(
+            [
+              [zV, yApexOut],
+              [zV + hwOut - 0.025, yTop],
+              [zV + hwIn + 0.025, yTop],
+              [zV, yApexIn],
+            ],
+            0.092,
+            0.01,
+          ),
+          tone,
+          depthOffset: 0.086,
+        });
+      }
+      if (k < 4) {
+        ledSeamSegments.push({
+          startZY: [zV - hwOut + 0.04, yTop],
+          endZY: [zV, yApexOut],
+          isCyan: k % 2 === 1,
+        });
+        ledSeamSegments.push({
+          startZY: [zV, yApexOut],
+          endZY: [zV + hwOut - 0.04, yTop],
+          isCyan: k % 2 === 0,
+        });
+      }
+    }
+
+    // Rear wall flanking wings (left & right of booth window and double entrance doors)
+    const rearPanels: { geo: THREE.BufferGeometry; tone: ArcticTone; depthOffset: number }[] = [];
+    const rearLeds: { startXY: [number, number]; endXY: [number, number]; isCyan: boolean }[] = [];
+    const boothWinW = Math.min(4.8, W * 0.42);
+    const doorClearHalfX = Math.max(1.65, boothWinW * 0.5 + 0.25);
+    const rearWingLeft: [number, number][] = [
+      [-W * 0.5 + 0.24, yDadoRear],
+      [-doorClearHalfX, yDadoRear],
+      [-doorClearHalfX, yTop],
+      [-W * 0.5 + 0.24, yTop],
+    ];
+    const rearWingRight: [number, number][] = [
+      [doorClearHalfX, yDadoRear],
+      [W * 0.5 - 0.24, yDadoRear],
+      [W * 0.5 - 0.24, yTop],
+      [doorClearHalfX, yTop],
+    ];
+    [rearWingLeft, rearWingRight].forEach((wingPoly, wi) => {
+      const xMinW = wingPoly[0][0];
+      const xMaxW = wingPoly[1][0];
+      const iuR0 = Math.floor((xMinW * cosA) / du) - 2;
+      const iuR1 = Math.ceil((xMaxW * cosA + yTop * sinA) / du) + 2;
+      const ivR0 = Math.floor((xMinW * cosA - yTop * sinA) / dv) - 2;
+      const ivR1 = Math.ceil((xMaxW * cosA) / dv) + 2;
+      for (let iu = iuR0; iu < iuR1; iu++) {
+        for (let iv = ivR0; iv < ivR1; iv++) {
+          const u0 = iu * du + halfGap;
+          const u1 = (iu + 1) * du - halfGap;
+          const v0 = iv * dv + halfGap;
+          const v1 = (iv + 1) * dv - halfGap;
+          const solveXY = (u: number, v: number): [number, number] => [
+            (u + v) / (2 * cosA),
+            (u - v) / (2 * sinA),
+          ];
+          const rawRear: [number, number][] = [
+            solveXY(u0, v0),
+            solveXY(u1, v0),
+            solveXY(u1, v1),
+            solveXY(u0, v1),
+          ];
+          const clipped = clipToWallZone(rawRear, wingPoly);
+          if (clipped.length >= 3) {
+            const tIdx = (((iu * 3 + iv * 5 + wi) % 4) + 4) % 4;
+            const t = toneOrder[tIdx];
+            rearPanels.push({
+              geo: buildRearWallPolygonGeo(clipped, depthByTone[t] + 0.015, 0.01),
+              tone: t,
+              depthOffset: depthByTone[t],
+            });
+          }
+        }
+      }
+      for (let iu = iuR0 + 1; iu <= iuR1; iu++) {
+        const seg = clipLineInPolygon(wingPoly, cosA, sinA, iu * du);
+        if (seg) rearLeds.push({ startXY: seg[0], endXY: seg[1], isCyan: ((iu + wi) % 2) === 0 });
+      }
+      for (let iv = ivR0 + 1; iv <= ivR1; iv++) {
+        const seg = clipLineInPolygon(wingPoly, cosA, -sinA, iv * dv);
+        if (seg) rearLeds.push({ startXY: seg[0], endXY: seg[1], isCyan: ((iv + wi) % 2) === 1 });
+      }
+    });
+
+    const rearDadoGeo = buildRearWallPolygonGeo(
+      [
+        [-W * 0.5 + 0.24, 0],
+        [-doorClearHalfX, 0],
+        [-doorClearHalfX, yDadoRear],
+        [-W * 0.5 + 0.24, yDadoRear],
+      ],
+      0.068,
+      0.008,
+    );
+    const rearDadoRightGeo = buildRearWallPolygonGeo(
+      [
+        [doorClearHalfX, 0],
+        [W * 0.5 - 0.24, 0],
+        [W * 0.5 - 0.24, yDadoRear],
+        [doorClearHalfX, yDadoRear],
+      ],
+      0.068,
+      0.008,
+    );
+
+    return {
+      panels,
+      ledSeamSegments,
+      dadoGeo,
+      rearPanels,
+      rearLeds,
+      rearDadoGeo,
+      rearDadoRightGeo,
+      zExitEnd,
+      zMax,
+      yDadoFront,
+      yDadoRear,
+    };
+  }, [sideLightStyle, L, H, W, topTierY]);
 
   useEffect(() => {
     return () => {
       arctic4dxWall?.panels.forEach((p) => p.geo.dispose());
+      arctic4dxWall?.dadoGeo.dispose();
+      arctic4dxWall?.rearPanels.forEach((p) => p.geo.dispose());
+      arctic4dxWall?.rearDadoGeo.dispose();
+      arctic4dxWall?.rearDadoRightGeo.dispose();
     };
   }, [arctic4dxWall]);
 
@@ -4043,7 +4585,13 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         ch /= n;
         cy /= n;
 
-        const occluded = isBlocked(ch, cy);
+        const occluded =
+          isBlocked(ch, cy) ||
+          (axis === 'rear' &&
+            rawPts.some(
+              ([ph, py]) =>
+                Math.abs(ph) < bWinW * 0.5 + 0.08 && py > wBot - 0.06 && py < wTop + 0.06,
+            ));
         if (occluded) return;
 
         // Shrink vertices tightly inward toward centroid for razor-sharp dark seam grooves (~3.6cm gap)
@@ -4214,6 +4762,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       zMax,
       yBot,
       rYMin,
+      bWinW,
+      wTop,
+      wBot,
     };
   }, [sideLightStyle, config, W, L, H, topTierY]);
 
@@ -4249,6 +4800,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'crimson_velocity_4dx' &&
         sideLightStyle !== 'arctic_parametric_fins' &&
         sideLightStyle !== 'thunder_emerald_waves' &&
+        sideLightStyle !== 'exoskeleton_crimson_matrix_4dx' &&
         sideLightStyle !== 'obsidian_slat_grazers' &&
         sideLightStyle !== 'diagonal_parabolic_ribs' &&
         sideLightStyle !== 'cobalt_veil_laser_recess' &&
@@ -5079,126 +5631,359 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           );
         })}
 
-      {/* 4DX Arctic Storm: Interlocking Diamond & Diagonal-Cut Slate/Indigo/Pitch-Black Acoustic Panels + Violet & Cyan LEDs + Wind Blowers & SFX Nozzles */}
+      {/* 4DX Exo-Skeleton 550: Interlocking 3D Matte-Black Carbon-Fiber Exo-Skeleton Matrix over Porous Acoustic Mesh, Vertical Crimson/Storm-Grey LEDs & Dedicated Speaker Cages */}
+      {sideLightStyle === 'exoskeleton_crimson_matrix_4dx' &&
+        exoskeletonResources &&
+        (() => {
+          const spkLayout = getExoskeletonSpeakerPositions(config, topTierY);
+          const colCount = 11;
+          const zStart = -L * 0.45;
+          const zEnd = L * 0.46;
+          const colZs = Array.from({ length: colCount }, (_, i) =>
+            THREE.MathUtils.lerp(zStart, zEnd, i / (colCount - 1)),
+          );
+          const beltYs = [H * 0.24, H * 0.52, H * 0.79];
+          const ribH = H - 0.5;
+          const bayStepZ = (zEnd - zStart) / (colCount - 1);
+          const diagLen = Math.hypot(bayStepZ, beltYs[1] - beltYs[0]);
+          const diagAng = Math.atan2(beltYs[1] - beltYs[0], bayStepZ);
+
+          return (
+            <group>
+              {/* Side Walls: Vertical Carbon-Fiber Split Columns + Recessed Vertical Crimson/Storm LEDs + Diagonal Braces + Speaker Cages */}
+              {[-1, 1].map((side) => {
+                const wallX = side * (W / 2 - 0.22);
+                const inDir = -side;
+                return (
+                  <group key={`exo-side-wall-${side}`}>
+                    {/* Deep-Charcoal Porous Acoustic Mesh Backing Shadow Frame */}
+                    <mesh
+                      position={[wallX + inDir * 0.025, H * 0.5, 0]}
+                      material={exoskeletonResources.porousMeshMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.04, H - 0.2, L - 0.4]} />
+                    </mesh>
+
+                    {/* Vertical Interlocking Carbon-Fiber Split Columns with Deeply Recessed Vertical Linear LED Bars */}
+                    {colZs.map((cz, ci) => (
+                      <group key={`exo-col-${side}-${ci}`} position={[wallX + inDir * 0.16, H * 0.5, cz]}>
+                        {/* Twin Flanking Carbon-Fiber Structural Ribs Creating Deep Recessed Channel */}
+                        {[-0.11, 0.11].map((dz, fi) => (
+                          <mesh
+                            key={`rib-flange-${fi}`}
+                            position={[inDir * 0.04, 0, dz]}
+                            material={exoskeletonResources.exoCarbonMat}
+                            castShadow
+                            receiveShadow
+                          >
+                            <boxGeometry args={[0.26, ribH, 0.095]} />
+                          </mesh>
+                        ))}
+                        {/* Deeply Recessed Vertical Electric-Crimson / Storm-Grey Linear LED Strip */}
+                        <mesh
+                          position={[inDir * 0.015, 0, 0]}
+                          material={exoskeletonResources.crimsonStormLedMat}
+                        >
+                          <boxGeometry args={[0.04, ribH - 0.22, 0.075]} />
+                        </mesh>
+                        {/* Bolted Forged-Steel Gusset Plates at Column-Belt Intersections */}
+                        {beltYs.map((by, bi) => (
+                          <mesh
+                            key={`gusset-${bi}`}
+                            position={[inDir * 0.175, by - H * 0.5, 0]}
+                            material={exoskeletonResources.darkSteelCageMat}
+                          >
+                            <boxGeometry args={[0.032, 0.36, 0.38]} />
+                          </mesh>
+                        ))}
+                      </group>
+                    ))}
+
+                    {/* Horizontal Matte-Black Carbon-Fiber Exo-Skeleton Belt Beams */}
+                    {beltYs.map((by, bi) => (
+                      <mesh
+                        key={`exo-belt-${side}-${bi}`}
+                        position={[wallX + inDir * 0.14, by, 0]}
+                        material={exoskeletonResources.exoCarbonMat}
+                        castShadow
+                        receiveShadow
+                      >
+                        <boxGeometry args={[0.2, 0.22, L * 0.93]} />
+                      </mesh>
+                    ))}
+
+                    {/* Interlocking Diagonal Carbon-Fiber X-Truss Braces Across Structural Bays */}
+                    {colZs.slice(0, -1).map((cz, bi) => {
+                      const midZ = cz + bayStepZ * 0.5;
+                      const tierMidY = (beltYs[0] + beltYs[1]) * 0.5;
+                      const upperMidY = (beltYs[1] + beltYs[2]) * 0.5;
+                      return (
+                        <group key={`exo-diag-bay-${side}-${bi}`}>
+                          {[tierMidY, upperMidY].map((my, mi) => (
+                            <React.Fragment key={`diag-pair-${mi}`}>
+                              <mesh
+                                position={[wallX + inDir * 0.1, my, midZ]}
+                                rotation={[(bi + mi) % 2 === 0 ? diagAng : -diagAng, 0, 0]}
+                                material={exoskeletonResources.exoCarbonMat}
+                              >
+                                <boxGeometry args={[0.11, 0.11, diagLen * 0.94]} />
+                              </mesh>
+                              <mesh
+                                position={[wallX + inDir * 0.09, my, midZ]}
+                                rotation={[(bi + mi) % 2 === 0 ? -diagAng : diagAng, 0, 0]}
+                                material={exoskeletonResources.darkSteelCageMat}
+                              >
+                                <boxGeometry args={[0.08, 0.085, diagLen * 0.94]} />
+                              </mesh>
+                            </React.Fragment>
+                          ))}
+                        </group>
+                      );
+                    })}
+
+                    {/* Dedicated Architectural Speaker Cages Along Side Walls (Aligned With Side Surrounds) */}
+                    {spkLayout.sideSpeakers.map((sp, si) => (
+                      <group
+                        key={`exo-side-cage-${side}-${si}`}
+                        position={[wallX + inDir * 0.24, sp.y - 0.06, sp.z]}
+                      >
+                        {/* Back Structural Carbon-Fiber Collar */}
+                        <mesh position={[-inDir * 0.14, 0, 0]} material={exoskeletonResources.exoCarbonMat}>
+                          <boxGeometry args={[0.08, 1.18, 0.98]} />
+                        </mesh>
+                        {/* Top & Bottom Structural Cage Plates */}
+                        {[-0.56, 0.56].map((cy, ci) => (
+                          <mesh key={`cage-cap-${ci}`} position={[inDir * 0.12, cy, 0]} material={exoskeletonResources.exoCarbonMat}>
+                            <boxGeometry args={[0.62, 0.07, 0.98]} />
+                          </mesh>
+                        ))}
+                        {/* Four Forged-Steel Outer Cage Vertical Corner Struts */}
+                        {[-0.45, 0.45].map((cz, czi) =>
+                          [inDir * 0.4, -inDir * 0.12].map((cx, cxi) => (
+                            <mesh
+                              key={`cage-post-${czi}-${cxi}`}
+                              position={[cx, 0, cz]}
+                              material={exoskeletonResources.darkSteelCageMat}
+                            >
+                              <boxGeometry args={[0.055, 1.14, 0.055]} />
+                            </mesh>
+                          )),
+                        )}
+                        {/* Protective Architectural Horizontal & Side Cage Bars Framing Speaker */}
+                        {[-0.42, 0.42].map((py, pyi) => (
+                          <mesh
+                            key={`cage-front-bar-${pyi}`}
+                            position={[inDir * 0.41, py, 0]}
+                            material={exoskeletonResources.darkSteelCageMat}
+                          >
+                            <boxGeometry args={[0.04, 0.04, 0.94]} />
+                          </mesh>
+                        ))}
+                      </group>
+                    ))}
+                  </group>
+                );
+              })}
+
+              {/* Rear Wall Exo-Skeleton Matrix (Clears Projection Booth Window & Rear Double Doors Cleanly) */}
+              {(() => {
+                const rearWallZ = backZ - 0.22;
+                const doorTopY = Math.min(spkLayout.wBot - 1.35, topTierY + 1.15) + 1.32;
+                const rearXs = [-W * 0.44, -W * 0.31, -W * 0.17, W * 0.17, W * 0.31, W * 0.44];
+                return (
+                  <group>
+                    {/* Rear Wall Carbon-Fiber Vertical Split Columns & Recessed Crimson/Storm LEDs Flanking Booth & Doors */}
+                    {rearXs.map((rx, ri) => (
+                      <group key={`exo-rear-col-${ri}`} position={[rx, H * 0.5, rearWallZ - 0.1]}>
+                        {[-0.11, 0.11].map((dx, fi) => (
+                          <mesh
+                            key={`rear-rib-flange-${fi}`}
+                            position={[dx, 0, -0.04]}
+                            material={exoskeletonResources.exoCarbonMat}
+                            castShadow
+                          >
+                            <boxGeometry args={[0.095, ribH, 0.24]} />
+                          </mesh>
+                        ))}
+                        <mesh position={[0, 0, -0.02]} material={exoskeletonResources.crimsonStormLedMat}>
+                          <boxGeometry args={[0.075, ribH - 0.22, 0.04]} />
+                        </mesh>
+                      </group>
+                    ))}
+
+                    {/* Rear Horizontal Exo-Skeleton Beams Above & Below Booth/Door Apertures */}
+                    {[H * 0.24, H * 0.5, Math.min(H - 0.65, spkLayout.wTop + 0.55)].map((by, bi) => {
+                      const spans =
+                        by < doorTopY
+                          ? [
+                              { x0: -W * 0.47, x1: -1.45 },
+                              { x0: 1.45, x1: W * 0.47 },
+                            ]
+                          : [{ x0: -W * 0.47, x1: W * 0.47 }];
+                      return spans.map((sp, si) => (
+                        <mesh
+                          key={`rear-belt-${bi}-${si}`}
+                          position={[(sp.x0 + sp.x1) * 0.5, by, rearWallZ - 0.12]}
+                          material={exoskeletonResources.exoCarbonMat}
+                        >
+                          <boxGeometry args={[sp.x1 - sp.x0, 0.22, 0.18]} />
+                        </mesh>
+                      ));
+                    })}
+
+                    {/* Dedicated Rear Wall Architectural Speaker Cages Framing Rear Surrounds */}
+                    {spkLayout.rearSpeakers.map((rsp, ri) => (
+                      <group
+                        key={`exo-rear-cage-${ri}`}
+                        position={[rsp.x, rsp.y - 0.06, rearWallZ - 0.24]}
+                      >
+                        <mesh position={[0, 0, 0.14]} material={exoskeletonResources.exoCarbonMat}>
+                          <boxGeometry args={[0.98, 1.18, 0.08]} />
+                        </mesh>
+                        {[-0.56, 0.56].map((cy, ci) => (
+                          <mesh key={`rear-cage-cap-${ci}`} position={[0, cy, -0.12]} material={exoskeletonResources.exoCarbonMat}>
+                            <boxGeometry args={[0.98, 0.07, 0.62]} />
+                          </mesh>
+                        ))}
+                        {[-0.45, 0.45].map((cx, cxi) =>
+                          [-0.4, 0.12].map((cz, czi) => (
+                            <mesh
+                              key={`rear-cage-post-${cxi}-${czi}`}
+                              position={[cx, 0, cz]}
+                              material={exoskeletonResources.darkSteelCageMat}
+                            >
+                              <boxGeometry args={[0.055, 1.14, 0.055]} />
+                            </mesh>
+                          )),
+                        )}
+                        {[-0.42, 0.42].map((py, pyi) => (
+                          <mesh
+                            key={`rear-cage-bar-${pyi}`}
+                            position={[0, py, -0.41]}
+                            material={exoskeletonResources.darkSteelCageMat}
+                          >
+                            <boxGeometry args={[0.94, 0.04, 0.04]} />
+                          </mesh>
+                        ))}
+                      </group>
+                    ))}
+                  </group>
+                );
+              })()}
+            </group>
+          );
+        })()}
+
+      {/* 4DX Arctic Storm: High-Contrast Diagonal Geometric & V-Chevron Acoustic Wall Panels (Frost Grey, Slate Blue, Cobalt Blue, Charcoal-Navy) + Razor-Thin Violet/Cyan LEDs */}
       {sideLightStyle === 'arctic_parametric_fins' &&
         arctic4dxWall &&
-        [-1, 1].map((side) => {
-          const wallX = side * (W / 2 - 0.21);
-          const inDir = -side;
-          const ledX = wallX + inDir * 0.088;
-          return (
-            <group key={`arctic-4dx-wall-${side}`}>
-              {/* Deep Pitch-Black Backing Plane */}
-              <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={mats.pitchBlackAcousticMat}>
-                <boxGeometry args={[0.024, H * 0.94, L * 0.92]} />
-              </mesh>
+        arcticResources && (
+          <group>
+            {[-1, 1].map((side) => {
+              const wallX = side * (W / 2 - 0.21);
+              const inDir = -side;
+              const ledX = wallX + inDir * 0.088;
+              const toneMatMap = {
+                frost: arcticResources.frostGreyMat,
+                slate: arcticResources.slateBlueMat,
+                cobalt: arcticResources.cobaltBlueMat,
+                charcoal: arcticResources.charcoalNavyMat,
+              } as const;
+              return (
+                <group key={`arctic-4dx-wall-${side}`}>
+                  {/* Deep Matte-Black Recessed Seam Backing Plane */}
+                  <mesh position={[wallX + inDir * 0.012, H * 0.5, 0]} material={arcticResources.seamBackingMat}>
+                    <boxGeometry args={[0.024, H * 0.96, L * 0.94]} />
+                  </mesh>
 
-              {/* Sharp Interlocking Diamond & Diagonal-Cut Acoustic Polygons */}
-              {arctic4dxWall.panels.map((p, pi) => (
+                  {/* Sloping Dark Charcoal-Navy Lower Dado Wall Along Seating Tiers */}
+                  <mesh
+                    position={[wallX + inDir * 0.046, 0, 0]}
+                    geometry={arctic4dxWall.dadoGeo}
+                    material={arcticResources.dadoMat}
+                    receiveShadow
+                  />
+                  {/* Slim Architectural Dado Top Coping Trim */}
+                  <ArchitecturalChannelBar
+                    start={[wallX + inDir * 0.072, arctic4dxWall.yDadoFront, arctic4dxWall.zExitEnd]}
+                    end={[wallX + inDir * 0.072, arctic4dxWall.yDadoRear, arctic4dxWall.zMax]}
+                    thickness={0.04}
+                    depth={0.05}
+                    material={arcticResources.seamBackingMat}
+                    interiorFocusY={H * 0.45}
+                  />
+
+                  {/* Crisp Diagonal Geometric & Nested V-Chevron Acoustic Fabric Polygons */}
+                  {arctic4dxWall.panels.map((p, pi) => (
+                    <mesh
+                      key={`arctic-geo-panel-${side}-${pi}`}
+                      position={[wallX + inDir * p.depthOffset, 0, 0]}
+                      geometry={p.geo}
+                      material={toneMatMap[p.tone]}
+                      receiveShadow
+                    />
+                  ))}
+
+                  {/* Razor-Thin Recessed Electric-Violet & Ice-Cyan Linear LED Channels Tracing Diagonal Seams & V-Chevrons */}
+                  {arctic4dxWall.ledSeamSegments.map((seg, si) => (
+                    <ArchitecturalChannelBar
+                      key={`arctic-led-${side}-${si}`}
+                      start={[ledX, seg.startZY[1], seg.startZY[0]]}
+                      end={[ledX, seg.endZY[1], seg.endZY[0]]}
+                      thickness={0.024}
+                      depth={0.024}
+                      material={seg.isCyan ? arcticResources.cyanStripMat : arcticResources.violetStripMat}
+                      housingMaterial={arcticResources.seamBackingMat}
+                      interiorFocusY={H * 0.45}
+                    />
+                  ))}
+                </group>
+              );
+            })}
+
+            {/* Rear Wall Flanking Geometric Wings & Diagonal Violet/Cyan LED Channels */}
+            <group position={[0, 0, backZ - 0.21]}>
+              <mesh position={[0, 0, -0.028]} geometry={arctic4dxWall.rearDadoGeo} material={arcticResources.dadoMat} receiveShadow />
+              <mesh position={[0, 0, -0.028]} geometry={arctic4dxWall.rearDadoRightGeo} material={arcticResources.dadoMat} receiveShadow />
+              {arctic4dxWall.rearPanels.map((rp, rpi) => (
                 <mesh
-                  key={`arctic-diamond-panel-${side}-${pi}`}
-                  position={[wallX + inDir * p.depthOffset, 0, 0]}
-                  geometry={p.geo}
+                  key={`arctic-rear-panel-${rpi}`}
+                  position={[0, 0, -rp.depthOffset]}
+                  geometry={rp.geo}
                   material={
-                    p.tone === 'indigo'
-                      ? mats.indigoAcousticMat
-                      : p.tone === 'slate'
-                        ? mats.slateAcousticMat
-                        : mats.pitchBlackAcousticMat
+                    rp.tone === 'frost'
+                      ? arcticResources.frostGreyMat
+                      : rp.tone === 'slate'
+                        ? arcticResources.slateBlueMat
+                        : rp.tone === 'cobalt'
+                          ? arcticResources.cobaltBlueMat
+                          : arcticResources.charcoalNavyMat
                   }
                   receiveShadow
                 />
               ))}
-
-              {/* Recessed Electric-Violet & Bright Cyan Linear LED Light Strips Tracing Every Panel Angle */}
-              {arctic4dxWall.ledSeamSegments.map((seg, si) => (
-                <ArchitecturalChannelBar
-                  key={`arctic-led-${side}-${si}`}
-                  start={[ledX, seg.startZY[1], seg.startZY[0]]}
-                  end={[ledX, seg.endZY[1], seg.endZY[0]]}
-                  thickness={0.036}
-                  depth={0.034}
-                  material={seg.isCyan ? mats.secondaryEmitterMat : mats.primaryEmitterMat}
-                  housingMaterial={mats.channelMetalMat}
-                  interiorFocusY={H * 0.45}
-                />
-              ))}
-
-              {/* Mounted High-Power Wind Blowers & Special-Effects (SFX) Nozzles */}
-              {wallBayZs.map((bz, bi) => {
-                const rowFrac = THREE.MathUtils.clamp(
-                  (bz - firstRowZ) / Math.max(0.5, rowSpacing),
-                  0,
-                  Math.max(0, seatingRows - 1),
-                );
-                const tierY = rowFrac * rowElevationStep;
-                const blowerY = Math.min(H - 2.1, tierY + 2.55);
-                const sfxY = Math.min(H - 2.8, tierY + 1.85);
+              {arctic4dxWall.rearLeds.map((rl, rli) => {
+                const dx = rl.endXY[0] - rl.startXY[0];
+                const dy = rl.endXY[1] - rl.startXY[1];
+                const len = Math.hypot(dx, dy);
+                const mx = (rl.startXY[0] + rl.endXY[0]) * 0.5;
+                const my = (rl.startXY[1] + rl.endXY[1]) * 0.5;
+                const ang = Math.atan2(dy, dx);
                 return (
-                  <group key={`arctic-4dx-wall-rig-${side}-${bi}`}>
-                    <group
-                      position={[wallX + inDir * 0.14, blowerY, bz]}
-                      rotation={[0, inDir * (Math.PI / 2), 0]}
-                    >
-                      <mesh position={[0, 0, 0.02]} material={mats.channelMetalMat}>
-                        <boxGeometry args={[0.38, 0.42, 0.04]} />
-                      </mesh>
-                      <mesh position={[0, 0, 0.14]} material={mats.gunmetalAcousticMat}>
-                        <boxGeometry args={[0.46, 0.08, 0.28]} />
-                      </mesh>
-                      <group position={[0, 0, 0.28]} rotation={[0.24, 0, 0]}>
-                        <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.gunmetalAcousticMat} castShadow>
-                          <cylinderGeometry args={[0.21, 0.19, 0.44, 18]} />
-                        </mesh>
-                        <mesh position={[0, 0, 0.24]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
-                          <cylinderGeometry args={[0.235, 0.205, 0.08, 18]} />
-                        </mesh>
-                        <mesh position={[0, 0, 0.18]} rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
-                          <cylinderGeometry args={[0.055, 0.055, 0.08, 12]} />
-                        </mesh>
-                        {[0, 1, 2, 3].map((ri) => (
-                          <mesh
-                            key={`arctic-blade-${ri}`}
-                            position={[0, 0, 0.18]}
-                            rotation={[0, 0, (ri * Math.PI) / 4]}
-                            material={mats.channelMetalMat}
-                          >
-                            <boxGeometry args={[0.35, 0.045, 0.02]} />
-                          </mesh>
-                        ))}
-                        <mesh position={[0, 0, 0.27]} material={bi % 2 === 0 ? mats.primaryEmitterMat : mats.secondaryEmitterMat}>
-                          <torusGeometry args={[0.22, 0.012, 8, 20]} />
-                        </mesh>
-                      </group>
-                    </group>
-
-                    <group
-                      position={[wallX + inDir * 0.12, sfxY, Math.min(L * 0.41, bz + 0.88)]}
-                      rotation={[0, inDir * (Math.PI / 2), 0]}
-                    >
-                      <mesh position={[0, -0.35, 0.02]} material={mats.channelMetalMat}>
-                        <cylinderGeometry args={[0.024, 0.024, 0.85, 10]} />
-                      </mesh>
-                      <mesh position={[0, 0, 0.06]} material={mats.gunmetalAcousticMat}>
-                        <boxGeometry args={[0.24, 0.16, 0.12]} />
-                      </mesh>
-                      {[-0.065, 0.065].map((nx, ni) => (
-                        <group key={`arctic-sfx-jet-${ni}`} position={[nx, 0.01, 0.14]} rotation={[0.22, 0, 0]}>
-                          <mesh rotation={[Math.PI / 2, 0, 0]} material={mats.nozzleBrassMat}>
-                            <cylinderGeometry args={[0.024, 0.034, 0.12, 12]} />
-                          </mesh>
-                          <mesh position={[0, 0, 0.068]} rotation={[Math.PI / 2, 0, 0]} material={mats.channelMetalMat}>
-                            <cylinderGeometry args={[0.014, 0.022, 0.04, 10]} />
-                          </mesh>
-                        </group>
-                      ))}
-                    </group>
-                  </group>
+                  <mesh
+                    key={`arctic-rear-led-${rli}`}
+                    position={[mx, my, -0.088]}
+                    rotation={[0, 0, ang]}
+                    material={rl.isCyan ? arcticResources.cyanStripMat : arcticResources.violetStripMat}
+                  >
+                    <boxGeometry args={[len, 0.024, 0.02]} />
+                  </mesh>
                 );
               })}
             </group>
-          );
-        })}
+          </group>
+        )}
 
       {/* 4DX Thunder Arena: Dramatic 3D Parametric Ribbed Acoustic Fins in Matte Titanium Grey & Deep Espresso-Bronze + Inner Golden-Amber & Ice-White LEDs + Sleek Recessed Air Turbines */}
       {sideLightStyle === 'thunder_emerald_waves' &&
@@ -5589,13 +6374,57 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
 
             {/* Rear Wall: Matching Voronoi Preserved-Moss Mosaic Around Open Projection Booth & Doors */}
             <group position={[0, 0, backZ - 0.21]}>
-              <mesh
-                position={[0, H * 0.54, 0.01]}
-                material={biophilicMossResources.woodAlcoveBackMat}
-                receiveShadow
-              >
-                <boxGeometry args={[W - 0.55, H * 0.84, 0.025]} />
-              </mesh>
+              {/* Left & Right Rear Wing Backing (keeps center projection booth window & glass 100% visible) */}
+              {([-1, 1] as const).map((wSide) => {
+                const clearHalfW = biophilicCrystallineMossWall.bWinW * 0.5 + 0.14;
+                const wingW = Math.max(0.5, W * 0.5 - 0.22 - clearHalfW);
+                const wingCx = wSide * (clearHalfW + wingW * 0.5);
+                return (
+                  <mesh
+                    key={`biophilic-rear-wing-back-${wSide}`}
+                    position={[wingCx, H * 0.54, 0.01]}
+                    material={biophilicMossResources.woodAlcoveBackMat}
+                    receiveShadow
+                  >
+                    <boxGeometry args={[wingW, H * 0.84, 0.025]} />
+                  </mesh>
+                );
+              })}
+              {/* Lower Spandrel Backing Below Booth Window & Header Above Booth Window */}
+              {biophilicCrystallineMossWall.wBot - 0.14 > 0.4 && (
+                <mesh
+                  position={[0, (biophilicCrystallineMossWall.wBot - 0.14) * 0.5, 0.01]}
+                  material={biophilicMossResources.woodAlcoveBackMat}
+                  receiveShadow
+                >
+                  <boxGeometry
+                    args={[
+                      biophilicCrystallineMossWall.bWinW + 0.28,
+                      biophilicCrystallineMossWall.wBot - 0.14,
+                      0.025,
+                    ]}
+                  />
+                </mesh>
+              )}
+              {H - 0.24 - (biophilicCrystallineMossWall.wTop + 0.14) > 0.2 && (
+                <mesh
+                  position={[
+                    0,
+                    (biophilicCrystallineMossWall.wTop + 0.14 + (H - 0.24)) * 0.5,
+                    0.01,
+                  ]}
+                  material={biophilicMossResources.woodAlcoveBackMat}
+                  receiveShadow
+                >
+                  <boxGeometry
+                    args={[
+                      biophilicCrystallineMossWall.bWinW + 0.28,
+                      H - 0.24 - (biophilicCrystallineMossWall.wTop + 0.14),
+                      0.025,
+                    ]}
+                  />
+                </mesh>
+              )}
 
               <mesh geometry={biophilicCrystallineMossWall.rearWall.sandGeo} material={biophilicMossResources.sandBeigeMat} receiveShadow castShadow />
               <mesh geometry={biophilicCrystallineMossWall.rearWall.sageGeo} material={biophilicMossResources.sageGreenMat} receiveShadow castShadow />
@@ -6102,6 +6931,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'crimson_velocity_4dx' &&
         sideLightStyle !== 'arctic_parametric_fins' &&
         sideLightStyle !== 'thunder_emerald_waves' &&
+        sideLightStyle !== 'exoskeleton_crimson_matrix_4dx' &&
         sideLightStyle !== 'obsidian_slat_grazers' &&
         sideLightStyle !== 'diagonal_parabolic_ribs' &&
         sideLightStyle !== 'cobalt_veil_laser_recess' &&

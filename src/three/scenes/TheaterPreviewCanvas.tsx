@@ -7,7 +7,11 @@ import { generateSeatsForTheater } from '../../config/seating/seatGenerator';
 import { AuditoriumShell } from '../models/AuditoriumShell';
 import { SeatModels } from '../models/SeatModels';
 import { CinemaScreen } from '../models/CinemaScreen';
-import { CinemaLightingRig } from '../lighting/CinemaLightingRig';
+import {
+  BioluminescentBloomComposer,
+  CinemaLightingRig,
+} from '../lighting/CinemaLightingRig';
+import { beachHeightAt } from '../models/beachTerrain';
 import { computeAdaptiveCinemaFov, detectWebGLSupport, isMobileDevice } from '../../utils/formatters';
 
 interface TheaterPreviewCanvasProps {
@@ -33,7 +37,22 @@ const PreviewOrbitRig: React.FC<{ config: TheaterConfiguration; isSoftwareGl: bo
     }
   }, [camera, config.categoryId, size.width, size.height]);
 
+  const isBeach = config.environmentProfile.architectureStyle === 'beach';
+
   const clampCamera = () => {
+    if (isBeach) {
+      const maxHalfX = 24;
+      const minZ = config.screenPosition[2] + 1.5;
+      const maxZ = 22;
+      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -maxHalfX, maxHalfX);
+      camera.position.z = THREE.MathUtils.clamp(camera.position.z, minZ, maxZ);
+      const variant =
+        config.theaterId === 'beach_bioluminescent' ? 'bioluminescent' : 'sunset';
+      const floorY = beachHeightAt(camera.position.x, camera.position.z, variant);
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y, floorY + 0.72, 18);
+      return;
+    }
+
     const maxHalfX = Math.max(1.2, config.auditoriumWidth / 2 - 0.72);
     const minZ = config.screenPosition[2] + 1.25;
     const maxZ = config.auditoriumLength / 2 - 0.72;
@@ -58,10 +77,12 @@ const PreviewOrbitRig: React.FC<{ config: TheaterConfiguration; isSoftwareGl: bo
     clampCamera();
   });
 
-  const maxDist = Math.max(
-    3.2,
-    Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
-  );
+  const maxDist = isBeach
+    ? 24
+    : Math.max(
+        3.2,
+        Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
+      );
 
   return (
     <OrbitControls
@@ -118,7 +139,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
           typeof window !== 'undefined' ? window.innerHeight : 600,
         ),
         near: 0.1,
-        far: 120,
+        far: config.categoryId === 'beach' ? 2400 : 120,
       }}
       onCreated={({ gl }) => {
         gl.outputColorSpace = THREE.SRGBColorSpace;
@@ -129,7 +150,11 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
         showState="AUDITORIUM_OPEN"
         isSoftwareGl={webglInfo.isSoftwareGl}
       />
-      <AuditoriumShell config={config} lightFactor={1} />
+      <AuditoriumShell
+        config={config}
+        lightFactor={1}
+        isSoftwareGl={webglInfo.isSoftwareGl}
+      />
       <SeatModels
         config={config}
         seats={seats}
@@ -146,9 +171,13 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
         videoAspectRatio={config.screenWidth / config.screenHeight}
         screenFraming="fill"
         showState="AUDITORIUM_OPEN"
+        isSoftwareGl={webglInfo.isSoftwareGl}
         screenBrightnessRef={screenBrightnessRef}
       />
       <PreviewOrbitRig config={config} isSoftwareGl={webglInfo.isSoftwareGl} />
+      {config.theaterId === 'beach_bioluminescent' && !webglInfo.isSoftwareGl && (
+        <BioluminescentBloomComposer />
+      )}
     </Canvas>
   );
 };

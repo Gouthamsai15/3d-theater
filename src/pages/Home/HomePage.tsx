@@ -32,6 +32,7 @@ export const HomePage: React.FC<HomePageProps> = ({ aboutSectionRef }) => {
     ice: 'ice',
     private_luxury: 'private_luxury',
     screenx: 'screenx',
+    beach: 'beach',
   });
 
   const scrollToTheaters = () => {

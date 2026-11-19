@@ -4,6 +4,7 @@ import { useCinemaStore } from '../../store/cinemaStore';
 import { StepProgressBar } from '../../components/common/StepProgressBar';
 import { SeatData } from '../../types/cinema';
 import { findBestSeatForTheater } from '../../config/seating/seatRecommendation';
+import { isFourSeatPodBreakAfter } from '../../config/seating/seatGenerator';
 
 export const SeatSelectionPage: React.FC = () => {
   const {
@@ -160,7 +161,8 @@ export const SeatSelectionPage: React.FC = () => {
                         const hasPodGapAfter =
                           !hasAisleAfter &&
                           ((config.seatPattern === 'twin_pods' && seat.seatNumber % 2 === 0) ||
-                            (config.seatPattern === 'four_seat_pods' && seat.seatNumber % 4 === 0)) &&
+                            (config.seatPattern === 'four_seat_pods' &&
+                              isFourSeatPodBreakAfter(seat.seatNumber, config))) &&
                           seat.seatNumber < config.seatsPerRow;
 
                         let seatClasses =

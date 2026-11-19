@@ -5,7 +5,8 @@ export type TheaterCategoryId =
   | 'dolby'
   | 'ice'
   | 'private_luxury'
-  | 'screenx';
+  | 'screenx'
+  | 'beach';
 
 export type TheaterId =
   | 'standard_2d'
@@ -20,6 +21,7 @@ export type TheaterId =
   | '4dx'
   | '4dx_crimson'
   | '4dx_arctic'
+  | '4dx_exoskeleton'
   | 'dolby'
   | 'dolby_cobalt'
   | 'dolby_bordeaux'
@@ -31,7 +33,9 @@ export type TheaterId =
   | 'private_champagne'
   | 'private_midnight'
   | 'screenx'
-  | 'screenx_multiplex_400';
+  | 'screenx_multiplex_400'
+  | 'beach'
+  | 'beach_bioluminescent';
 
 export type SeatModelType =
   | 'standard'
@@ -45,6 +49,7 @@ export type SeatModelType =
   | '4dx_crimson_pod'
   | '4dx_arctic_pod'
   | '4dx_thunder_pod'
+  | '4dx_exoskeleton_pod'
   | 'dolby_recliner'
   | 'ice_recliner'
   | 'ice_cobalt_armchair'
@@ -53,7 +58,9 @@ export type SeatModelType =
   | 'walnut_loveseat'
   | 'champagne_daybed'
   | 'screenx_lounge_pit'
-  | 'screenx_multiplex_rocker';
+  | 'screenx_multiplex_rocker'
+  | 'beach_lounger_beanbag'
+  | 'beach_bioluminescent_lounge';
 
 export type SeatPatternType = 'straight' | 'curved_arc' | 'twin_pods' | 'four_seat_pods' | 'staggered';
 
@@ -75,6 +82,7 @@ export type SideLightStyle =
   | 'glacier_hex_matrix'
   | 'arctic_parametric_fins'
   | 'thunder_emerald_waves'
+  | 'exoskeleton_crimson_matrix_4dx'
   | 'obsidian_slat_grazers'
   | 'diagonal_parabolic_ribs'
   | 'cobalt_veil_laser_recess'
@@ -90,7 +98,9 @@ export type SideLightStyle =
   | 'private_volcanic_copper_ribbons'
   | 'champagne_fluted_oak_alcoves'
   | 'screenx_panoramic_walls'
-  | 'screenx_silver_baffles';
+  | 'screenx_silver_baffles'
+  | 'beach_torches_fairy'
+  | 'beach_neon_palm_bollards';
 
 export type CeilingLightStyle =
   | 'puck_grid'
@@ -107,6 +117,7 @@ export type CeilingLightStyle =
   | 'industrial_4dx_truss'
   | 'hexagonal_acoustic_4dx'
   | 'emerald_cloud_4dx'
+  | 'industrial_exoskeleton_4dx'
   | 'imax_starlight_coves'
   | 'imax_angular_grid'
   | 'imax_v_baffle_grid'
@@ -120,7 +131,9 @@ export type CeilingLightStyle =
   | 'stepped_walnut_starlight_trays'
   | 'matte_espresso_coffered_grid'
   | 'screenx_cyan_grid'
-  | 'screenx_stepped_tray_pods';
+  | 'screenx_stepped_tray_pods'
+  | 'open_twilight_sky'
+  | 'open_starry_midnight';
 
 export type SeatStatus = 'available' | 'premium' | 'unavailable' | 'accessible';
 
@@ -154,7 +167,7 @@ export interface EnvironmentProfile {
   seatTrimColor: string;
   curtainColor?: string;
   seatMaterialType: 'fabric' | 'leather' | 'sport_leather';
-  architectureStyle: 'classic' | 'imax' | '4dx' | 'dolby' | 'ice' | 'private' | 'screenx';
+  architectureStyle: 'classic' | 'imax' | '4dx' | 'dolby' | 'ice' | 'private' | 'screenx' | 'beach';
 }
 
 export interface TheaterCategoryInfo {
@@ -254,6 +267,8 @@ export type ShowState =
   | 'SHOW_STARTING'
   | 'SHOW_PLAYING'
   | 'SHOW_COMPLETED';
+
+export type AuditoriumLightingPreset = 'doors_open' | 'pre_show_dim' | 'feature_blackout';
 
 export type GraphicsQuality = 'low' | 'medium' | 'high';
 
