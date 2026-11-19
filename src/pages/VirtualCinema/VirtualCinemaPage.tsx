@@ -5,6 +5,7 @@ import {
   Compass,
   Eye,
   EyeOff,
+  HelpCircle,
   Home,
   LogOut,
   Maximize,
@@ -96,6 +97,7 @@ export const VirtualCinemaPage: React.FC = () => {
   const [showFirstTimeTour, setShowFirstTimeTour] = useState<boolean>(
     () => !hasCompletedTheaterTour(),
   );
+  const [tourReopenedManually, setTourReopenedManually] = useState(false);
   const [hoveredSeatId, setHoveredSeatId] = useState<string | null>(null);
   const [seatShiftToast, setSeatShiftToast] = useState<string | null>(null);
 
@@ -941,6 +943,7 @@ export const VirtualCinemaPage: React.FC = () => {
       !showMixerPopover &&
       !show4dxPopover &&
       !showExitConfirm &&
+      !showFirstTimeTour &&
       !isHoveringHudRef.current &&
       viewMode === 'seat'
     ) {
@@ -950,7 +953,7 @@ export const VirtualCinemaPage: React.FC = () => {
         }
       }, 7500);
     }
-  }, [showState, isPaused, showMixerPopover, show4dxPopover, showExitConfirm, viewMode]);
+  }, [showState, isPaused, showMixerPopover, show4dxPopover, showExitConfirm, showFirstTimeTour, viewMode]);
 
   useEffect(() => {
     bumpHudActivity();
@@ -960,7 +963,7 @@ export const VirtualCinemaPage: React.FC = () => {
   }, [bumpHudActivity]);
 
   const isTourBlockingShortcuts =
-    sceneReady && entranceComplete && showState === 'AUDITORIUM_OPEN' && showFirstTimeTour;
+    sceneReady && entranceComplete && showFirstTimeTour;
 
   // Keyboard-first cinema controls: Space (Play/Pause), F (Fullscreen), 1/2/3 (Seat/Hall/Full), R (Reset gaze), M (Mute), Arrows (-10s/+10s), H (Hide HUD)
   useEffect(() => {
@@ -1257,6 +1260,19 @@ export const VirtualCinemaPage: React.FC = () => {
   const handleEntranceComplete = useCallback(() => setEntranceComplete(true), []);
   const handleSceneReady = useCallback(() => setSceneReady(true), []);
 
+  const handleReopenStepsGuide = () => {
+    setShowMixerPopover(false);
+    setShow4dxPopover(false);
+    setControlsManuallyHidden(false);
+    setHudVisible(true);
+    setTourReopenedManually(true);
+    setShowFirstTimeTour(true);
+    if (autoStartTimerRef.current) {
+      window.clearTimeout(autoStartTimerRef.current);
+      autoStartTimerRef.current = null;
+    }
+  };
+
   const effectiveHudVisible = !controlsManuallyHidden && hudVisible;
 
   return (
@@ -1496,10 +1512,25 @@ export const VirtualCinemaPage: React.FC = () => {
               : 'opacity-0 hover:opacity-100'
         }`}
       >
-        <div className="max-w-[52vw] sm:max-w-none truncate rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs">
-          <span className="font-medium text-[#F4F1EA]">{selectedTheaterConfig.shortName}</span>
-          <span className="mx-1.5 sm:mx-2 text-neutral-600">·</span>
-          <span className="font-mono-tabular text-[#E5C158]">Seat {selectedSeat.id}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 max-w-[58vw] sm:max-w-none">
+          <div className="truncate rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs">
+            <span className="font-medium text-[#F4F1EA]">{selectedTheaterConfig.shortName}</span>
+            <span className="mx-1.5 sm:mx-2 text-neutral-600">·</span>
+            <span className="font-mono-tabular text-[#E5C158]">Seat {selectedSeat.id}</span>
+          </div>
+
+          {entranceComplete && !showCompleted && (
+            <button
+              type="button"
+              onClick={handleReopenStepsGuide}
+              title="View Steps"
+              aria-label="View theater steps"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs text-neutral-200 hover:border-[#D4AF37]/60 hover:text-white cursor-pointer"
+            >
+              <HelpCircle className="h-3.5 w-3.5 text-[#D4AF37]" />
+              <span className="hidden sm:inline">Steps</span>
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
@@ -1576,15 +1607,16 @@ export const VirtualCinemaPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Show Controls Toggle Button when Manually Hidden */}
+      {/* Show Controls Toggle Button when Manually Hidden (icon-only) */}
       {controlsManuallyHidden && !showCompleted && entranceComplete && (
         <button
           type="button"
           onClick={() => setControlsManuallyHidden(false)}
-          className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#090A0E]/85 px-3 py-2 text-xs text-neutral-300 hover:text-white cursor-pointer"
+          title="Show Controls (H)"
+          aria-label="Show Controls"
+          className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-[#090A0E]/85 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white cursor-pointer"
         >
-          <Eye className="h-3.5 w-3.5" />
-          <span>Show Controls</span>
+          <Eye className="h-4 w-4" />
         </button>
       )}
 
@@ -2061,19 +2093,32 @@ export const VirtualCinemaPage: React.FC = () => {
           </div>
         </div>
       )}
-      {/* First-Time Visitor Interactive Auditorium Guide (blocks auto-start until all steps finish) */}
-      {sceneReady &&
-        entranceComplete &&
-        showState === 'AUDITORIUM_OPEN' &&
-        showFirstTimeTour && (
-          <TheaterWalkthroughTour
-            supports4dxEffects={Boolean(selectedTheaterConfig.supports4dxEffects)}
-            onCompleteAndStartShow={() => {
-              setShowFirstTimeTour(false);
+      {/* Interactive Auditorium Guide (blocks first-time auto-start until completed; can be reopened anytime from top-left Steps button) */}
+      {sceneReady && entranceComplete && showFirstTimeTour && !showCompleted && (
+        <TheaterWalkthroughTour
+          supports4dxEffects={Boolean(selectedTheaterConfig.supports4dxEffects)}
+          isAuditoriumOpen={showState === 'AUDITORIUM_OPEN'}
+          isSeatViewMode={viewMode === 'seat'}
+          allowDismiss={tourReopenedManually}
+          onDismiss={() => {
+            setShowFirstTimeTour(false);
+            setTourReopenedManually(false);
+            if (showState === 'AUDITORIUM_OPEN') {
+              setAutoStartPausedByUser(true);
+            }
+            bumpHudActivity();
+          }}
+          onCompleteAndStartShow={() => {
+            setShowFirstTimeTour(false);
+            setTourReopenedManually(false);
+            if (showState === 'AUDITORIUM_OPEN') {
               beginShowSequence();
-            }}
-          />
-        )}
+            } else {
+              bumpHudActivity();
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

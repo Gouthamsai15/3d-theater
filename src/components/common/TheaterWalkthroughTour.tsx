@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Play, X } from 'lucide-react';
 
 export const THEATER_TOUR_STORAGE_KEY = 'aurelia_theater_walkthrough_done_v1';
 
@@ -31,11 +31,19 @@ export interface TourStepDefinition {
 
 interface TheaterWalkthroughTourProps {
   supports4dxEffects: boolean;
+  isAuditoriumOpen: boolean;
+  isSeatViewMode: boolean;
+  allowDismiss?: boolean;
+  onDismiss?: () => void;
   onCompleteAndStartShow: () => void;
 }
 
 export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
   supports4dxEffects,
+  isAuditoriumOpen,
+  isSeatViewMode,
+  allowDismiss = false,
+  onDismiss,
   onCompleteAndStartShow,
 }) => {
   const steps = useMemo<TourStepDefinition[]>(() => {
@@ -48,19 +56,27 @@ export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
           'Seat = your chair. Hall = move to any seat. Full = full video.',
         shortcut: '1 · 2 · 3',
       },
-      {
-        id: 'reset_view',
-        targetId: 'reset_view',
-        title: 'Reset View',
-        description: 'Click to look straight at the screen again.',
-        shortcut: 'R',
-      },
-      {
-        id: 'lighting_presets',
-        targetId: 'lighting_presets',
-        title: 'Room Lights',
-        description: 'Try bright, dim, or dark lights before starting.',
-      },
+      ...(isSeatViewMode
+        ? [
+            {
+              id: 'reset_view',
+              targetId: 'reset_view',
+              title: 'Reset View',
+              description: 'Click to look straight at the screen again.',
+              shortcut: 'R',
+            },
+          ]
+        : []),
+      ...(isAuditoriumOpen
+        ? [
+            {
+              id: 'lighting_presets',
+              targetId: 'lighting_presets',
+              title: 'Room Lights',
+              description: 'Try bright, dim, or dark lights before starting.',
+            },
+          ]
+        : []),
       {
         id: 'scrubber',
         targetId: 'scrubber',
@@ -143,15 +159,19 @@ export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
         title: 'Exit Show',
         description: 'Leave the theater and go back home.',
       },
-      {
-        id: 'start_show',
-        targetId: 'start_show',
-        title: 'Start Show',
-        description: 'All set! Click below to dim lights and start the movie.',
-      },
+      ...(isAuditoriumOpen
+        ? [
+            {
+              id: 'start_show',
+              targetId: 'start_show',
+              title: 'Start Show',
+              description: 'All set! Click below to dim lights and start the movie.',
+            },
+          ]
+        : []),
     ];
     return allSteps;
-  }, [supports4dxEffects]);
+  }, [supports4dxEffects, isAuditoriumOpen, isSeatViewMode]);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<{
@@ -280,11 +300,24 @@ export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
           <span className="font-mono-tabular text-[11px] font-semibold uppercase tracking-wider text-[#E5C158]">
             Step {stepIndex + 1} / {steps.length}
           </span>
-          {currentStep.shortcut && (
-            <kbd className="rounded border border-white/15 bg-white/[0.04] px-2 py-0.5 font-mono-tabular text-[10px] font-semibold text-neutral-200 whitespace-nowrap">
-              Key: {currentStep.shortcut}
-            </kbd>
-          )}
+          <div className="flex items-center gap-1.5">
+            {currentStep.shortcut && (
+              <kbd className="rounded border border-white/15 bg-white/[0.04] px-2 py-0.5 font-mono-tabular text-[10px] font-semibold text-neutral-200 whitespace-nowrap">
+                Key: {currentStep.shortcut}
+              </kbd>
+            )}
+            {allowDismiss && onDismiss && (
+              <button
+                type="button"
+                onClick={onDismiss}
+                title="Close steps"
+                aria-label="Close steps"
+                className="flex h-6 w-6 items-center justify-center rounded border border-white/15 text-neutral-300 hover:border-white/30 hover:text-white cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Step Progress Track */}
@@ -328,8 +361,8 @@ export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
               onClick={handleFinish}
               className="inline-flex items-center gap-1.5 rounded-md bg-[#D4AF37] px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-[#070709] hover:bg-[#E5C158] cursor-pointer whitespace-nowrap"
             >
-              <Play className="h-3.5 w-3.5 fill-current" />
-              <span>Start Show</span>
+              {isAuditoriumOpen && <Play className="h-3.5 w-3.5 fill-current" />}
+              <span>{isAuditoriumOpen ? 'Start Show' : 'Done'}</span>
               <Check className="h-3.5 w-3.5" />
             </button>
           )}
