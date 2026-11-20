@@ -15,6 +15,18 @@ import {
   BEACH_BIO_PROJECTOR_LENSES,
   BEACH_SUNSET_PROJECTOR_LENS,
 } from './BeachEnvironment';
+import {
+  analyzeVideoFrameOptical,
+  createFourDxMotionSpring,
+  FourDxAudioTelemetry,
+  FourDxLiveTelemetry,
+  OpticalFrameAnalysis,
+  SAMPLE_H,
+  SAMPLE_PIXELS,
+  SAMPLE_W,
+  stepFourDxSeatPhysics,
+} from './fourDxTelemetry';
+import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 
 export interface ScreenBounceSample {
   r: number;
@@ -39,6 +51,8 @@ interface CinemaScreenProps {
   screenBounceUniforms?: ScreenBounceUniforms;
   lightFactor?: number;
   screenReflectionBrightness?: number;
+  fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
+  fourDxActive?: boolean;
 }
 
 /**
@@ -204,6 +218,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   screenBounceUniforms,
   lightFactor = 1,
   screenReflectionBrightness = 1,
+  fourDxTelemetryRef,
+  fourDxActive = false,
 }) => {
   const {
     screenWidth,
@@ -276,15 +292,41 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const isVideoActiveRef = useRef(false);
   const isMobile = useMemo(() => isMobileDevice(), []);
 
-  // Tiny pre-allocated 8x4 offscreen canvas for zero-stall real-time average video RGB + luminance sampling
+  // Tiny pre-allocated 16x9 offscreen canvas for zero-stall real-time video RGB, luminance & 4DX optical analysis
   const rgbSamplerCanvas = useMemo(() => {
     if (typeof document === 'undefined') return null;
     const canvas = document.createElement('canvas');
-    canvas.width = 8;
-    canvas.height = 4;
+    canvas.width = SAMPLE_W;
+    canvas.height = SAMPLE_H;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     return ctx ? { canvas, ctx } : null;
   }, []);
+
+  const prevOpticalRgbRef = useRef(new Float32Array(SAMPLE_PIXELS * 3));
+  const hasPrevOpticalRef = useRef(false);
+  const prevMeanLumRef = useRef(0);
+  const opticalOutRef = useRef<OpticalFrameAnalysis>({
+    motionEnergy: 0,
+    panBias: 0,
+    pitchBias: 0,
+    fireScore: 0,
+    fireCenterX: 0,
+    rainScore: 0,
+    snowScore: 0,
+    windScore: 0,
+    flashSpike: 0,
+    meanLuminance: 0,
+  });
+  const audioOutRef = useRef<FourDxAudioTelemetry>({
+    active: false,
+    subBass: 0,
+    bass: 0,
+    mid: 0,
+    high: 0,
+    transient: 0,
+    rms: 0,
+  });
+  const fourDxSpringRef = useRef(createFourDxMotionSpring());
 
   const standbyTexture = useMemo(
     () =>
@@ -1127,41 +1169,54 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       gl.autoClear = prevAutoClear;
     }
 
-    // Real-time average video RGB & luminance readout (~22Hz, zero WebGL pipeline stall)
-    if (screenBounceRef) {
+    // Real-time average video RGB, luminance & 4DX optical scene analysis (~22Hz, zero WebGL pipeline stall)
+    const needRgbRead = Boolean(screenBounceRef || (fourDxTelemetryRef && fourDxActive));
+    if (needRgbRead) {
       if (isVideo && activeVideo && activeVideo.readyState >= 2 && rgbSamplerCanvas) {
         if (nowMs - lastRgbReadMsRef.current >= 45) {
           lastRgbReadMsRef.current = nowMs;
           try {
-            rgbSamplerCanvas.ctx.drawImage(activeVideo, 0, 0, 8, 4);
-            const data = rgbSamplerCanvas.ctx.getImageData(0, 0, 8, 4).data;
-            let rSum = 0;
-            let gSum = 0;
-            let bSum = 0;
-            const pxCount = 32;
-            for (let i = 0; i < data.length; i += 4) {
-              rSum += data[i];
-              gSum += data[i + 1];
-              bSum += data[i + 2];
+            rgbSamplerCanvas.ctx.drawImage(activeVideo, 0, 0, SAMPLE_W, SAMPLE_H);
+            const data = rgbSamplerCanvas.ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+            if (screenBounceRef) {
+              let rSum = 0;
+              let gSum = 0;
+              let bSum = 0;
+              for (let i = 0; i < data.length; i += 4) {
+                rSum += data[i];
+                gSum += data[i + 1];
+                bSum += data[i + 2];
+              }
+              const rAvg = rSum / (SAMPLE_PIXELS * 255);
+              const gAvg = gSum / (SAMPLE_PIXELS * 255);
+              const bAvg = bSum / (SAMPLE_PIXELS * 255);
+              const lum = 0.2126 * rAvg + 0.7152 * gAvg + 0.0722 * bAvg;
+              screenBounceRef.current.r = THREE.MathUtils.damp(screenBounceRef.current.r, rAvg, 8, dt);
+              screenBounceRef.current.g = THREE.MathUtils.damp(screenBounceRef.current.g, gAvg, 8, dt);
+              screenBounceRef.current.b = THREE.MathUtils.damp(screenBounceRef.current.b, bAvg, 8, dt);
+              screenBounceRef.current.luminance = THREE.MathUtils.damp(
+                screenBounceRef.current.luminance,
+                isPaused ? lum * 0.45 : lum,
+                8,
+                dt,
+              );
             }
-            const rAvg = rSum / (pxCount * 255);
-            const gAvg = gSum / (pxCount * 255);
-            const bAvg = bSum / (pxCount * 255);
-            const lum = 0.2126 * rAvg + 0.7152 * gAvg + 0.0722 * bAvg;
-            screenBounceRef.current.r = THREE.MathUtils.damp(screenBounceRef.current.r, rAvg, 8, dt);
-            screenBounceRef.current.g = THREE.MathUtils.damp(screenBounceRef.current.g, gAvg, 8, dt);
-            screenBounceRef.current.b = THREE.MathUtils.damp(screenBounceRef.current.b, bAvg, 8, dt);
-            screenBounceRef.current.luminance = THREE.MathUtils.damp(
-              screenBounceRef.current.luminance,
-              isPaused ? lum * 0.45 : lum,
-              8,
-              dt,
-            );
+            if (fourDxTelemetryRef && fourDxActive && showState === 'SHOW_PLAYING' && !isPaused) {
+              analyzeVideoFrameOptical(
+                data,
+                prevOpticalRgbRef.current,
+                hasPrevOpticalRef.current,
+                prevMeanLumRef.current,
+                opticalOutRef.current,
+              );
+              hasPrevOpticalRef.current = true;
+              prevMeanLumRef.current = opticalOutRef.current.meanLuminance;
+            }
           } catch {
             // Ignore cross-origin drawImage if any external URL ever appears
           }
         }
-      } else {
+      } else if (screenBounceRef) {
         const restR = isBioluminescentBeach ? 0.34 : 0.72;
         const restG = isBioluminescentBeach ? 0.68 : 0.8;
         const restB = isBioluminescentBeach ? 0.92 : 0.95;
@@ -1174,6 +1229,93 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           4,
           dt,
         );
+      }
+    }
+
+    // 60fps real-time FFT audio bass + optical motion fusion for all 4DX theaters
+    if (fourDxTelemetryRef) {
+      const tel = fourDxTelemetryRef.current;
+      const telemetryRunning =
+        fourDxActive && showState === 'SHOW_PLAYING' && !isPaused && isVideo;
+      if (telemetryRunning) {
+        cinemaAudioEngine.sampleAudioTelemetry(audioOutRef.current);
+        const aud = audioOutRef.current;
+        const opt = opticalOutRef.current;
+
+        tel.audioActive = aud.active;
+        tel.subBass = THREE.MathUtils.damp(
+          tel.subBass,
+          aud.subBass,
+          aud.subBass > tel.subBass ? 28 : 14,
+          dt,
+        );
+        tel.bass = THREE.MathUtils.damp(
+          tel.bass,
+          aud.bass,
+          aud.bass > tel.bass ? 26 : 13,
+          dt,
+        );
+        tel.bassTransient = THREE.MathUtils.damp(
+          tel.bassTransient,
+          aud.transient,
+          aud.transient > tel.bassTransient ? 34 : 16,
+          dt,
+        );
+        tel.highFreq = THREE.MathUtils.damp(tel.highFreq, aud.high, 14, dt);
+        tel.rms = THREE.MathUtils.damp(tel.rms, aud.rms, 18, dt);
+
+        tel.sceneMotion = THREE.MathUtils.damp(tel.sceneMotion, opt.motionEnergy, 9, dt);
+        tel.panBias = THREE.MathUtils.damp(tel.panBias, opt.panBias, 8, dt);
+        tel.pitchBias = THREE.MathUtils.damp(tel.pitchBias, opt.pitchBias, 8, dt);
+        tel.fireLevel = THREE.MathUtils.damp(
+          tel.fireLevel,
+          opt.fireScore,
+          opt.fireScore > tel.fireLevel ? 8 : 3.2,
+          dt,
+        );
+        tel.fireCenterX = THREE.MathUtils.damp(tel.fireCenterX, opt.fireCenterX, 5, dt);
+        tel.rainLevel = THREE.MathUtils.damp(
+          tel.rainLevel,
+          opt.rainScore,
+          opt.rainScore > tel.rainLevel ? 5 : 2.6,
+          dt,
+        );
+        tel.snowLevel = THREE.MathUtils.damp(
+          tel.snowLevel,
+          opt.snowScore,
+          opt.snowScore > tel.snowLevel ? 4.5 : 2.4,
+          dt,
+        );
+        tel.windLevel = THREE.MathUtils.damp(tel.windLevel, opt.windScore, 6, dt);
+
+        if (opt.flashSpike > tel.lightningFlash) {
+          tel.lightningFlash = opt.flashSpike;
+        } else {
+          tel.lightningFlash = THREE.MathUtils.damp(tel.lightningFlash, 0, 14, dt);
+        }
+        opt.flashSpike *= Math.exp(-16 * dt);
+        tel.flashColor = tel.fireLevel > 0.25 ? '#ff6b2b' : '#e0f2fe';
+
+        stepFourDxSeatPhysics(fourDxSpringRef.current, tel, dt, true);
+      } else {
+        hasPrevOpticalRef.current = false;
+        opticalOutRef.current.flashSpike = 0;
+        tel.audioActive = false;
+        tel.subBass = THREE.MathUtils.damp(tel.subBass, 0, 8, dt);
+        tel.bass = THREE.MathUtils.damp(tel.bass, 0, 8, dt);
+        tel.bassTransient = THREE.MathUtils.damp(tel.bassTransient, 0, 8, dt);
+        tel.highFreq = THREE.MathUtils.damp(tel.highFreq, 0, 8, dt);
+        tel.rms = THREE.MathUtils.damp(tel.rms, 0, 8, dt);
+        tel.sceneMotion = THREE.MathUtils.damp(tel.sceneMotion, 0, 8, dt);
+        tel.panBias = THREE.MathUtils.damp(tel.panBias, 0, 8, dt);
+        tel.pitchBias = THREE.MathUtils.damp(tel.pitchBias, 0, 8, dt);
+        tel.fireLevel = THREE.MathUtils.damp(tel.fireLevel, 0, 6, dt);
+        tel.rainLevel = THREE.MathUtils.damp(tel.rainLevel, 0, 6, dt);
+        tel.snowLevel = THREE.MathUtils.damp(tel.snowLevel, 0, 6, dt);
+        tel.windLevel = THREE.MathUtils.damp(tel.windLevel, 0, 6, dt);
+        tel.lightningFlash = THREE.MathUtils.damp(tel.lightningFlash, 0, 10, dt);
+
+        stepFourDxSeatPhysics(fourDxSpringRef.current, tel, dt, false);
       }
     }
 

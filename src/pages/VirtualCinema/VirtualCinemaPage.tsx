@@ -2,9 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Armchair,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Compass,
   Eye,
   EyeOff,
+  Footprints,
   HelpCircle,
   Home,
   LogOut,
@@ -15,6 +20,7 @@ import {
   Moon,
   Pause,
   Play,
+  QrCode,
   RotateCcw,
   RotateCw,
   Sliders,
@@ -29,7 +35,12 @@ import { CinemaAuditoriumCanvas } from '../../three/scenes/CinemaAuditoriumCanva
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 import { formatDuration, isMobileDevice } from '../../utils/formatters';
 import { screenWakeLock } from '../../utils/wakeLock';
-import { AuditoriumLightingPreset, CameraViewMode } from '../../types/cinema';
+import {
+  AuditoriumLightingPreset,
+  CameraViewMode,
+  WalkInputState,
+} from '../../types/cinema';
+import { CorridorPhase } from '../../three/models/corridorThemes';
 import {
   TheaterWalkthroughTour,
   hasCompletedTheaterTour,
@@ -91,6 +102,11 @@ export const VirtualCinemaPage: React.FC = () => {
   const [sceneReady, setSceneReady] = useState(false);
   const [entranceComplete, setEntranceComplete] = useState(false);
   const [viewMode, setViewMode] = useState<CameraViewMode>('seat');
+  const walkInputRef = useRef<WalkInputState>({
+    forward: 0,
+    right: 0,
+    sprint: false,
+  });
   const [openLightingPreset, setOpenLightingPreset] =
     useState<AuditoriumLightingPreset>('doors_open');
   const [autoStartPausedByUser, setAutoStartPausedByUser] = useState(false);
@@ -103,6 +119,8 @@ export const VirtualCinemaPage: React.FC = () => {
 
   const [resetViewSignal, setResetViewSignal] = useState(0);
   const [skipWalkSignal, setSkipWalkSignal] = useState(0);
+  const [scanTicketSignal, setScanTicketSignal] = useState(0);
+  const [corridorPhase, setCorridorPhase] = useState<CorridorPhase>('ticket_check');
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -468,6 +486,14 @@ export const VirtualCinemaPage: React.FC = () => {
       // Ignore if not yet ready
     }
   }, []);
+
+  const handleRequestScanTicket = useCallback(() => {
+    if (entranceComplete || corridorPhase !== 'ticket_check') return;
+    cinemaAudioEngine.unlockFromGesture();
+    cinemaAudioEngine.playTicketScanSound();
+    primeVideoForGesture(getActiveVideoEl());
+    setScanTicketSignal((n) => (n === 0 ? 1 : n + 1));
+  }, [entranceComplete, corridorPhase, primeVideoForGesture, getActiveVideoEl]);
 
   // Begin the lighting dim -> video start sequence
   const beginShowSequence = useCallback(() => {
@@ -962,10 +988,18 @@ export const VirtualCinemaPage: React.FC = () => {
     };
   }, [bumpHudActivity]);
 
+  useEffect(() => {
+    if (viewMode !== 'walk') {
+      walkInputRef.current.forward = 0;
+      walkInputRef.current.right = 0;
+      walkInputRef.current.sprint = false;
+    }
+  }, [viewMode]);
+
   const isTourBlockingShortcuts =
     sceneReady && entranceComplete && showFirstTimeTour;
 
-  // Keyboard-first cinema controls: Space (Play/Pause), F (Fullscreen), 1/2/3 (Seat/Hall/Full), R (Reset gaze), M (Mute), Arrows (-10s/+10s), H (Hide HUD)
+  // Keyboard-first cinema controls: Space (Play/Pause), F (Fullscreen), 1/2/3/4 (Seat/Walk/Hall/Full), R (Reset gaze), M (Mute), Arrows (-10s/+10s), H (Hide HUD)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -976,6 +1010,14 @@ export const VirtualCinemaPage: React.FC = () => {
       if (e.code === 'KeyH') {
         e.preventDefault();
         setControlsManuallyHidden((v) => !v);
+      } else if (
+        (e.code === 'Space' || e.code === 'Enter') &&
+        !entranceComplete &&
+        sceneReady &&
+        corridorPhase === 'ticket_check'
+      ) {
+        e.preventDefault();
+        handleRequestScanTicket();
       } else if (e.code === 'Space' && showState === 'SHOW_PLAYING') {
         e.preventDefault();
         const vid = getActiveVideoEl();
@@ -1003,9 +1045,13 @@ export const VirtualCinemaPage: React.FC = () => {
         bumpHudActivity();
       } else if ((e.code === 'Digit2' || e.code === 'Numpad2') && entranceComplete) {
         e.preventDefault();
-        setViewMode('hall');
+        setViewMode('walk');
         bumpHudActivity();
       } else if ((e.code === 'Digit3' || e.code === 'Numpad3') && entranceComplete) {
+        e.preventDefault();
+        setViewMode('hall');
+        bumpHudActivity();
+      } else if ((e.code === 'Digit4' || e.code === 'Numpad4') && entranceComplete) {
         e.preventDefault();
         setViewMode('screen_full');
         bumpHudActivity();
@@ -1041,6 +1087,8 @@ export const VirtualCinemaPage: React.FC = () => {
   }, [
     showState,
     entranceComplete,
+    sceneReady,
+    corridorPhase,
     isTourBlockingShortcuts,
     showExitConfirm,
     duration,
@@ -1048,6 +1096,7 @@ export const VirtualCinemaPage: React.FC = () => {
     updateAudioSettings,
     getActiveVideoEl,
     bumpHudActivity,
+    handleRequestScanTicket,
   ]);
 
   // Fullscreen listener: re-verify continuous smooth video & audio playback after fullscreen transitions
@@ -1319,6 +1368,10 @@ export const VirtualCinemaPage: React.FC = () => {
         onEntranceComplete={handleEntranceComplete}
         resetViewSignal={resetViewSignal}
         skipWalkSignal={skipWalkSignal}
+        scanTicketSignal={scanTicketSignal}
+        onRequestScanTicket={handleRequestScanTicket}
+        onCorridorPhaseChange={setCorridorPhase}
+        walkInputRef={walkInputRef}
         onSceneReady={handleSceneReady}
       />
 
@@ -1339,23 +1392,54 @@ export const VirtualCinemaPage: React.FC = () => {
         </div>
       )}
 
-      {/* Entrance Walk Prompt */}
+      {/* Interactive 3D Ticket Checkpoint & Continuous Corridor Walk Prompt */}
       {sceneReady && !entranceComplete && (
-        <div className="absolute bottom-6 left-1/2 z-30 flex items-center gap-3 rounded-lg border border-white/15 bg-[#090A0E]/92 px-4 py-2">
-          <span className="text-xs text-neutral-300">
-            Seat <strong className="text-[#E5C158]">{selectedSeat.id}</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              cinemaAudioEngine.unlockFromGesture();
-              primeVideoForGesture(getActiveVideoEl());
-              setSkipWalkSignal((n) => n + 1);
-            }}
-            className="shrink-0 rounded border border-white/20 px-3 py-1 text-[11px] font-medium text-[#F4F1EA] hover:border-[#D4AF37] cursor-pointer"
-          >
-            Skip
-          </button>
+        <div className="absolute bottom-6 left-1/2 z-30 -translate-x-1/2 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 rounded-xl border border-white/15 bg-[#090A0E]/94 px-4 py-2.5 shadow-2xl max-w-[92vw]">
+          {corridorPhase === 'ticket_check' ? (
+            <>
+              <span className="text-xs text-neutral-300 whitespace-nowrap">
+                Seat <strong className="font-mono-tabular text-[#E5C158]">{selectedSeat.id}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={handleRequestScanTicket}
+                className="inline-flex items-center gap-1.5 rounded-md bg-[#D4AF37] px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-[#070709] hover:bg-[#E5C158] cursor-pointer shadow-md whitespace-nowrap"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Scan Ticket</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  cinemaAudioEngine.unlockFromGesture();
+                  primeVideoForGesture(getActiveVideoEl());
+                  setSkipWalkSignal((n) => n + 1);
+                }}
+                className="shrink-0 rounded-md border border-white/20 px-3 py-1.5 text-[11px] font-medium text-neutral-300 hover:border-[#D4AF37] hover:text-white cursor-pointer whitespace-nowrap"
+              >
+                Skip
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-neutral-200 whitespace-nowrap">
+                {corridorPhase === 'scanning'
+                  ? 'Verifying Optical Pass...'
+                  : `Opening Doors · Seat ${selectedSeat.id}`}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  cinemaAudioEngine.unlockFromGesture();
+                  primeVideoForGesture(getActiveVideoEl());
+                  setSkipWalkSignal((n) => n + 1);
+                }}
+                className="shrink-0 rounded-md border border-white/20 px-3 py-1 text-[11px] font-medium text-[#F4F1EA] hover:border-[#D4AF37] cursor-pointer whitespace-nowrap"
+              >
+                Skip
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1534,7 +1618,7 @@ export const VirtualCinemaPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* View Mode Switcher: Seat / Hall (Click Any Seat) / Full Screen */}
+          {/* View Mode Switcher: Seat / Walk / Hall (Click Any Seat) / Full Screen */}
           {entranceComplete && (
             <div
               data-tour-id="view_modes"
@@ -1551,6 +1635,18 @@ export const VirtualCinemaPage: React.FC = () => {
               >
                 <Armchair className="h-3.5 w-3.5" />
                 <span>Seat</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('walk')}
+                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 sm:py-1.5 cursor-pointer transition-colors ${
+                  viewMode === 'walk'
+                    ? 'bg-[#D4AF37] text-[#070709] font-semibold'
+                    : 'text-neutral-300 hover:text-white'
+                }`}
+              >
+                <Footprints className="h-3.5 w-3.5" />
+                <span>Walk</span>
               </button>
               <button
                 type="button"
@@ -1618,6 +1714,106 @@ export const VirtualCinemaPage: React.FC = () => {
         >
           <Eye className="h-4 w-4" />
         </button>
+      )}
+
+      {/* Free-Walk Directional Pad + Hint (touch, mouse-hold, or WASD + Shift) */}
+      {!showCompleted && entranceComplete && viewMode === 'walk' && effectiveHudVisible && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            bumpHudActivity();
+          }}
+          className="absolute bottom-28 sm:bottom-32 left-3 sm:left-4 z-20 flex flex-col items-start gap-2"
+        >
+          <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/12 bg-[#090A0E]/88 p-1.5 shadow-lg">
+            <div />
+            <button
+              type="button"
+              aria-label="Walk forward"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                walkInputRef.current.forward = 1;
+              }}
+              onPointerUp={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              onPointerLeave={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              onPointerCancel={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-neutral-200 active:bg-[#D4AF37] active:text-[#070709] hover:border-[#D4AF37]/60 cursor-pointer touch-none"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </button>
+            <div />
+            <button
+              type="button"
+              aria-label="Walk left"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                walkInputRef.current.right = -1;
+              }}
+              onPointerUp={() => {
+                walkInputRef.current.right = 0;
+              }}
+              onPointerLeave={() => {
+                walkInputRef.current.right = 0;
+              }}
+              onPointerCancel={() => {
+                walkInputRef.current.right = 0;
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-neutral-200 active:bg-[#D4AF37] active:text-[#070709] hover:border-[#D4AF37]/60 cursor-pointer touch-none"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Walk backward"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                walkInputRef.current.forward = -1;
+              }}
+              onPointerUp={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              onPointerLeave={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              onPointerCancel={() => {
+                walkInputRef.current.forward = 0;
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-neutral-200 active:bg-[#D4AF37] active:text-[#070709] hover:border-[#D4AF37]/60 cursor-pointer touch-none"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Walk right"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                walkInputRef.current.right = 1;
+              }}
+              onPointerUp={() => {
+                walkInputRef.current.right = 0;
+              }}
+              onPointerLeave={() => {
+                walkInputRef.current.right = 0;
+              }}
+              onPointerCancel={() => {
+                walkInputRef.current.right = 0;
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/5 text-neutral-200 active:bg-[#D4AF37] active:text-[#070709] hover:border-[#D4AF37]/60 cursor-pointer touch-none"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+          <span className="hidden sm:inline-block rounded-md border border-white/10 bg-[#090A0E]/82 px-2.5 py-1 text-[10px] tracking-wide text-neutral-300">
+            WASD Move · Shift Run · Drag Look
+          </span>
+        </div>
       )}
 
       {/* Minimal Bottom Cinema Control Dock */}

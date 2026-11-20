@@ -272,7 +272,13 @@ export type AuditoriumLightingPreset = 'doors_open' | 'pre_show_dim' | 'feature_
 
 export type GraphicsQuality = 'low' | 'medium' | 'high';
 
-export type CameraViewMode = 'seat' | 'hall' | 'screen_full';
+export type CameraViewMode = 'seat' | 'walk' | 'hall' | 'screen_full';
+
+export interface WalkInputState {
+  forward: number;
+  right: number;
+  sprint: boolean;
+}
 
 export type ScreenFramingMode = 'fill' | 'fit';
 

@@ -190,8 +190,8 @@ export const useCinemaStore = create<CinemaStoreState>((set, get) => ({
     const nextFourDx = config.supports4dxEffects
       ? {
           enabled: true,
-          vibrationIntensity: Math.max(0.65, get().fourDxSettings.vibrationIntensity),
-          cameraMotionIntensity: Math.max(0.55, get().fourDxSettings.cameraMotionIntensity),
+          vibrationIntensity: Math.max(0.78, get().fourDxSettings.vibrationIntensity),
+          cameraMotionIntensity: Math.max(0.68, get().fourDxSettings.cameraMotionIntensity),
           windAudioEnabled: false,
           atmosphericLightEnabled: true,
         }

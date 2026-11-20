@@ -18,6 +18,7 @@ import { CinemaSpeakers } from './CinemaSpeakers';
 import { SideWallLighting } from './SideWallLighting';
 import { BeachEnvironment } from './BeachEnvironment';
 import { ScreenBounceSample } from './CinemaScreen';
+import { getPortalLayoutMetrics } from './corridorThemes';
 
 interface AuditoriumShellProps {
   config: TheaterConfiguration;
@@ -837,7 +838,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const winMidY = (winTop + winBot) / 2;
 
   const boothChamberW = boothWinW + 1.6;
-  const boothFloorY = winBot - 0.42;
+  const boothFloorY = winBot - 0.14;
   const boothCeilY = Math.min(H + 0.4, winTop + 0.65);
   const boothChamberH = Math.max(1.8, boothCeilY - boothFloorY);
   const boothMidY = (boothFloorY + boothCeilY) / 2;
@@ -845,6 +846,14 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const boothCenterZ = backZ + boothDepth / 2 - 0.05;
 
   const sideBackWallW = Math.max(0.5, (W - boothWinW) / 2);
+
+  const portal = useMemo(() => getPortalLayoutMetrics(config), [config]);
+  const portalLeft = Math.max(-W / 2 + 0.15, portal.portalX - portal.portalW / 2);
+  const portalRight = Math.min(W / 2 - 0.15, portal.portalX + portal.portalW / 2);
+  const portalTopY = Math.min(winBot - 0.05, topTierY + portal.portalH);
+  const leftBottomWallW = Math.max(0, portalLeft - -W / 2);
+  const rightBottomWallW = Math.max(0, W / 2 - portalRight);
+  const portalSpanW = Math.max(0.4, portalRight - portalLeft);
 
   return (
     <group>
@@ -2085,10 +2094,43 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         })()}
 
       {/* Rear Wall Built Around Real Recessed Projection Room Window Opening */}
-      {/* Bottom rear wall */}
-      <mesh position={[0, winBot / 2, backZ]} receiveShadow material={materials.wallMat}>
-        <boxGeometry args={[W, winBot, 0.4]} />
-      </mesh>
+      {/* Bottom rear wall carved around continuous 3D entrance corridor portal */}
+      {leftBottomWallW > 0.04 && (
+        <mesh
+          position={[(-W / 2 + portalLeft) / 2, winBot / 2, backZ]}
+          receiveShadow
+          material={materials.wallMat}
+        >
+          <boxGeometry args={[leftBottomWallW, winBot, 0.4]} />
+        </mesh>
+      )}
+      {rightBottomWallW > 0.04 && (
+        <mesh
+          position={[(portalRight + W / 2) / 2, winBot / 2, backZ]}
+          receiveShadow
+          material={materials.wallMat}
+        >
+          <boxGeometry args={[rightBottomWallW, winBot, 0.4]} />
+        </mesh>
+      )}
+      {topTierY > 0.04 && (
+        <mesh
+          position={[(portalLeft + portalRight) / 2, topTierY / 2, backZ]}
+          receiveShadow
+          material={materials.wallMat}
+        >
+          <boxGeometry args={[portalSpanW, topTierY, 0.4]} />
+        </mesh>
+      )}
+      {winBot - portalTopY > 0.04 && (
+        <mesh
+          position={[(portalLeft + portalRight) / 2, (portalTopY + winBot) / 2, backZ]}
+          receiveShadow
+          material={materials.wallMat}
+        >
+          <boxGeometry args={[portalSpanW, winBot - portalTopY, 0.4]} />
+        </mesh>
+      )}
       {/* Top rear wall above booth window */}
       {H - winTop > 0.05 && (
         <mesh position={[0, (H + winTop) / 2, backZ]} receiveShadow material={materials.wallMat}>
@@ -2155,27 +2197,9 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
           }),
         )}
 
-      {/* Rear Cinema Entrance Double Doors / ICE Light-Trap Vomitory Entry Corridor */}
+      {/* ICE Light-Trap Vomitory Hood + Rear Wall Flanking Posters (animated doors handled by EntranceCorridor3D) */}
       {!isPrivateVolcanic && !isPrivateChampagne && !isObsidianScreenX && (
         <group position={[0, Math.min(winBot - 1.35, topTierY + 1.15), backZ - 0.24]}>
-          <mesh material={materials.trimMetalMat}>
-            <boxGeometry args={[2.5, 2.45, 0.14]} />
-          </mesh>
-          <mesh position={[-0.58, 0, 0.04]} material={materials.doorMat}>
-            <boxGeometry args={[1.1, 2.28, 0.08]} />
-          </mesh>
-          <mesh position={[0.58, 0, 0.04]} material={materials.doorMat}>
-            <boxGeometry args={[1.1, 2.28, 0.08]} />
-          </mesh>
-          <mesh position={[-0.58, -0.05, 0.1]} material={materials.trimMetalMat}>
-            <boxGeometry args={[0.7, 0.06, 0.05]} />
-          </mesh>
-          <mesh position={[0.58, -0.05, 0.1]} material={materials.trimMetalMat}>
-            <boxGeometry args={[0.7, 0.06, 0.05]} />
-          </mesh>
-          <mesh position={[0, 1.44, 0.05]} material={materials.entranceSignMat}>
-            <planeGeometry args={[1.15, 0.3]} />
-          </mesh>
           {/* Light-Trap Dark Acoustic Vomitory Vestibule Hood & Side Baffles for ICE Theater */}
           {isIce && (
             <group position={[0, 0, -0.34]}>
@@ -2207,34 +2231,28 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             !isDolbyVeil &&
             !isExoskeleton4dx &&
             !isArctic4dx &&
-            [-1, 1].map((pside) => (
-              <group key={`rear-poster-${pside}`} position={[pside * Math.min(2.25, W * 0.22), 0.12, 0.04]}>
-                <mesh material={materials.trimMetalMat}>
-                  <boxGeometry args={[0.96, 1.36, 0.06]} />
-                </mesh>
-                <mesh position={[0, 0, 0.04]} material={materials.posterMat}>
-                  <planeGeometry args={[0.84, 1.22]} />
-                </mesh>
-              </group>
-            ))}
+            [-1, 1].map((pside) => {
+              const px = pside * Math.min(2.25, W * 0.22);
+              if (Math.abs(px - portal.portalX) - 0.54 <= portal.portalW * 0.5) {
+                return null;
+              }
+              return (
+                <group key={`rear-poster-${pside}`} position={[px, 0.12, 0.04]}>
+                  <mesh material={materials.trimMetalMat}>
+                    <boxGeometry args={[0.96, 1.36, 0.06]} />
+                  </mesh>
+                  <mesh position={[0, 0, 0.04]} material={materials.posterMat}>
+                    <planeGeometry args={[0.84, 1.22]} />
+                  </mesh>
+                </group>
+              );
+            })}
         </group>
       )}
 
-      {/* Walnut Reserve Salon: Sleek Backlit Smoked-Glass Wine & Espresso Bar Built Into Rear Corner + Concealed Entry Door */}
+      {/* Walnut Reserve Salon: Sleek Backlit Smoked-Glass Wine & Espresso Bar Built Into Rear Corner */}
       {isPrivateVolcanic && (
         <group>
-          {/* Sleek Residential American Walnut Acoustic Entry Door (Rear-Left) */}
-          <group position={[-W * 0.3, topTierY + 1.14, backZ - 0.24]}>
-            <mesh material={materials.champagneBrassMat}>
-              <boxGeometry args={[1.38, 2.34, 0.12]} />
-            </mesh>
-            <mesh position={[0, 0, 0.04]} material={materials.walnutCofferMat}>
-              <boxGeometry args={[1.22, 2.22, 0.07]} />
-            </mesh>
-            <mesh position={[0.45, -0.04, 0.095]} material={materials.champagneBrassMat}>
-              <boxGeometry args={[0.04, 0.36, 0.04]} />
-            </mesh>
-          </group>
 
           {/* Sleek Backlit Smoked-Glass Wine & Espresso Bar (Rear-Right Corner) */}
           <group position={[W / 2 - 1.56, topTierY, backZ - 0.44]}>
@@ -2348,21 +2366,9 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* Champagne Ivory Lounge: Backlit Smoked-Glass Refreshment Bar Along Rear Wall + Smoked-Oak Door */}
+      {/* Champagne Ivory Lounge: Backlit Smoked-Glass Refreshment Bar Along Rear Wall */}
       {isPrivateChampagne && (
         <group>
-          {/* Sleek Smoked-Oak & Brushed-Brass Entry Door (Rear-Right) */}
-          <group position={[W * 0.32, topTierY + 1.14, backZ - 0.24]}>
-            <mesh material={materials.champagneBrassMat}>
-              <boxGeometry args={[1.38, 2.34, 0.12]} />
-            </mesh>
-            <mesh position={[0, 0, 0.04]} material={materials.walnutCofferMat}>
-              <boxGeometry args={[1.22, 2.22, 0.07]} />
-            </mesh>
-            <mesh position={[-0.44, -0.04, 0.095]} material={materials.champagneBrassMat}>
-              <boxGeometry args={[0.04, 0.38, 0.04]} />
-            </mesh>
-          </group>
 
           {/* Backlit Smoked-Glass Refreshment Bar Visible Along Rear Wall */}
           <group position={[-1.05, topTierY, backZ - 0.44]}>
@@ -2418,29 +2424,9 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* ScreenX Obsidian Panorama: Far Rear Corner Brushed-Carbon-Fiber & Cold-White Backlit Translucent Quartz Beverage Bar + Stealth Entry Door */}
+      {/* ScreenX Obsidian Panorama: Far Rear Corner Brushed-Carbon-Fiber & Cold-White Backlit Translucent Quartz Beverage Bar */}
       {isObsidianScreenX && (
         <group>
-          {/* Minimalist Matte-Obsidian & Titanium Flush Entry Door (Rear-Left) */}
-          <group position={[-W * 0.3, topTierY + 1.14, backZ - 0.24]}>
-            <mesh material={materials.matteTitaniumMat}>
-              <boxGeometry args={[1.34, 2.34, 0.1]} />
-            </mesh>
-            <mesh position={[0, 0, 0.04]} material={materials.carbonFiberMat}>
-              <boxGeometry args={[1.2, 2.22, 0.06]} />
-            </mesh>
-            <mesh position={[0.45, -0.04, 0.085]} material={materials.brushedTitaniumMat}>
-              <boxGeometry args={[0.032, 0.42, 0.03]} />
-            </mesh>
-            <mesh position={[0.45, -0.04, 0.102]}>
-              <boxGeometry args={[0.008, 0.36, 0.008]} />
-              <meshStandardMaterial
-                color="#041820"
-                emissive="#06b6d4"
-                emissiveIntensity={0.35 + lightFactor * 0.7}
-              />
-            </mesh>
-          </group>
 
           {/* Far Rear-Right Corner Brushed-Carbon-Fiber Beverage Bar with Continuous Cold-White Backlit Translucent Quartz Sheet */}
           <group position={[W / 2 - 1.65, topTierY, backZ - 0.52]}>
@@ -2529,7 +2515,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       <group>
         {/* Sealed Booth Room Floor, Ceiling, Back & Side Walls */}
         <mesh position={[0, boothFloorY, boothCenterZ]} material={materials.boothFloorMat}>
-          <boxGeometry args={[boothChamberW, 0.18, boothDepth]} />
+          <boxGeometry args={[boothChamberW, 0.14, boothDepth]} />
         </mesh>
         <mesh position={[0, boothCeilY, boothCenterZ]} material={materials.boothInteriorWallMat}>
           <boxGeometry args={[boothChamberW, 0.18, boothDepth]} />

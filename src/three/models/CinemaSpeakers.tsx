@@ -1152,11 +1152,13 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
 
     const crownClearance = H - winTop;
+    const underBoothClearY = topTierY + 2.58;
+    const canFitUnderBooth = winBot - (topTierY + 2.42) >= 0.65;
     const rearCenterY =
       crownClearance >= 0.92
         ? winTop + 0.48
-        : Math.max(2.6, topTierY + 1.85);
-    if (!isIce && !isBiophilicMoss && (crownClearance >= 0.92 || winBot - (topTierY + 2.45) >= 0.85)) {
+        : underBoothClearY;
+    if (!isIce && !isBiophilicMoss && (crownClearance >= 0.92 || canFitUnderBooth)) {
       list.push({
         x: 0,
         y: rearCenterY,

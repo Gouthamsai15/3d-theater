@@ -33,6 +33,8 @@ class CinemaAudioEngine {
   private inputBus: GainNode | null = null;
   private signalAnalyser: AnalyserNode | null = null;
   private analyserBuf: Float32Array<ArrayBuffer> | null = null;
+  private freqBuf: Uint8Array<ArrayBuffer> | null = null;
+  private bassBaseline = 0;
   private stereoDirectGain: GainNode | null = null;
   private dolbyBusGain: GainNode | null = null;
 
@@ -198,8 +200,13 @@ class CinemaAudioEngine {
     this.inputBus.channelInterpretation = 'speakers';
 
     this.signalAnalyser = ctx.createAnalyser();
-    this.signalAnalyser.fftSize = 256;
+    this.signalAnalyser.fftSize = 1024;
+    this.signalAnalyser.minDecibels = -76;
+    this.signalAnalyser.maxDecibels = -12;
+    this.signalAnalyser.smoothingTimeConstant = 0.42;
     this.analyserBuf = new Float32Array(this.signalAnalyser.fftSize);
+    this.freqBuf = new Uint8Array(this.signalAnalyser.frequencyBinCount);
+    this.bassBaseline = 0;
 
     this.stereoDirectGain = ctx.createGain();
     this.stereoDirectGain.gain.value = 0;
@@ -777,6 +784,122 @@ class CinemaAudioEngine {
     return false;
   }
 
+  public sampleAudioTelemetry(out: {
+    active: boolean;
+    subBass: number;
+    bass: number;
+    mid: number;
+    high: number;
+    transient: number;
+    rms: number;
+  }): void {
+    if (
+      !this.signalAnalyser ||
+      !this.freqBuf ||
+      this.ctx?.state !== 'running' ||
+      this.videoSources.size === 0 ||
+      this.videoHijackDisabled
+    ) {
+      out.active = false;
+      out.subBass = 0;
+      out.bass = 0;
+      out.mid = 0;
+      out.high = 0;
+      out.transient = 0;
+      out.rms = 0;
+      this.bassBaseline *= 0.85;
+      return;
+    }
+
+    const freq = this.freqBuf;
+    this.signalAnalyser.getByteFrequencyData(freq);
+
+    // Time-domain RMS loudness for real physical sound-pressure scaling
+    let rms = 0;
+    if (this.analyserBuf) {
+      this.signalAnalyser.getFloatTimeDomainData(this.analyserBuf);
+      let sqSum = 0;
+      const samples = this.analyserBuf;
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        sqSum += s * s;
+      }
+      rms = Math.min(1, Math.sqrt(sqSum / samples.length) * 3.2);
+    }
+
+    const sr = this.ctx.sampleRate || 48000;
+    const binHz = sr / this.signalAnalyser.fftSize;
+    const subStart = Math.max(1, Math.floor(35 / binHz));
+    const subEnd = Math.max(subStart, Math.min(freq.length - 1, Math.round(115 / binHz)));
+    const bassEnd = Math.max(subEnd + 1, Math.min(freq.length - 1, Math.round(240 / binHz)));
+    const midEnd = Math.max(bassEnd + 1, Math.min(freq.length - 1, Math.round(2200 / binHz)));
+    const highEnd = Math.max(midEnd + 1, Math.min(freq.length - 1, Math.round(8500 / binHz)));
+
+    let subSum = 0;
+    let subPeak = 0;
+    for (let i = subStart; i <= subEnd; i++) {
+      const v = freq[i];
+      subSum += v;
+      if (v > subPeak) subPeak = v;
+    }
+    let bassSum = 0;
+    let bassPeak = 0;
+    for (let i = subStart; i <= bassEnd; i++) {
+      const v = freq[i];
+      bassSum += v;
+      if (v > bassPeak) bassPeak = v;
+    }
+    let midSum = 0;
+    for (let i = bassEnd + 1; i <= midEnd; i++) midSum += freq[i];
+    let highSum = 0;
+    for (let i = midEnd + 1; i <= highEnd; i++) highSum += freq[i];
+
+    const subAvg = subSum / (Math.max(1, subEnd - subStart + 1) * 255);
+    const bassAvg = bassSum / (Math.max(1, bassEnd - subStart + 1) * 255);
+    const subRaw = (subPeak / 255) * 0.62 + subAvg * 0.38;
+    const bassRaw = (bassPeak / 255) * 0.58 + bassAvg * 0.42;
+    const midRaw = midSum / (Math.max(1, midEnd - bassEnd) * 255);
+    const highRaw = highSum / (Math.max(1, highEnd - midEnd) * 255);
+
+    const totalSignal = subRaw + bassRaw + midRaw + highRaw + rms;
+    if (totalSignal < 0.01) {
+      // Muted or completely silent audio track
+      out.active = false;
+      out.subBass = 0;
+      out.bass = 0;
+      out.mid = 0;
+      out.high = 0;
+      out.transient = 0;
+      out.rms = 0;
+      this.bassBaseline *= 0.85;
+      return;
+    }
+
+    const subBass = Math.max(0, (subRaw - 0.08) / 0.92);
+    const bass = Math.max(0, (bassRaw - 0.08) / 0.92);
+    const mid = Math.max(0, (midRaw - 0.06) / 0.94);
+    const high = Math.max(0, (highRaw - 0.05) / 0.95);
+
+    const peakBass = Math.max(subBass, bass);
+    const deltaAboveFloor = peakBass - this.bassBaseline;
+    // Asymmetric follower: captures crisp drum/beat kicks while letting sustained basslines stay heavy
+    const floorAlpha = deltaAboveFloor > 0 ? 0.045 : 0.14;
+    this.bassBaseline = this.bassBaseline * (1 - floorAlpha) + peakBass * floorAlpha;
+
+    const transient = Math.min(
+      1,
+      Math.max(0, deltaAboveFloor * 3.4) + Math.max(0, (peakBass - 0.72) * 0.45),
+    );
+
+    out.active = true;
+    out.subBass = Math.min(1, subBass);
+    out.bass = Math.min(1, bass);
+    out.mid = Math.min(1, mid);
+    out.high = Math.min(1, high);
+    out.transient = transient;
+    out.rms = rms;
+  }
+
   public updateMix(
     settings: AudioSettings,
     showState: 'AUDITORIUM_OPEN' | 'SHOW_STARTING' | 'SHOW_PLAYING' | 'SHOW_COMPLETED',
@@ -870,6 +993,8 @@ class CinemaAudioEngine {
     this.inputBus = null;
     this.signalAnalyser = null;
     this.analyserBuf = null;
+    this.freqBuf = null;
+    this.bassBaseline = 0;
     this.stereoDirectGain = null;
     this.dolbyBusGain = null;
     this.splitter = null;
@@ -945,6 +1070,110 @@ class CinemaAudioEngine {
 
   public get speakerCount(): number {
     return this.panners.size;
+  }
+
+  public playTicketScanSound(): void {
+    try {
+      this.unlockFromGesture();
+      const ctx = this.ctx;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      const now = ctx.currentTime;
+      const masterVol = this.lastMixState?.settings.muted
+        ? 0
+        : Math.max(0.22, this.lastMixState?.settings.masterVolume ?? 0.65);
+
+      const masterGain = ctx.createGain();
+      masterGain.gain.setValueAtTime(0.28 * masterVol, now);
+      masterGain.connect(ctx.destination);
+
+      // 1. Optical laser head wake-up micro-tick as ticket approaches sensor (t ~ 0.38s)
+      const wakeOsc = ctx.createOscillator();
+      const wakeGain = ctx.createGain();
+      wakeOsc.type = 'sine';
+      wakeOsc.frequency.setValueAtTime(1180, now + 0.36);
+      wakeGain.gain.setValueAtTime(0.0001, now + 0.36);
+      wakeGain.gain.exponentialRampToValueAtTime(0.16, now + 0.37);
+      wakeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+      wakeOsc.connect(wakeGain);
+      wakeGain.connect(masterGain);
+      wakeOsc.start(now + 0.36);
+      wakeOsc.stop(now + 0.44);
+
+      // 2. Crisp crystalline VIP optical confirmation chime (t ~ 0.88s, synced to laser sweep finish)
+      const chimeTimes: [number, number, number][] = [
+        [0.88, 1760, 0.36],
+        [0.97, 2349.32, 0.44],
+      ];
+      chimeTimes.forEach(([offset, freq, peak]) => {
+        const osc = ctx.createOscillator();
+        const overtone = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + offset);
+        overtone.type = 'triangle';
+        overtone.frequency.setValueAtTime(freq * 2, now + offset);
+
+        g.gain.setValueAtTime(0.0001, now + offset);
+        g.gain.exponentialRampToValueAtTime(peak, now + offset + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.16);
+
+        const overGain = ctx.createGain();
+        overGain.gain.value = 0.14;
+        osc.connect(g);
+        overtone.connect(overGain);
+        overGain.connect(g);
+        g.connect(masterGain);
+
+        osc.start(now + offset);
+        overtone.start(now + offset);
+        osc.stop(now + offset + 0.18);
+        overtone.stop(now + offset + 0.18);
+      });
+
+      // 3. Electromagnetic solenoid unlatch + smooth pneumatic glass barrier retraction (t ~ 0.96s)
+      const latchOsc = ctx.createOscillator();
+      const latchGain = ctx.createGain();
+      latchOsc.type = 'triangle';
+      latchOsc.frequency.setValueAtTime(220, now + 0.94);
+      latchOsc.frequency.exponentialRampToValueAtTime(68, now + 1.02);
+      latchGain.gain.setValueAtTime(0.0001, now + 0.94);
+      latchGain.gain.exponentialRampToValueAtTime(0.45, now + 0.95);
+      latchGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.04);
+      latchOsc.connect(latchGain);
+      latchGain.connect(masterGain);
+      latchOsc.start(now + 0.94);
+      latchOsc.stop(now + 1.06);
+
+      // Soft pneumatic air-slide whoosh for glass turnstile wings
+      const noiseLen = Math.floor(ctx.sampleRate * 0.34);
+      const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+      const ch = noiseBuf.getChannelData(0);
+      for (let i = 0; i < noiseLen; i++) {
+        ch[i] = Math.random() * 2 - 1;
+      }
+      const noiseSrc = ctx.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.Q.value = 1.8;
+      bp.frequency.setValueAtTime(520, now + 0.96);
+      bp.frequency.exponentialRampToValueAtTime(160, now + 1.28);
+      const airGain = ctx.createGain();
+      airGain.gain.setValueAtTime(0.0001, now + 0.96);
+      airGain.gain.exponentialRampToValueAtTime(0.18, now + 1.02);
+      airGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+      noiseSrc.connect(bp);
+      bp.connect(airGain);
+      airGain.connect(masterGain);
+      noiseSrc.start(now + 0.96);
+      noiseSrc.stop(now + 1.32);
+    } catch {
+      // Non-fatal if browser blocks Web Audio before interaction
+    }
   }
 }
 

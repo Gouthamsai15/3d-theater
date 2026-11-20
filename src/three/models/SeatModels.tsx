@@ -10,6 +10,7 @@ import {
 } from '../lighting/screenBounceShader';
 import { BeachSeats } from './BeachSeats';
 import { ReservedSeatMarker } from './ReservedSeatMarker';
+import { FourDxLiveTelemetry } from './fourDxTelemetry';
 
 interface SeatModelsProps {
   config: TheaterConfiguration;
@@ -17,6 +18,7 @@ interface SeatModelsProps {
   selectedSeatId: string | null;
   hoveredSeatId?: string | null;
   fourDxVibration: number; // 0..1 active motion intensity
+  fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
   isPlaying: boolean;
   lightFactor?: number; // 0 = dark show, 1 = house lights on
   viewMode?: CameraViewMode;
@@ -319,131 +321,131 @@ function getSeatProportions(model: SeatModelType, widthScale = 1): SeatPartOffse
     case '4dx_crimson_pod':
       return {
         cushionWidth: 0.6 * s,
-        cushionHeight: 0.18,
+        cushionHeight: 0.17,
         cushionDepth: 0.56,
-        cushionPos: [0, 0.58, 0],
+        cushionPos: [0, 0.49, 0],
         backrestWidth: 0.58 * s,
-        backrestHeight: 0.78,
+        backrestHeight: 0.72,
         backrestDepth: 0.17,
-        backrestPos: [0, 0.98, 0.22],
+        backrestPos: [0, 0.86, 0.22],
         backrestTilt: 0.1,
         headrestWidth: 0.44 * s,
-        headrestHeight: 0.26,
+        headrestHeight: 0.24,
         headrestDepth: 0.16,
-        headrestPos: [0, 1.4, 0.27],
+        headrestPos: [0, 1.26, 0.27],
         armWidth: 0.11,
         armHeight: 0.125,
         armDepth: 0.58,
         armOffsetX: 0.355 * s,
-        armPosY: 0.74,
+        armPosY: 0.65,
         armPosZ: 0.02,
         pedestalRadius: 0.13,
-        pedestalHeight: 0.36,
-        pedestalPos: [0, 0.32, 0.03],
+        pedestalHeight: 0.28,
+        pedestalPos: [0, 0.27, 0.03],
         is4dxPod: true,
       };
     case '4dx_arctic_pod':
       return {
         cushionWidth: 0.6 * s,
-        cushionHeight: 0.18,
+        cushionHeight: 0.17,
         cushionDepth: 0.56,
-        cushionPos: [0, 0.58, 0],
+        cushionPos: [0, 0.49, 0],
         backrestWidth: 0.58 * s,
-        backrestHeight: 0.78,
+        backrestHeight: 0.72,
         backrestDepth: 0.17,
-        backrestPos: [0, 0.98, 0.22],
+        backrestPos: [0, 0.86, 0.22],
         backrestTilt: 0.1,
         headrestWidth: 0.44 * s,
-        headrestHeight: 0.26,
+        headrestHeight: 0.24,
         headrestDepth: 0.16,
-        headrestPos: [0, 1.4, 0.27],
+        headrestPos: [0, 1.26, 0.27],
         armWidth: 0.11,
         armHeight: 0.125,
         armDepth: 0.58,
         armOffsetX: 0.355 * s,
-        armPosY: 0.74,
+        armPosY: 0.65,
         armPosZ: 0.02,
         pedestalRadius: 0.13,
-        pedestalHeight: 0.36,
-        pedestalPos: [0, 0.32, 0.03],
+        pedestalHeight: 0.28,
+        pedestalPos: [0, 0.27, 0.03],
         is4dxPod: true,
       };
     case '4dx_thunder_pod':
       return {
         cushionWidth: 0.6 * s,
-        cushionHeight: 0.18,
+        cushionHeight: 0.17,
         cushionDepth: 0.56,
-        cushionPos: [0, 0.58, 0],
+        cushionPos: [0, 0.49, 0],
         backrestWidth: 0.58 * s,
-        backrestHeight: 0.78,
+        backrestHeight: 0.72,
         backrestDepth: 0.17,
-        backrestPos: [0, 0.98, 0.22],
+        backrestPos: [0, 0.86, 0.22],
         backrestTilt: 0.1,
         headrestWidth: 0.44 * s,
-        headrestHeight: 0.26,
+        headrestHeight: 0.24,
         headrestDepth: 0.16,
-        headrestPos: [0, 1.4, 0.27],
+        headrestPos: [0, 1.26, 0.27],
         armWidth: 0.11,
         armHeight: 0.125,
         armDepth: 0.58,
         armOffsetX: 0.355 * s,
-        armPosY: 0.74,
+        armPosY: 0.65,
         armPosZ: 0.02,
         pedestalRadius: 0.13,
-        pedestalHeight: 0.36,
-        pedestalPos: [0, 0.32, 0.03],
+        pedestalHeight: 0.28,
+        pedestalPos: [0, 0.27, 0.03],
         is4dxPod: true,
       };
     case '4dx_exoskeleton_pod':
       return {
         cushionWidth: 0.59 * s,
-        cushionHeight: 0.185,
+        cushionHeight: 0.175,
         cushionDepth: 0.56,
-        cushionPos: [0, 0.58, 0],
+        cushionPos: [0, 0.49, 0],
         backrestWidth: 0.57 * s,
-        backrestHeight: 0.78,
+        backrestHeight: 0.72,
         backrestDepth: 0.17,
-        backrestPos: [0, 0.98, 0.22],
+        backrestPos: [0, 0.86, 0.22],
         backrestTilt: 0.1,
         headrestWidth: 0.44 * s,
-        headrestHeight: 0.26,
+        headrestHeight: 0.24,
         headrestDepth: 0.16,
-        headrestPos: [0, 1.4, 0.27],
+        headrestPos: [0, 1.26, 0.27],
         armWidth: 0.11,
         armHeight: 0.125,
         armDepth: 0.58,
         armOffsetX: 0.35 * s,
-        armPosY: 0.74,
+        armPosY: 0.65,
         armPosZ: 0.02,
         pedestalRadius: 0.13,
-        pedestalHeight: 0.36,
-        pedestalPos: [0, 0.32, 0.03],
+        pedestalHeight: 0.28,
+        pedestalPos: [0, 0.27, 0.03],
         is4dxPod: true,
       };
     case '4dx_motion':
       return {
         cushionWidth: 0.58 * s,
-        cushionHeight: 0.17,
+        cushionHeight: 0.16,
         cushionDepth: 0.56,
-        cushionPos: [0, 0.54, 0],
+        cushionPos: [0, 0.46, 0],
         backrestWidth: 0.56 * s,
-        backrestHeight: 0.72,
+        backrestHeight: 0.68,
         backrestDepth: 0.16,
-        backrestPos: [0, 0.92, 0.22],
+        backrestPos: [0, 0.81, 0.22],
         backrestTilt: 0.1,
         headrestWidth: 0.42 * s,
-        headrestHeight: 0.24,
+        headrestHeight: 0.23,
         headrestDepth: 0.15,
-        headrestPos: [0, 1.32, 0.27],
+        headrestPos: [0, 1.19, 0.27],
         armWidth: 0.11,
         armHeight: 0.12,
         armDepth: 0.58,
         armOffsetX: 0.35 * s,
-        armPosY: 0.71,
+        armPosY: 0.62,
         armPosZ: 0.02,
         pedestalRadius: 0.18,
-        pedestalHeight: 0.46,
-        pedestalPos: [0, 0.23, 0.04],
+        pedestalHeight: 0.38,
+        pedestalPos: [0, 0.19, 0.04],
         is4dxPod: true,
       };
     case 'multiplex_stadium':
@@ -751,6 +753,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   selectedSeatId,
   hoveredSeatId = null,
   fourDxVibration,
+  fourDxTelemetryRef,
   isPlaying,
   lightFactor = 1,
   viewMode = 'seat',
@@ -1778,27 +1781,27 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
           rightBolsterRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if (redStitchTrimRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] + 0.34, props.backrestPos[2] - 0.08, props.backrestTilt);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] + 0.31, props.backrestPos[2] - 0.08, props.backrestTilt);
           redStitchTrimRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if (neckVentRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.headrestPos[1] - 0.13, props.headrestPos[2] - 0.055, props.backrestTilt * 0.4);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.headrestPos[1] - 0.12, props.headrestPos[2] - 0.055, props.backrestTilt * 0.4);
           neckVentRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if (steelFootBarRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, 0.25, -0.36);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, 0.19, -0.36);
           steelFootBarRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if (steelFootHangerLeftRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, -props.cushionWidth * 0.38, 0.38, -0.31, -0.35);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, -props.cushionWidth * 0.38, 0.31, -0.31, -0.35);
           steelFootHangerLeftRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if (steelFootHangerRightRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.cushionWidth * 0.38, 0.38, -0.31, -0.35);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.cushionWidth * 0.38, 0.31, -0.31, -0.35);
           steelFootHangerRightRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if ((isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod) && lumbarCushionRef.current) {
-          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] - 0.21, props.backrestPos[2] - 0.095, props.backrestTilt);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] - 0.19, props.backrestPos[2] - 0.095, props.backrestTilt);
           lumbarCushionRef.current.setMatrixAt(idx, dummy.matrix);
         }
         if ((isThunder4dxPod || isExoskeleton4dxPod) && leftActuatorRef.current && rightActuatorRef.current) {
@@ -1854,25 +1857,36 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     });
   }, [seats, selectedSeatId, hoveredSeatId, props, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat]);
 
-  useFrame(({ clock }) => {
+  const seatPivotZ = useMemo(
+    () => config.firstRowZ + Math.max(0, config.seatingRows - 1) * config.rowSpacing * 0.5,
+    [config.firstRowZ, config.seatingRows, config.rowSpacing],
+  );
+
+  useFrame((_, delta) => {
     const grp = seatGroupRef.current;
     if (!grp) return;
-    if ((seatModel === '4dx_motion' || isAny4dxPod) && isPlaying && fourDxVibration > 0.01) {
-      const t = clock.getElapsedTime();
-      const heave = Math.sin(t * 2.4) * 0.032 + Math.sin(t * 14.5) * 0.01;
-      const pitch = Math.sin(t * 1.65) * 0.024 + Math.cos(t * 3.1) * 0.008;
-      const roll = Math.cos(t * 1.25) * 0.022;
-      grp.position.y = heave * fourDxVibration;
-      grp.rotation.x = pitch * fourDxVibration;
-      grp.rotation.z = roll * fourDxVibration;
+    const dt = Math.min(delta, 0.05);
+    if (
+      (config.supports4dxEffects || seatModel === '4dx_motion' || isAny4dxPod) &&
+      isPlaying &&
+      fourDxVibration > 0.01 &&
+      fourDxTelemetryRef
+    ) {
+      const tel = fourDxTelemetryRef.current;
+      const heave = tel.seatHeaveY * fourDxVibration;
+      const pitch = tel.seatPitchX * 0.28 * fourDxVibration;
+      const roll = tel.seatRollZ * 0.42 * fourDxVibration;
+      grp.position.y = heave + Math.sin(pitch) * seatPivotZ;
+      grp.rotation.x = pitch;
+      grp.rotation.z = roll;
     } else if (
       grp.position.y !== 0 ||
       grp.rotation.x !== 0 ||
       grp.rotation.z !== 0
     ) {
-      grp.position.y = Math.abs(grp.position.y) < 1e-4 ? 0 : THREE.MathUtils.lerp(grp.position.y, 0, 0.14);
-      grp.rotation.x = Math.abs(grp.rotation.x) < 1e-4 ? 0 : THREE.MathUtils.lerp(grp.rotation.x, 0, 0.14);
-      grp.rotation.z = Math.abs(grp.rotation.z) < 1e-4 ? 0 : THREE.MathUtils.lerp(grp.rotation.z, 0, 0.14);
+      grp.position.y = Math.abs(grp.position.y) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.position.y, 0, 9, dt);
+      grp.rotation.x = Math.abs(grp.rotation.x) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.rotation.x, 0, 9, dt);
+      grp.rotation.z = Math.abs(grp.rotation.z) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.rotation.z, 0, 9, dt);
     }
   });
 
@@ -2146,30 +2160,30 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
             <group key={pod.key} position={[pod.cx, pod.y, pod.z]} rotation={[0, pod.yaw, 0]}>
               {/* Heavy-Duty Articulated Pod Deck Frame Spanning All 4 Seats */}
               <mesh
-                position={[0, 0.18, 0.04]}
+                position={[0, 0.145, 0.04]}
                 material={materials.baseMat}
                 receiveShadow
                 castShadow
               >
-                <boxGeometry args={[pod.width, 0.075, 0.66]} />
+                <boxGeometry args={[pod.width, 0.07, 0.66]} />
               </mesh>
               {/* Side Pod End-Caps */}
               {[-pod.width * 0.5, pod.width * 0.5].map((ex, ei) => (
                 <mesh
                   key={`pod-cap-${ei}`}
-                  position={[ex, 0.18, 0.04]}
+                  position={[ex, 0.145, 0.04]}
                   material={materials.pipingMat}
                 >
-                  <boxGeometry args={[0.045, 0.085, 0.68]} />
+                  <boxGeometry args={[0.045, 0.08, 0.68]} />
                 </mesh>
               ))}
               {/* Twin Hydraulic Ram Cylinders Under Each 4-Seat Pod */}
               {[-pod.width * 0.28, pod.width * 0.28].map((hx, hi) => (
-                <group key={`hyd-${hi}`} position={[hx, 0.09, 0.04]}>
+                <group key={`hyd-${hi}`} position={[hx, 0.072, 0.04]}>
                   <mesh material={materials.brushedSteelMat}>
-                    <cylinderGeometry args={[0.055, 0.065, 0.16, 12]} />
+                    <cylinderGeometry args={[0.055, 0.065, 0.125, 12]} />
                   </mesh>
-                  <mesh position={[0, -0.055, 0]} material={materials.baseMat}>
+                  <mesh position={[0, -0.045, 0]} material={materials.baseMat}>
                     <boxGeometry args={[0.26, 0.04, 0.42]} />
                   </mesh>
                 </group>

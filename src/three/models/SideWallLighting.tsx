@@ -6390,22 +6390,47 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                   </mesh>
                 );
               })}
-              {/* Lower Spandrel Backing Below Booth Window & Header Above Booth Window */}
-              {biophilicCrystallineMossWall.wBot - 0.14 > 0.4 && (
-                <mesh
-                  position={[0, (biophilicCrystallineMossWall.wBot - 0.14) * 0.5, 0.01]}
-                  material={biophilicMossResources.woodAlcoveBackMat}
-                  receiveShadow
-                >
-                  <boxGeometry
-                    args={[
-                      biophilicCrystallineMossWall.bWinW + 0.28,
-                      biophilicCrystallineMossWall.wBot - 0.14,
-                      0.025,
-                    ]}
-                  />
-                </mesh>
-              )}
+              {/* Lower Spandrel Backing Carve-Out Above Portal & Outside Doorway Jambs */}
+              {(() => {
+                const topTierLocalY = (config.seatingRows - 1) * config.rowElevationStep;
+                const portalTopLocalY = topTierLocalY + 2.3;
+                const lintelTopY = biophilicCrystallineMossWall.wBot - 0.14;
+                const fullSpanW = biophilicCrystallineMossWall.bWinW + 0.28;
+                const fullHalfW = fullSpanW * 0.5;
+                const portalHalfClear = 1.28;
+                const sideStripW = Math.max(0, fullHalfW - portalHalfClear);
+                return (
+                  <group>
+                    {lintelTopY - portalTopLocalY > 0.08 && (
+                      <mesh
+                        position={[0, (portalTopLocalY + lintelTopY) * 0.5, 0.01]}
+                        material={biophilicMossResources.woodAlcoveBackMat}
+                        receiveShadow
+                      >
+                        <boxGeometry
+                          args={[fullSpanW, lintelTopY - portalTopLocalY, 0.025]}
+                        />
+                      </mesh>
+                    )}
+                    {sideStripW > 0.04 &&
+                      lintelTopY > 0.2 &&
+                      ([-1, 1] as const).map((sSide) => (
+                        <mesh
+                          key={`biophilic-portal-cheek-${sSide}`}
+                          position={[
+                            sSide * (portalHalfClear + sideStripW * 0.5),
+                            lintelTopY * 0.5,
+                            0.01,
+                          ]}
+                          material={biophilicMossResources.woodAlcoveBackMat}
+                          receiveShadow
+                        >
+                          <boxGeometry args={[sideStripW, lintelTopY, 0.025]} />
+                        </mesh>
+                      ))}
+                  </group>
+                );
+              })()}
               {H - 0.24 - (biophilicCrystallineMossWall.wTop + 0.14) > 0.2 && (
                 <mesh
                   position={[

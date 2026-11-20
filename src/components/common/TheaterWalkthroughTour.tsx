@@ -53,8 +53,8 @@ export const TheaterWalkthroughTour: React.FC<TheaterWalkthroughTourProps> = ({
         targetId: 'view_modes',
         title: 'Switch View',
         description:
-          'Seat = your chair. Hall = move to any seat. Full = full video.',
-        shortcut: '1 · 2 · 3',
+          'Seat = chair. Walk = walk hall. Hall = pick seat. Full = full video.',
+        shortcut: '1 · 2 · 3 · 4',
       },
       ...(isSeatViewMode
         ? [

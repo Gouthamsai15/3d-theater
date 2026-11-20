@@ -11,6 +11,7 @@ import {
   SeatData,
   ShowState,
   TheaterConfiguration,
+  WalkInputState,
 } from '../../types/cinema';
 import { AuditoriumShell } from '../models/AuditoriumShell';
 import { BeachPositionalAudioRig } from '../models/BeachEnvironment';
@@ -18,11 +19,21 @@ import { SeatModels } from '../models/SeatModels';
 import { CinemaScreen, ScreenBounceSample } from '../models/CinemaScreen';
 import { FourDxEffectsRig } from '../models/FourDxEffectsRig';
 import {
+  createInitialFourDxTelemetry,
+  FourDxLiveTelemetry,
+} from '../models/fourDxTelemetry';
+import {
   BioluminescentBloomComposer,
   CinemaLightingRig,
 } from '../lighting/CinemaLightingRig';
 import { createScreenBounceUniforms } from '../lighting/screenBounceShader';
 import { FirstPersonCameraRig } from '../cameras/FirstPersonCameraRig';
+import { EntranceCorridor3D } from '../models/EntranceCorridor3D';
+import {
+  CorridorAnimationState,
+  CorridorPhase,
+  createInitialCorridorState,
+} from '../models/corridorThemes';
 import {
   computeAdaptiveCinemaFov,
   detectWebGLSupport,
@@ -53,6 +64,10 @@ interface CinemaAuditoriumCanvasProps {
   onEntranceComplete: () => void;
   resetViewSignal: number;
   skipWalkSignal: number;
+  scanTicketSignal: number;
+  onRequestScanTicket: () => void;
+  onCorridorPhaseChange?: (phase: CorridorPhase) => void;
+  walkInputRef?: React.MutableRefObject<WalkInputState>;
   onSceneReady: () => void;
 }
 
@@ -80,9 +95,14 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
   onEntranceComplete,
   resetViewSignal,
   skipWalkSignal,
+  scanTicketSignal,
+  onRequestScanTicket,
+  onCorridorPhaseChange,
+  walkInputRef,
   onSceneReady,
 }) => {
   const webglInfo = useMemo(() => detectWebGLSupport(), []);
+  const corridorStateRef = useRef<CorridorAnimationState>(createInitialCorridorState());
   const [contextLost, setContextLost] = useState(false);
   const [lightFactor, setLightFactor] = useState(1);
   const detectAnyFullscreen = () => {
@@ -120,6 +140,7 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
     luminance: 0.25,
   });
   const fourDxFlashRef = useRef({ level: 0, color: '#7dd3fc' });
+  const fourDxTelemetryRef = useRef<FourDxLiveTelemetry>(createInitialFourDxTelemetry());
   const lastLightUpdateRef = useRef(0);
   const screenBounceUniforms = useMemo(
     () =>
@@ -190,6 +211,7 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
     config.supports4dxEffects && fourDxSettings.enabled && isActivelyPlaying
       ? fourDxSettings.cameraMotionIntensity
       : 0;
+  const fourDxActive = Boolean(config.supports4dxEffects && fourDxSettings.enabled);
 
   return (
     <div className="relative h-full w-full bg-[#030305] touch-none select-none">
@@ -252,16 +274,29 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           isSoftwareGl={webglInfo.isSoftwareGl || graphicsQuality === 'low'}
         />
 
+        <EntranceCorridor3D
+          config={config}
+          seatId={selectedSeat.id}
+          showState={showState}
+          lightFactor={lightFactor}
+          entranceComplete={entranceComplete}
+          corridorStateRef={corridorStateRef}
+          onScanClick={onRequestScanTicket}
+        />
+
         <SeatModels
           config={config}
           seats={seats}
           selectedSeatId={selectedSeat.id}
           hoveredSeatId={hoveredSeatId}
           fourDxVibration={active4dxVibration}
+          fourDxTelemetryRef={fourDxTelemetryRef}
           isPlaying={isPlaying}
           lightFactor={lightFactor}
           viewMode={viewMode}
-          interactive={entranceComplete && viewMode !== 'screen_full'}
+          interactive={
+            entranceComplete && viewMode !== 'screen_full' && viewMode !== 'walk'
+          }
           enableHover={!isMobile && entranceComplete && viewMode === 'hall'}
           screenBounceUniforms={screenBounceUniforms}
           onSelectSeat={onSelectSeat}
@@ -284,6 +319,8 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           screenBounceUniforms={screenBounceUniforms}
           lightFactor={lightFactor}
           screenReflectionBrightness={screenReflectionBrightness}
+          fourDxTelemetryRef={fourDxTelemetryRef}
+          fourDxActive={fourDxActive}
         />
 
         {config.supports4dxEffects && (
@@ -294,6 +331,7 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
             intensity={fourDxSettings.vibrationIntensity}
             atmosphericLightEnabled={fourDxSettings.atmosphericLightEnabled}
             fourDxFlashRef={fourDxFlashRef}
+            fourDxTelemetryRef={fourDxTelemetryRef}
           />
         )}
 
@@ -305,9 +343,14 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           onEntranceComplete={onEntranceComplete}
           resetViewSignal={resetViewSignal}
           skipWalkSignal={skipWalkSignal}
+          scanTicketSignal={scanTicketSignal}
+          corridorStateRef={corridorStateRef}
+          onCorridorPhaseChange={onCorridorPhaseChange}
           isPlaying={isActivelyPlaying}
           isSoftwareGl={webglInfo.isSoftwareGl}
           fourDxCameraIntensity={active4dxCamera}
+          fourDxTelemetryRef={fourDxTelemetryRef}
+          walkInputRef={walkInputRef}
         />
 
         {config.categoryId === 'beach' && (

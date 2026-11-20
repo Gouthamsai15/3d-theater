@@ -170,14 +170,16 @@ export const ReservedSeatMarker: React.FC<ReservedSeatMarkerProps> = ({
     return null;
   }
 
-  // Keep physical plaque legible when house lights are on or inspecting in Hall View, and subtly dimmed during active movie
-  const activeVisibility = isPlaying && viewMode !== 'hall' ? 0.22 : Math.max(0.35, lightFactor);
-  resources.plaqueFaceMat.emissiveIntensity = viewMode === 'hall' ? 0.65 : 0.42 * activeVisibility;
-  resources.metalMat.emissiveIntensity = viewMode === 'hall' ? 0.22 : 0.1 * activeVisibility;
+  const isExploreMode = viewMode === 'hall' || viewMode === 'walk';
 
-  const showFloorRing = viewMode === 'hall' || (!isPlaying && lightFactor > 0.12);
+  // Keep physical plaque legible when house lights are on or inspecting in Hall/Walk View, and subtly dimmed during active movie
+  const activeVisibility = isPlaying && !isExploreMode ? 0.22 : Math.max(0.35, lightFactor);
+  resources.plaqueFaceMat.emissiveIntensity = isExploreMode ? 0.65 : 0.42 * activeVisibility;
+  resources.metalMat.emissiveIntensity = isExploreMode ? 0.22 : 0.1 * activeVisibility;
+
+  const showFloorRing = isExploreMode || (!isPlaying && lightFactor > 0.12);
   resources.ringMat.opacity =
-    viewMode === 'hall'
+    isExploreMode
       ? 0.78
       : Math.max(0, 0.58 * lightFactor);
 
