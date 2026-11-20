@@ -1185,7 +1185,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [mats]);
 
-  // Dedicated non-reflective matte antiqued-gold pierced Jali lattice texture & material
+  // Dedicated non-reflective matte antiqued-gold pierced Jali lattice texture, brass diya & carved wooden urn geometries
   const jaliResources = useMemo(() => {
     if (sideLightStyle !== 'indian_mandap_jali') return null;
     const jaliTex = createJaliLatticeTexture();
@@ -1200,13 +1200,91 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       }),
       screenBounceUniforms,
     );
-    return { jaliTex, jaliMat };
+
+    // Ornate multi-tier Brass Diya Floor Stand LatheGeometry (height ~0.78m)
+    const diyaPts = [
+      new THREE.Vector2(0.0, 0.0),
+      new THREE.Vector2(0.16, 0.0),
+      new THREE.Vector2(0.15, 0.04),
+      new THREE.Vector2(0.09, 0.09),
+      new THREE.Vector2(0.045, 0.18),
+      new THREE.Vector2(0.075, 0.32),
+      new THREE.Vector2(0.038, 0.44),
+      new THREE.Vector2(0.068, 0.58),
+      new THREE.Vector2(0.04, 0.68),
+      new THREE.Vector2(0.18, 0.72),
+      new THREE.Vector2(0.19, 0.78),
+      new THREE.Vector2(0.16, 0.78),
+      new THREE.Vector2(0.03, 0.73),
+      new THREE.Vector2(0.0, 0.73),
+    ];
+    const diyaStandGeo = new THREE.LatheGeometry(diyaPts, 20);
+    diyaStandGeo.computeVertexNormals();
+
+    // Carved Rosewood / Teak Heritage Amphora Urn LatheGeometry (height ~0.64m)
+    const urnPts = [
+      new THREE.Vector2(0.0, 0.0),
+      new THREE.Vector2(0.14, 0.0),
+      new THREE.Vector2(0.12, 0.05),
+      new THREE.Vector2(0.08, 0.1),
+      new THREE.Vector2(0.19, 0.24),
+      new THREE.Vector2(0.22, 0.38),
+      new THREE.Vector2(0.15, 0.5),
+      new THREE.Vector2(0.09, 0.56),
+      new THREE.Vector2(0.13, 0.63),
+      new THREE.Vector2(0.11, 0.64),
+      new THREE.Vector2(0.07, 0.58),
+      new THREE.Vector2(0.0, 0.58),
+    ];
+    const urnBodyGeo = new THREE.LatheGeometry(urnPts, 20);
+    urnBodyGeo.computeVertexNormals();
+
+    const diyaPolishedBrassMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#d4af37',
+        roughness: 0.24,
+        metalness: 0.88,
+      }),
+      screenBounceUniforms,
+    );
+
+    const carvedWoodUrnMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#4c2618',
+        roughness: 0.52,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+
+    const diyaFlameMat = new THREE.MeshStandardMaterial({
+      color: '#ffe5a3',
+      emissive: '#ff8c24',
+      emissiveIntensity: 1.8,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+
+    return {
+      jaliTex,
+      jaliMat,
+      diyaStandGeo,
+      urnBodyGeo,
+      diyaPolishedBrassMat,
+      carvedWoodUrnMat,
+      diyaFlameMat,
+    };
   }, [sideLightStyle, screenBounceUniforms]);
 
   useEffect(() => {
     return () => {
       jaliResources?.jaliMat.dispose();
       jaliResources?.jaliTex.dispose();
+      jaliResources?.diyaStandGeo.dispose();
+      jaliResources?.urnBodyGeo.dispose();
+      jaliResources?.diyaPolishedBrassMat.dispose();
+      jaliResources?.carvedWoodUrnMat.dispose();
+      jaliResources?.diyaFlameMat.dispose();
     };
   }, [jaliResources]);
 
@@ -1750,6 +1828,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
   mats.secondaryEmitterMat.emissiveIntensity = wallAccentIntensity * 0.9;
   mats.alabasterGlassMat.emissiveIntensity = wallAccentIntensity * 0.95;
   mats.alabasterShadeMat.emissiveIntensity = wallAccentIntensity * 0.88;
+  if (jaliResources) {
+    jaliResources.diyaFlameMat.emissiveIntensity = 0.24 + lightFactor * 2.1;
+  }
   mats.warmGoldHaloMat.emissiveIntensity = 0.16 + lightFactor * 1.35;
   if (eclipseResources) {
     eclipseResources.eclipseGlowMatA.emissiveIntensity = lightFactor * 1.52;
@@ -6775,6 +6856,20 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                 const upperH = archWallH * 0.64;
                 const bayW = innerHalf * 1.96;
                 const jaliSideW = Math.min(0.68, innerHalf * 0.34);
+
+                // Exact stepped tier floor elevation at bay midpoint so alcove diyas & urns rest flush
+                let floorY = 0;
+                for (let r = 0; r < seatingRows; r++) {
+                  const rz = firstRowZ + r * rowSpacing;
+                  const zMinTier = r === 0 ? -Infinity : rz - rowSpacing * 0.5;
+                  const zMaxTier = r === seatingRows - 1 ? Infinity : rz + rowSpacing * 0.5;
+                  if (bay.zMid >= zMinTier && bay.zMid < zMaxTier) {
+                    floorY = r * rowElevationStep;
+                    break;
+                  }
+                }
+                const isDiyaBay = bi % 2 === 0;
+
                 return (
                   <group key={`mandap-bay-${side}-${bi}`} position={[0, 0, bay.zMid]}>
                     {/* Lower Deeply Recessed Acoustic Fabric Dado Bay (Alternating Deep Crimson & Matte Terracotta) */}
@@ -6852,6 +6947,83 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                         </group>
                       );
                     })}
+
+                    {/* Alternating Brass Diya Floor Lanterns & Carved Heritage Wooden Urns Inside Alcove */}
+                    <group position={[wallX + inDir * 0.36, floorY, 0]}>
+                      {/* Stepped Sandstone & Antiqued-Gold Alcove Plinth */}
+                      <mesh position={[0, 0.03, 0]} material={mats.mandapArchSandstoneMat} receiveShadow castShadow>
+                        <cylinderGeometry args={[0.24, 0.27, 0.07, 8]} />
+                      </mesh>
+                      <mesh position={[0, 0.068, 0]} material={mats.mandapAntiquedGoldMat}>
+                        <cylinderGeometry args={[0.21, 0.22, 0.018, 8]} />
+                      </mesh>
+
+                      {isDiyaBay ? (
+                        /* Ornate Multi-Tier Brass Diya Floor Lantern With Radiating Saffron Flames */
+                        <group position={[0, 0.075, 0]}>
+                          <mesh
+                            geometry={jaliResources.diyaStandGeo}
+                            material={jaliResources.diyaPolishedBrassMat}
+                            castShadow
+                            receiveShadow
+                          />
+                          {/* Perforated Openwork Brass Lantern Ribs & Lotus Kalash Spire */}
+                          {[0, Math.PI * 0.5, Math.PI, Math.PI * 1.5].map((ang, ri) => (
+                            <group key={`diya-rib-${ri}`} rotation={[0, ang, 0]}>
+                              <mesh
+                                position={[0.145, 0.91, 0]}
+                                rotation={[0, 0, 0.18]}
+                                material={jaliResources.diyaPolishedBrassMat}
+                              >
+                                <cylinderGeometry args={[0.008, 0.01, 0.28, 6]} />
+                              </mesh>
+                              {/* Glowing Oil-Wick Diya Flame */}
+                              <mesh position={[0.14, 0.825, 0]} material={jaliResources.diyaFlameMat}>
+                                <coneGeometry args={[0.022, 0.075, 8]} />
+                              </mesh>
+                            </group>
+                          ))}
+                          <mesh position={[0, 1.05, 0]} material={jaliResources.diyaPolishedBrassMat}>
+                            <cylinderGeometry args={[0.015, 0.09, 0.08, 12]} />
+                          </mesh>
+                          <mesh position={[0, 1.12, 0]} material={jaliResources.diyaPolishedBrassMat}>
+                            <coneGeometry args={[0.028, 0.09, 10]} />
+                          </mesh>
+                          {bi === 2 && (
+                            <pointLight
+                              position={[inDir * 0.12, 0.88, 0]}
+                              color="#ff9f43"
+                              intensity={lightFactor * 0.68}
+                              distance={4.2}
+                              decay={2}
+                            />
+                          )}
+                        </group>
+                      ) : (
+                        /* Carved Rosewood Heritage Amphora Urn With Antiqued-Gold Collar Bands */
+                        <group position={[0, 0.075, 0]}>
+                          <mesh
+                            geometry={jaliResources.urnBodyGeo}
+                            material={jaliResources.carvedWoodUrnMat}
+                            castShadow
+                            receiveShadow
+                          />
+                          <mesh position={[0, 0.36, 0]} rotation={[Math.PI / 2, 0, 0]} material={jaliResources.diyaPolishedBrassMat}>
+                            <torusGeometry args={[0.222, 0.014, 8, 24]} />
+                          </mesh>
+                          <mesh position={[0, 0.56, 0]} rotation={[Math.PI / 2, 0, 0]} material={jaliResources.diyaPolishedBrassMat}>
+                            <torusGeometry args={[0.095, 0.012, 8, 20]} />
+                          </mesh>
+                          {/* Turned Wooden Lid & Brass Finial Crown */}
+                          <mesh position={[0, 0.64, 0]} material={jaliResources.carvedWoodUrnMat} castShadow>
+                            <cylinderGeometry args={[0.02, 0.115, 0.09, 16]} />
+                          </mesh>
+                          <mesh position={[0, 0.71, 0]} material={jaliResources.diyaPolishedBrassMat}>
+                            <sphereGeometry args={[0.026, 10, 10]} />
+                          </mesh>
+                        </group>
+                      )}
+                    </group>
 
                     {/* Concealed Warm-Amber Architectural Wash Tucked Behind Mandap Arch Soffit */}
                     <mesh position={[wallX + inDir * 0.16, crownY - 0.18, 0]}>

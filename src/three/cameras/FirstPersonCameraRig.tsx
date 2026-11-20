@@ -16,6 +16,12 @@ import {
   beachHeightAt,
   beachShorelineZ,
 } from '../models/beachTerrain';
+import {
+  BEACH_CAMPFIRE_POS,
+  BEACH_SURF_RACK_POS,
+  BEACH_TIKI_SHACK_POS,
+  CAMPFIRE_BENCH_SPECS,
+} from '../models/BeachEnvironment';
 import { FourDxLiveTelemetry } from '../models/fourDxTelemetry';
 import {
   CorridorAnimationState,
@@ -145,10 +151,20 @@ function resolveWalkConstraints(
     const minShoreZ = Math.max(-16.5, beachShorelineZ(pos.x) - 0.55);
     pos.z = THREE.MathUtils.clamp(pos.z, minShoreZ, 13.4);
 
-    // Avoid walking straight through Beach Projector Housing, Campfire flames, or Screen Pillars
+    // Avoid walking straight through Beach Projector Housing, Campfire/Benches, Tiki Shack, Surfboard Rack, or Screen Pillars
     pushOutCircle(pos, 0, isBio ? 9.0 : 8.6, 0.96);
+    pushOutBox(pos, BEACH_TIKI_SHACK_POS.x, BEACH_TIKI_SHACK_POS.z, 1.72, 1.32);
+    pushOutCircle(pos, BEACH_SURF_RACK_POS.x, BEACH_SURF_RACK_POS.z, 1.15);
     if (!isBio) {
       pushOutCircle(pos, -11.4, 0.6, 1.38);
+      CAMPFIRE_BENCH_SPECS.forEach((b) => {
+        pushOutCircle(
+          pos,
+          BEACH_CAMPFIRE_POS[0] + Math.cos(b.ang) * b.r,
+          BEACH_CAMPFIRE_POS[2] + Math.sin(b.ang) * b.r,
+          0.62,
+        );
+      });
     }
     const pillarHalfW = config.screenWidth * 0.5 + 0.45;
     pushOutCircle(pos, -pillarHalfW, config.screenPosition[2], 0.65);

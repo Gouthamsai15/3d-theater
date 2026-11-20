@@ -53,6 +53,270 @@ function buildPleatedCurtainGeometry(
   return geom;
 }
 
+function createTotemFloorProjectionTexture(
+  rowLabel: string,
+  accentHex: string,
+): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+
+  const grad = ctx.createRadialGradient(64, 64, 6, 64, 64, 60);
+  grad.addColorStop(0, `${accentHex}70`);
+  grad.addColorStop(0.55, `${accentHex}2a`);
+  grad.addColorStop(1, `${accentHex}00`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+
+  ctx.strokeStyle = `${accentHex}aa`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(64, 64, 34, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = accentHex;
+  ctx.shadowBlur = 10;
+  ctx.font = 'bold 42px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(rowLabel, 64, 66);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function getAcousticPlaqueDetails(config: TheaterConfiguration): {
+  title: string;
+  subtitle: string;
+  cert: string;
+  accent: string;
+  isBrass: boolean;
+} {
+  const isBrass =
+    config.environmentProfile.architectureStyle === 'private' ||
+    config.sideLightStyle === 'art_deco_navy_sunburst' ||
+    config.sideLightStyle === 'art_deco_stepped_fins' ||
+    config.sideLightStyle === 'indian_mandap_jali';
+
+  if (config.categoryId === 'dolby') {
+    return {
+      title: 'DOLBY ATMOS',
+      subtitle: 'DUAL-LASER VISION · 64-CH SPATIAL AUDIO',
+      cert: 'CERTIFIED REFERENCE CHAMBER · SMPTE RP-431',
+      accent: '#38bdf8',
+      isBrass,
+    };
+  }
+  if (config.categoryId === 'imax') {
+    return {
+      title: 'IMAX LASER',
+      subtitle: 'PRECISION 12-CHANNEL SOUND & CURVED ARRAY',
+      cert: 'CERTIFIED LARGE FORMAT · OPTIMUM ACOUSTICS',
+      accent: '#60a5fa',
+      isBrass,
+    };
+  }
+  if (config.categoryId === '4dx' || config.supports4dxEffects) {
+    return {
+      title: '4DX MOTION',
+      subtitle: 'HYDRAULIC PITCH · WIND · SCENT · MIST MATRIX',
+      cert: 'SYNCHRONIZED ENVIRONMENTAL FX · CALIBRATED',
+      accent: config.lightingProfile.accentColor || '#ef4444',
+      isBrass,
+    };
+  }
+  if (config.categoryId === 'screenx' || config.supportsScreenX) {
+    return {
+      title: 'SCREENX 270°',
+      subtitle: 'TRIPLE-WALL PANORAMIC PROJECTION SUITE',
+      cert: 'MICRO-PERFORATED ACOUSTIC WRAP · ATMOS',
+      accent: '#38bdf8',
+      isBrass,
+    };
+  }
+  if (config.categoryId === 'ice') {
+    return {
+      title: 'ICE IMMERSIVE',
+      subtitle: '4K LASER PROJECTION · PERIPHERAL LED ARRAY',
+      cert: 'ISOLATED ACOUSTIC SHELL · DOLBY ATMOS',
+      accent: config.lightingProfile.accentColor || '#22d3ee',
+      isBrass,
+    };
+  }
+  if (config.categoryId === 'private_luxury') {
+    return {
+      title: 'PRIVATE SALON',
+      subtitle: 'BESPOKE REFERENCE ACOUSTIC ARCHITECTURE',
+      cert: 'THX ULTRA · DOLBY ATMOS CALIBRATED SUITE',
+      accent: '#d4af37',
+      isBrass: true,
+    };
+  }
+  return {
+    title: 'AURELIA 4K LASER',
+    subtitle: 'DOLBY ATMOS · ARCHITECTURAL ACOUSTIC TUNING',
+    cert: 'THX REFERENCE SPL · SMPTE CINEMA STANDARD',
+    accent: config.lightingProfile.accentColor || '#d4af37',
+    isBrass,
+  };
+}
+
+function createAcousticCertificationPlaqueTexture(
+  config: TheaterConfiguration,
+): THREE.CanvasTexture {
+  const { title, subtitle, cert, accent, isBrass } = getAcousticPlaqueDetails(config);
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 320;
+  const ctx = canvas.getContext('2d')!;
+
+  const bgGrad = ctx.createLinearGradient(0, 0, 512, 320);
+  bgGrad.addColorStop(0, isBrass ? '#1b150e' : '#0f131b');
+  bgGrad.addColorStop(0.5, isBrass ? '#261e14' : '#181e2a');
+  bgGrad.addColorStop(1, isBrass ? '#14100b' : '#0b0e14');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 512, 320);
+
+  const rimColor = isBrass ? '#d4af37' : accent;
+  ctx.strokeStyle = rimColor;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, 492, 300);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(20, 20, 472, 280);
+
+  // Corner brass/steel rivets
+  ctx.fillStyle = isBrass ? '#e5c158' : '#cbd5e1';
+  [
+    [28, 28],
+    [484, 28],
+    [28, 292],
+    [484, 292],
+  ].forEach(([rx, ry]) => {
+    ctx.beginPath();
+    ctx.arc(rx, ry, 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = rimColor;
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ACOUSTIC & PROJECTION CERTIFICATION', 256, 56);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 42px sans-serif';
+  ctx.fillText(title, 256, 128);
+
+  // Divider bar
+  ctx.fillStyle = rimColor;
+  ctx.fillRect(86, 168, 340, 3);
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '600 17px sans-serif';
+  ctx.fillText(subtitle, 256, 206);
+
+  ctx.fillStyle = rimColor;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText(cert, 256, 256);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createEnvSoundMeterTexture(
+  config: TheaterConfiguration,
+): THREE.CanvasTexture {
+  const accent = config.lightingProfile.accentColor || '#22d3ee';
+  const isIceTheater = config.environmentProfile.architectureStyle === 'ice';
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 320;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#070b12';
+  ctx.fillRect(0, 0, 512, 320);
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(8, 8, 496, 304);
+
+  // Header Strip
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(14, 14, 484, 44);
+  ctx.fillStyle = accent;
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(
+    isIceTheater ? 'ICE IMMERSIVE · ENV & SPL TELEMETRY' : 'SCREENX 270° · ENV & ACOUSTIC MONITOR',
+    26,
+    36,
+  );
+
+  // Two digital telemetry cards
+  [
+    {
+      x: 20,
+      label: 'HALL TEMPERATURE',
+      value: isIceTheater ? '20.4°C' : '21.2°C',
+      sub: '44% RH · LAMINAR AIR',
+    },
+    {
+      x: 264,
+      label: 'REFERENCE SPL',
+      value: isIceTheater ? '74.8 dB' : '73.5 dB',
+      sub: 'DOLBY ATMOS · CAL OK',
+    },
+  ].forEach((card) => {
+    ctx.fillStyle = '#0e1624';
+    ctx.fillRect(card.x, 74, 228, 142);
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(card.x, 74, 228, 142);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.fillText(card.label, card.x + 14, 98);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 42px monospace';
+    ctx.fillText(card.value, card.x + 14, 150);
+
+    ctx.fillStyle = accent;
+    ctx.font = '600 13px sans-serif';
+    ctx.fillText(card.sub, card.x + 14, 194);
+  });
+
+  // Segmented SPL Bar Meter Graphic
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText('REAL-TIME ACOUSTIC FLOOR / DYNAMIC HEADROOM', 22, 236);
+
+  const barCount = 18;
+  for (let i = 0; i < barCount; i++) {
+    const bx = 22 + i * 26;
+    const active = i < 13;
+    ctx.fillStyle =
+      i >= 15 ? '#ef4444' : active ? accent : 'rgba(148,163,184,0.22)';
+    ctx.fillRect(bx, 254, 20, 34);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 const BeachShell: React.FC<AuditoriumShellProps> = ({
   config,
   lightFactor,
@@ -207,6 +471,25 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     return arr;
   }, [seatingRows, lightingProfile.stepLightColor]);
 
+  const totemFloorTextures = useMemo(() => {
+    const arr: THREE.CanvasTexture[] = [];
+    for (let r = 0; r < seatingRows; r++) {
+      const label = ROW_LABELS[r] || `${r + 1}`;
+      arr.push(createTotemFloorProjectionTexture(label, lightingProfile.stepLightColor));
+    }
+    return arr;
+  }, [seatingRows, lightingProfile.stepLightColor]);
+
+  const acousticPlaqueMap = useMemo(
+    () => createAcousticCertificationPlaqueTexture(config),
+    [config],
+  );
+
+  const envSoundMeterMap = useMemo(
+    () => (isIce || isScreenX ? createEnvSoundMeterTexture(config) : null),
+    [isIce, isScreenX, config],
+  );
+
   useEffect(() => {
     return () => {
       textures.dispose();
@@ -215,8 +498,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       espressoTileCeilingMap?.dispose();
       imaxTileCeilingMap?.dispose();
       rowMarkerTextures.forEach((t) => t.dispose());
+      totemFloorTextures.forEach((t) => t.dispose());
+      acousticPlaqueMap.dispose();
+      envSoundMeterMap?.dispose();
     };
-  }, [textures, carbonFiberMap, tBarCeilingGridMap, espressoTileCeilingMap, imaxTileCeilingMap, rowMarkerTextures]);
+  }, [
+    textures,
+    carbonFiberMap,
+    tBarCeilingGridMap,
+    espressoTileCeilingMap,
+    imaxTileCeilingMap,
+    rowMarkerTextures,
+    totemFloorTextures,
+    acousticPlaqueMap,
+    envSoundMeterMap,
+  ]);
 
   const aisleXs = useMemo(() => getAisleWorldXs(config), [config]);
 
@@ -973,19 +1269,83 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 </group>
               )}
 
-              {!isPrivateVolcanic && !isPrivateChampagne && !isScreenX && rowMarkerTextures[tier.row] && (
-                <mesh
-                  position={[ax, tier.y + 0.011, firstRowZ + tier.row * rowSpacing]}
-                  rotation={[-Math.PI / 2, 0, 0]}
-                >
-                  <planeGeometry args={[0.3, 0.3]} />
-                  <meshBasicMaterial
-                    map={rowMarkerTextures[tier.row]}
-                    transparent
-                    opacity={rowBadgeOpacity}
-                  />
-                </mesh>
-              )}
+              {/* End-of-Row Light Totems Showing Row Letter on Pillar Housing & Floor */}
+              {rowMarkerTextures[tier.row] && totemFloorTextures[tier.row] && (() => {
+                const totemSide =
+                  config.aisleAfterSeats.length === 0
+                    ? ax < 0
+                      ? 1
+                      : -1
+                    : ax === 0
+                      ? -1
+                      : ax < 0
+                        ? -1
+                        : 1;
+                const totemX = ax + totemSide * 0.49;
+                const totemZ = firstRowZ + tier.row * rowSpacing - 0.14;
+                const floorLetterX = ax + totemSide * 0.23;
+                const faceYaw = totemSide < 0 ? Math.PI / 2 : -Math.PI / 2;
+                const pillarMat =
+                  isPrivateChampagne || isPrivateVolcanic || isArtDecoSunburst || isMandap2d
+                    ? materials.darkBronzeTrimMat
+                    : isThunder4dx || isIce
+                      ? materials.brushedAluminumMat
+                      : materials.nosingMat;
+                return (
+                  <group key={`row-totem-${tier.row}-${aIdx}`}>
+                    <group position={[totemX, tier.y, totemZ]} rotation={[0, faceYaw, 0]}>
+                      {/* Bolted Base Flange */}
+                      <mesh position={[0, 0.009, 0]} material={pillarMat}>
+                        <boxGeometry args={[0.105, 0.018, 0.105]} />
+                      </mesh>
+                      {/* Tapered Architectural Totem Column */}
+                      <mesh position={[0, 0.15, 0]} material={pillarMat} castShadow>
+                        <boxGeometry args={[0.072, 0.28, 0.072]} />
+                      </mesh>
+                      {/* Downward-Hooded Top Cap Visor */}
+                      <mesh position={[0, 0.295, 0.024]} material={pillarMat}>
+                        <boxGeometry args={[0.088, 0.026, 0.12]} />
+                      </mesh>
+                      {/* Downward Warm/Step Emitter Under Visor */}
+                      <mesh position={[0, 0.28, 0.056]} rotation={[Math.PI / 2, 0, 0]}>
+                        <planeGeometry args={[0.06, 0.04]} />
+                        <meshStandardMaterial
+                          color={lightingProfile.stepLightColor}
+                          emissive={lightingProfile.stepLightColor}
+                          emissiveIntensity={stepEmissiveIntensity * 1.35}
+                          toneMapped={false}
+                        />
+                      </mesh>
+                      {/* Illuminated Row Letter Face Facing Walkway */}
+                      <mesh position={[0, 0.175, 0.037]}>
+                        <planeGeometry args={[0.054, 0.054]} />
+                        <meshBasicMaterial
+                          map={rowMarkerTextures[tier.row]}
+                          transparent
+                          opacity={rowBadgeOpacity}
+                        />
+                      </mesh>
+                    </group>
+
+                    {/* Projected Row-Letter Floor Light Pool Beside Pillar */}
+                    <mesh
+                      position={[floorLetterX, tier.y + 0.015, totemZ]}
+                      rotation={[-Math.PI / 2, 0, 0]}
+                    >
+                      <planeGeometry args={[0.35, 0.35]} />
+                      <meshBasicMaterial
+                        map={totemFloorTextures[tier.row]}
+                        transparent
+                        opacity={0.55 + lightFactor * 0.45}
+                        depthWrite={false}
+                        polygonOffset
+                        polygonOffsetFactor={-1}
+                        polygonOffsetUnits={-1}
+                      />
+                    </mesh>
+                  </group>
+                );
+              })()}
 
               {/* Compact aisle safety handrail posts (brushed aluminum on 4DX Thunder Arena, dark metallic on Crimson/Arctic/Exo-Skeleton) */}
               {(isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
@@ -1684,6 +2044,156 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
+      {/* Recessed Stage Footlights Along Front Stage / Proscenium Apron Edge */}
+      {(() => {
+        const footZ =
+          isZeroStageImax || isDolbyFloating || isScreenX || isModernMultiplex || isMandap2d || isParametricObsidian
+            ? frontZ + 0.62
+            : isPrivateVolcanic
+              ? screenPosition[2] + 1.18
+              : isPrivateChampagne
+                ? screenPosition[2] + 0.96
+                : isIce
+                  ? screenPosition[2] + 1.54
+                  : isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx
+                    ? screenPosition[2] + 1.98
+                    : screenPosition[2] + 1.92;
+        const footY = isThunder4dx ? 0.012 : 0.0;
+        const spanW = Math.min(W - 4.2, screenWidth * 0.78);
+        const fixtureCount = isPrivateVolcanic || isPrivateChampagne ? 5 : 7;
+        const footColor =
+          isPrivateVolcanic || isPrivateChampagne || isArtDecoSunburst || isMandap2d || isVolcanicCopper2d
+            ? '#ffcf86'
+            : lightingProfile.wallColor;
+        const footHousingMat =
+          isPrivateVolcanic || isPrivateChampagne || isArtDecoSunburst || isMandap2d
+            ? materials.darkBronzeTrimMat
+            : materials.nosingMat;
+        return (
+          <group position={[0, footY, footZ]}>
+            {Array.from({ length: fixtureCount }, (_, fi) => {
+              const fx = THREE.MathUtils.lerp(-spanW * 0.5, spanW * 0.5, fi / Math.max(1, fixtureCount - 1));
+              return (
+                <group key={`stage-footlight-${fi}`} position={[fx, 0, 0]}>
+                  <mesh position={[0, 0.02, 0]} material={footHousingMat} receiveShadow>
+                    <boxGeometry args={[0.28, 0.04, 0.11]} />
+                  </mesh>
+                  {/* Angled Upward Frosted Footlight Lens */}
+                  <mesh position={[0, 0.042, -0.01]} rotation={[-Math.PI / 2 + 0.34, 0, 0]}>
+                    <planeGeometry args={[0.22, 0.068]} />
+                    <meshStandardMaterial
+                      color="#161410"
+                      emissive={footColor}
+                      emissiveIntensity={0.08 + lightFactor * 1.25}
+                      toneMapped={false}
+                      roughness={0.2}
+                    />
+                  </mesh>
+                  {/* Soft Floor Glow Halo */}
+                  <mesh position={[0, 0.004, 0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+                    <planeGeometry args={[0.48, 0.28]} />
+                    <meshBasicMaterial
+                      color={footColor}
+                      transparent
+                      opacity={0.04 + lightFactor * 0.18}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                </group>
+              );
+            })}
+          </group>
+        );
+      })()}
+
+      {/* Floor 4DX Wind & Mist Columns Along Left and Right Walls Near Front Rows */}
+      {(Boolean(config.supports4dxEffects) ||
+        isCrimson4dx ||
+        isArctic4dx ||
+        isThunder4dx ||
+        isExoskeleton4dx) &&
+        [-1, 1].map((side) =>
+          [firstRowZ - 1.35, firstRowZ + 0.1].map((colZ, ci) => {
+            // Ensure clear of front side exit doors at frontZ + 2.4
+            const safeZ =
+              Math.abs(colZ - (frontZ + 2.4)) < 1.35 ? firstRowZ + ci * 1.2 : colZ;
+            const colX = side * (W / 2 - 0.44);
+            const ledAccent = isArctic4dx
+              ? '#22d3ee'
+              : isThunder4dx
+                ? '#10b981'
+                : '#ef4444';
+            const bodyMat = isThunder4dx
+              ? materials.brushedAluminumMat
+              : isExoskeleton4dx
+                ? materials.carbonFiberMat
+                : materials.nosingMat;
+            return (
+              <group
+                key={`fourdx-column-${side}-${ci}`}
+                position={[colX, 0, safeZ]}
+                rotation={[0, -side * 0.48, 0]}
+              >
+                {/* Bolted Steel Floor Baseplate */}
+                <mesh position={[0, 0.025, 0]} material={materials.nosingMat} receiveShadow>
+                  <boxGeometry args={[0.38, 0.05, 0.38]} />
+                </mesh>
+                {/* Sculpted Vertical Metallic Air-Plenum Tower */}
+                <mesh position={[0, 0.86, 0]} material={bodyMat} castShadow receiveShadow>
+                  <boxGeometry args={[0.22, 1.62, 0.24]} />
+                </mesh>
+                {/* Top Protective Cap */}
+                <mesh position={[0, 1.69, 0]} material={materials.trimMetalMat}>
+                  <boxGeometry args={[0.26, 0.05, 0.28]} />
+                </mesh>
+                {/* Lower Intake Louver Grille */}
+                <mesh position={[0, 0.42, 0.124]} material={materials.speakerMat}>
+                  <planeGeometry args={[0.16, 0.44]} />
+                </mesh>
+                {/* Vertical Accent LED Telemetry Strip */}
+                <mesh position={[0, 0.92, 0.126]}>
+                  <boxGeometry args={[0.024, 1.18, 0.012]} />
+                  <meshStandardMaterial
+                    color="#0a0c12"
+                    emissive={ledAccent}
+                    emissiveIntensity={0.45 + lightFactor * 0.9}
+                    toneMapped={false}
+                  />
+                </mesh>
+                {/* Twin Angled High-Velocity Wind / Mist Nozzles Aimed Across Front Rows */}
+                {[0.96, 1.38].map((ny, ni) => (
+                  <group key={`col-noz-${ni}`} position={[0, ny, 0.14]} rotation={[0.18, 0, 0]}>
+                    <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.brushedAluminumMat} castShadow>
+                      <cylinderGeometry args={[0.052, 0.068, 0.18, 16]} />
+                    </mesh>
+                    <mesh position={[0, 0, 0.092]} material={materials.stageMat}>
+                      <circleGeometry args={[0.044, 16]} />
+                    </mesh>
+                    <mesh position={[0, 0, 0.088]}>
+                      <torusGeometry args={[0.052, 0.007, 8, 18]} />
+                      <meshStandardMaterial
+                        color="#0a0c12"
+                        emissive={ledAccent}
+                        emissiveIntensity={0.6 + lightFactor * 1.1}
+                        toneMapped={false}
+                      />
+                    </mesh>
+                  </group>
+                ))}
+                {/* Analog/Digital Pressure Gauge Dial */}
+                <mesh position={[0, 0.72, 0.125]}>
+                  <circleGeometry args={[0.036, 14]} />
+                  <meshStandardMaterial
+                    color="#0f172a"
+                    emissive={ledAccent}
+                    emissiveIntensity={0.35 + lightFactor * 0.4}
+                  />
+                </mesh>
+              </group>
+            );
+          }),
+        )}
+
       {/* Proscenium / Screen Front Wall */}
       <mesh position={[0, H / 2, frontZ]} receiveShadow material={materials.stageMat}>
         <boxGeometry args={[W, H, 0.4]} />
@@ -2249,6 +2759,148 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             })}
         </group>
       )}
+
+      {/* Acoustic Certification Wall Plaques Beside Auditorium Entrance Doors */}
+      {(() => {
+        const plaqueY = Math.min(winBot - 0.92, topTierY + 1.48);
+        const minClearOffset = portal.portalW * 0.5 + 0.44;
+        const candidateSides = portal.portalX >= 0 ? [-1, 1] : [1, -1];
+        const placedXs: number[] = [];
+        for (const s of candidateSides) {
+          const px = portal.portalX + s * minClearOffset;
+          if (Math.abs(px) > W / 2 - 0.55) continue;
+          // Avoid overlapping ICE vomitory hood (-1.55..1.55)
+          if (isIce && Math.abs(px) < 1.85) continue;
+          // Avoid overlapping Private Suite / Obsidian ScreenX rear corner bars
+          if (isPrivateVolcanic && px > W / 2 - 3.05) continue;
+          if (isPrivateChampagne && px < 1.35) continue;
+          if (isObsidianScreenX && px > W / 2 - 3.15) continue;
+          placedXs.push(px);
+          if (placedXs.length >= 2) break;
+        }
+        // Fallback for ICE vomitory hood: mount cleanly outside the 1.55m hood on left & right
+        if (placedXs.length === 0 && isIce) {
+          [-2.05, 2.05].forEach((px) => {
+            if (Math.abs(px) < W / 2 - 0.55) placedXs.push(px);
+          });
+        }
+        const plaqueFrameMat = getAcousticPlaqueDetails(config).isBrass
+          ? materials.champagneBrassMat
+          : materials.brushedTitaniumMat;
+        return placedXs.map((px, pi) => (
+          <group
+            key={`acoustic-plaque-${pi}`}
+            position={[px, plaqueY, backZ - 0.21]}
+            rotation={[0, Math.PI, 0]}
+          >
+            <mesh material={plaqueFrameMat} castShadow>
+              <boxGeometry args={[0.68, 0.44, 0.036]} />
+            </mesh>
+            <mesh position={[0, 0, 0.02]}>
+              <planeGeometry args={[0.63, 0.39]} />
+              <meshStandardMaterial
+                map={acousticPlaqueMap}
+                emissive="#ffffff"
+                emissiveMap={acousticPlaqueMap}
+                emissiveIntensity={0.22 + lightFactor * 0.48}
+                roughness={0.26}
+                metalness={0.55}
+              />
+            </mesh>
+          </group>
+        ));
+      })()}
+
+      {/* ICE & ScreenX Entrance Wall Enhancements: Glowing Vertical Light Fins + Temperature / SPL Meter Displays */}
+      {(isIce || isScreenX) && envSoundMeterMap && (() => {
+        const finAccent = lightingProfile.accentColor || '#22d3ee';
+        const meterY = Math.min(winBot - 0.88, topTierY + 1.48);
+        const finMidY = Math.min(winBot - 1.15, topTierY + 1.24);
+        const finH = Math.max(1.5, Math.min(2.38, (winBot - topTierY) - 0.36));
+
+        const finPairXs: number[] = [];
+        const meterXs: number[] = [];
+
+        if (isObsidianScreenX) {
+          // Single entrance door sits on left side (portalX = -W*0.3); place twin fins & telemetry cleanly on clear flanks
+          const leftFin = portal.portalX - (portal.portalW * 0.5 + 1.02);
+          const rightFin = portal.portalX + (portal.portalW * 0.5 + 0.96);
+          if (Math.abs(leftFin) <= W / 2 - 0.42) finPairXs.push(leftFin, leftFin - 0.16);
+          if (rightFin <= W / 2 - 3.15) finPairXs.push(rightFin, rightFin + 0.16);
+          const rightMeter = rightFin + 0.72;
+          if (rightMeter <= W / 2 - 3.25) meterXs.push(rightMeter);
+        } else {
+          // Centered entrance portal on ICE & Multiplex ScreenX: flank symmetrically outside door & plaques
+          const finBase = isIce ? 2.58 : 2.18;
+          [-1, 1].forEach((side) => {
+            const f1 = side * finBase;
+            const f2 = side * (finBase + 0.16);
+            if (Math.abs(f2) <= W / 2 - 0.42) {
+              finPairXs.push(f1, f2);
+            }
+            const mx = side * (finBase + 0.72);
+            if (Math.abs(mx) <= W / 2 - 0.58) {
+              meterXs.push(mx);
+            }
+          });
+        }
+
+        return (
+          <group>
+            {/* Precision Anodized Titanium Glowing Vertical Light Fins */}
+            {finPairXs.map((fx, fi) => (
+              <group key={`door-light-fin-${fi}`} position={[fx, finMidY, backZ - 0.22]}>
+                <mesh material={materials.brushedTitaniumMat} castShadow>
+                  <boxGeometry args={[0.042, finH, 0.13]} />
+                </mesh>
+                <mesh position={[0, 0, -0.068]}>
+                  <boxGeometry args={[0.018, finH - 0.12, 0.024]} />
+                  <meshStandardMaterial
+                    color={finAccent}
+                    emissive={finAccent}
+                    emissiveIntensity={0.28 + lightFactor * 1.35}
+                    toneMapped={false}
+                    roughness={0.2}
+                  />
+                </mesh>
+              </group>
+            ))}
+
+            {/* Sleek Wall-Mounted Hall Temperature & Reference Acoustic SPL Displays */}
+            {meterXs.map((mx, mi) => (
+              <group
+                key={`env-spl-meter-${mi}`}
+                position={[mx, meterY, backZ - 0.21]}
+                rotation={[0, Math.PI, 0]}
+              >
+                <mesh material={materials.brushedTitaniumMat} castShadow>
+                  <boxGeometry args={[0.72, 0.46, 0.048]} />
+                </mesh>
+                <mesh position={[0, 0, 0.026]}>
+                  <planeGeometry args={[0.66, 0.4]} />
+                  <meshStandardMaterial
+                    map={envSoundMeterMap}
+                    emissive="#ffffff"
+                    emissiveMap={envSoundMeterMap}
+                    emissiveIntensity={0.34 + lightFactor * 0.56}
+                    roughness={0.22}
+                    metalness={0.18}
+                  />
+                </mesh>
+                <mesh position={[0, -0.225, 0.026]}>
+                  <boxGeometry args={[0.42, 0.014, 0.014]} />
+                  <meshStandardMaterial
+                    color={finAccent}
+                    emissive={finAccent}
+                    emissiveIntensity={0.4 + lightFactor * 1.1}
+                    toneMapped={false}
+                  />
+                </mesh>
+              </group>
+            ))}
+          </group>
+        );
+      })()}
 
       {/* Walnut Reserve Salon: Sleek Backlit Smoked-Glass Wine & Espresso Bar Built Into Rear Corner */}
       {isPrivateVolcanic && (

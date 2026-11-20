@@ -139,6 +139,83 @@ const LED_METER_COLORS = [
   '#f15bb5',
 ] as const;
 
+function getSpeakerBadgeSpec(config: TheaterConfiguration): {
+  brand: string;
+  spec: string;
+  accent: string;
+} {
+  if (config.categoryId === 'dolby') {
+    return { brand: 'DOLBY ATMOS', spec: '64-CH LFE SUB', accent: '#38bdf8' };
+  }
+  if (config.categoryId === 'imax') {
+    return { brand: 'IMAX LASER', spec: 'PRECISION BASS', accent: '#60a5fa' };
+  }
+  if (config.categoryId === '4dx' || config.supports4dxEffects) {
+    return { brand: '4DX ACOUSTICS', spec: 'HIGH-IMPACT LFE', accent: '#ef4444' };
+  }
+  if (config.categoryId === 'screenx' || config.supportsScreenX) {
+    return { brand: 'SCREENX SOUND', spec: '270° ARRAY LFE', accent: '#38bdf8' };
+  }
+  if (config.categoryId === 'ice') {
+    return { brand: 'ICE IMMERSIVE', spec: 'DUAL-18" SUB', accent: '#22d3ee' };
+  }
+  if (config.categoryId === 'private_luxury') {
+    return { brand: 'AURELIA BESPOKE', spec: 'SALON REFERENCE', accent: '#d4af37' };
+  }
+  return {
+    brand: 'AURELIA AUDIO',
+    spec: 'DUAL-18" CINEMA',
+    accent: config.lightingProfile.accentColor || '#d4af37',
+  };
+}
+
+function createSpeakerBrandBadgeTexture(config: TheaterConfiguration): THREE.CanvasTexture {
+  const { brand, spec, accent } = getSpeakerBadgeSpec(config);
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 256, 64);
+  grad.addColorStop(0, '#14171f');
+  grad.addColorStop(0.5, '#242936');
+  grad.addColorStop(1, '#12151c');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 64);
+
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 3;
+  ctx.strokeRect(3, 3, 250, 58);
+
+  // Corner mounting rivets
+  ctx.fillStyle = '#94a3b8';
+  [
+    [12, 12],
+    [244, 12],
+    [12, 52],
+    [244, 52],
+  ].forEach(([rx, ry]) => {
+    ctx.beginPath();
+    ctx.arc(rx, ry, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 21px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(brand, 128, 25);
+
+  ctx.fillStyle = accent;
+  ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(spec, 128, 46);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 const BeachSpeakers: React.FC<CinemaSpeakersProps> = ({
   config,
   speakerGrilleMap,
@@ -554,6 +631,16 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     [W, isImaxLaser, isAuroraMinimal, isAmberHorizontal],
   );
 
+  const indoorFftRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const indoorSmoothedBassRef = useRef<Float32Array>(new Float32Array(3));
+  const brandBadgeMap = useMemo(() => createSpeakerBrandBadgeTexture(config), [config]);
+
+  useEffect(() => {
+    return () => {
+      brandBadgeMap.dispose();
+    };
+  }, [brandBadgeMap]);
+
   const geometries = useMemo(() => {
     // Surround enclosure + driver geometries
     const surroundCabinetGeo = buildTrapezoidCabinetGeometry(0.46, 0.34, 0.7, 0.32, 0.018);
@@ -619,6 +706,13 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     const cobaltAtmosDriverConeGeo = new THREE.CylinderGeometry(0.145, 0.045, 0.024, 24);
     const cobaltAtmosTweeterGeo = new THREE.CylinderGeometry(0.04, 0.048, 0.024, 18);
 
+    // Subwoofer embossed brand badge + bass LED indicator bar geometries
+    const brandBadgePlateGeo = new THREE.BoxGeometry(0.32, 0.08, 0.014);
+    const brandBadgeFaceGeo = new THREE.PlaneGeometry(0.3, 0.072);
+    const subLedHousingGeo = new THREE.BoxGeometry(0.072, 0.34, 0.016);
+    const subLedSegGeo = new THREE.BoxGeometry(0.046, 0.026, 0.014);
+    const stageLfeBodyGeo = new THREE.BoxGeometry(0.54, 0.24, 0.32);
+
     return {
       surroundCabinetGeo,
       surroundBaffleGeo,
@@ -665,6 +759,11 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       cobaltAtmosDriverRimGeo,
       cobaltAtmosDriverConeGeo,
       cobaltAtmosTweeterGeo,
+      brandBadgePlateGeo,
+      brandBadgeFaceGeo,
+      subLedHousingGeo,
+      subLedSegGeo,
+      stageLfeBodyGeo,
     };
   }, []);
 
@@ -785,6 +884,39 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       screenBounceUniforms,
     );
 
+    const brandBadgeFaceMat = new THREE.MeshStandardMaterial({
+      map: brandBadgeMap,
+      emissive: '#ffffff',
+      emissiveMap: brandBadgeMap,
+      emissiveIntensity: 0.38,
+      roughness: 0.26,
+      metalness: 0.62,
+    });
+
+    const accentHex = getSpeakerBadgeSpec(config).accent;
+    const subLedColors = [
+      accentHex,
+      accentHex,
+      accentHex,
+      accentHex,
+      '#38bdf8',
+      '#38bdf8',
+      '#f59e0b',
+      '#ef4444',
+    ];
+    const subLedMats: THREE.MeshStandardMaterial[][] = [0, 1, 2].map(() =>
+      subLedColors.map(
+        (hex) =>
+          new THREE.MeshStandardMaterial({
+            color: '#11161f',
+            emissive: hex,
+            emissiveIntensity: 0.14,
+            toneMapped: false,
+            roughness: 0.22,
+          }),
+      ),
+    );
+
     return {
       cabinetMat,
       baffleMat,
@@ -798,14 +930,73 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       cobaltAtmosBezelMat,
       cobaltAtmosBronzeTrimMat,
       cobaltAtmosGrilleMat,
+      brandBadgeFaceMat,
+      subLedMats,
     };
-  }, [speakerGrilleMap, isWarmBrass, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isDolbyMediumLuxury, lightingProfile.accentColor, screenBounceUniforms, lightFactor]);
+  }, [
+    speakerGrilleMap,
+    brandBadgeMap,
+    config,
+    isWarmBrass,
+    isModernMultiplex,
+    isVolcanicCopper2d,
+    isMandap2d,
+    isParametricObsidian,
+    isBiophilicMoss,
+    isImaxLaser,
+    isDolbyMediumLuxury,
+    lightingProfile.accentColor,
+    screenBounceUniforms,
+    lightFactor,
+  ]);
 
   useEffect(() => {
     return () => {
-      Object.values(materials).forEach((m) => m.dispose());
+      materials.subLedMats.forEach((row) => row.forEach((m) => m.dispose()));
+      Object.entries(materials).forEach(([k, v]) => {
+        if (k !== 'subLedMats' && v instanceof THREE.Material) {
+          v.dispose();
+        }
+      });
     };
   }, [materials]);
+
+  // Animate subwoofer bass LED indicator bars via cinemaAudioEngine FFT
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.1);
+    const analyser = cinemaAudioEngine.getAnalyserNode();
+    let bassEnergy = 0;
+
+    if (analyser && cinemaAudioEngine.isRunning) {
+      if (!indoorFftRef.current || indoorFftRef.current.length !== analyser.frequencyBinCount) {
+        indoorFftRef.current = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+      }
+      analyser.getByteFrequencyData(indoorFftRef.current);
+      const binCount = Math.min(24, indoorFftRef.current.length);
+      let sum = 0;
+      for (let i = 0; i < binCount; i++) {
+        sum += indoorFftRef.current[i];
+      }
+      bassEnergy = binCount > 0 ? sum / (binCount * 255) : 0;
+    }
+
+    const smoothed = indoorSmoothedBassRef.current;
+    for (let s = 0; s < 3; s++) {
+      const targetLevel =
+        bassEnergy > 0.015
+          ? THREE.MathUtils.clamp(bassEnergy * (1.35 + (s % 2) * 0.08), 0, 1)
+          : 0;
+      smoothed[s] = THREE.MathUtils.damp(smoothed[s], targetLevel, targetLevel > smoothed[s] ? 18 : 7, dt);
+      const activeBars = smoothed[s] * 8;
+
+      for (let seg = 0; seg < 8; seg++) {
+        const mat = materials.subLedMats[s]?.[seg];
+        if (!mat) continue;
+        const barFill = THREE.MathUtils.clamp(activeBars - seg, 0, 1);
+        mat.emissiveIntensity = barFill > 0.08 ? 0.35 + barFill * 2.1 : 0.08 + lightFactor * 0.12;
+      }
+    }
+  });
 
   // Compute safe side-wall surround bay coordinates (concealed in ICE side wall modules, ScreenX panoramic walls & Walnut/Champagne private salons)
   const sideSpeakerPositions = useMemo(() => {
@@ -1744,6 +1935,29 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
               geometry={geometries.subSlotPortGeo}
               material={materials.portVoidMat}
             />
+
+            {/* Embossed Metallic Speaker Brand Badge Plate */}
+            <group position={[0, 0.59, 0.368]}>
+              <mesh geometry={geometries.brandBadgePlateGeo} material={materials.metalTrimMat} />
+              <mesh
+                position={[0, 0, 0.008]}
+                geometry={geometries.brandBadgeFaceGeo}
+                material={materials.brandBadgeFaceMat}
+              />
+            </group>
+
+            {/* 8-Segment FFT Audio-Reactive Bass Indicator LED Meter */}
+            <group position={[0.31, -0.02, 0.368]}>
+              <mesh geometry={geometries.subLedHousingGeo} material={materials.darkSteelMat} />
+              {LED_METER_COLORS.map((_, segIdx) => (
+                <mesh
+                  key={`ind-sub-led-${i}-${segIdx}`}
+                  position={[0, -0.132 + segIdx * 0.037, 0.009]}
+                  geometry={geometries.subLedSegGeo}
+                  material={materials.subLedMats[i % 3][segIdx]}
+                />
+              ))}
+            </group>
           </group>
 
           {/* Steel Rigging Side Struts Connecting Sub to Stacked Line Array */}
@@ -1780,6 +1994,64 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           ))}
         </group>
       ))}
+
+      {/* Visible Front-Stage LFE Reference Accent Modules for Behind-Screen & Floating-Wall Auditoriums */}
+      {(frontTowerPositions.length === 0 ||
+        frontTowerPositions[0].z < screenPosition[2] - 0.1) &&
+        [-1, 1].map((side, sIdx) => {
+          const stageEdgeZ =
+            isDolbyMediumLuxury || isCobaltVeilDolby || isScreenX || isImaxLaser
+              ? frontZ + 0.56
+              : isPrivateVolcanic || isPrivateChampagne
+                ? screenPosition[2] + 1.22
+                : isIce
+                  ? screenPosition[2] + 1.62
+                  : isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx
+                    ? screenPosition[2] + 2.02
+                    : screenPosition[2] + 1.96;
+          const xPos = side * Math.min(W * 0.37, screenWidth * 0.41);
+          return (
+            <group
+              key={`stage-lfe-badge-${side}`}
+              position={[xPos, 0.12, stageEdgeZ]}
+              rotation={[0, -side * 0.12, 0]}
+              scale={Math.min(1.05, speakerScale)}
+            >
+              <mesh geometry={geometries.stageLfeBodyGeo} material={materials.cabinetMat} castShadow receiveShadow />
+              <mesh position={[0, 0, 0.162]} material={materials.baffleMat}>
+                <planeGeometry args={[0.48, 0.18]} />
+              </mesh>
+              {/* Embossed Metallic Brand Badge */}
+              <group position={[-0.06, 0.04, 0.168]}>
+                <mesh geometry={geometries.brandBadgePlateGeo} material={materials.metalTrimMat} />
+                <mesh
+                  position={[0, 0, 0.008]}
+                  geometry={geometries.brandBadgeFaceGeo}
+                  material={materials.brandBadgeFaceMat}
+                />
+              </group>
+              {/* Compact Horizontal 8-Segment Bass Reactive LED Strip */}
+              <group position={[0.17, -0.02, 0.168]}>
+                <mesh material={materials.darkSteelMat}>
+                  <boxGeometry args={[0.048, 0.18, 0.012]} />
+                </mesh>
+                {LED_METER_COLORS.map((_, segIdx) => (
+                  <mesh
+                    key={`lfe-led-${sIdx}-${segIdx}`}
+                    position={[0, -0.068 + segIdx * 0.0195, 0.008]}
+                    material={materials.subLedMats[sIdx][segIdx]}
+                  >
+                    <boxGeometry args={[0.032, 0.013, 0.01]} />
+                  </mesh>
+                ))}
+              </group>
+              {/* Acoustic Port Trim */}
+              <mesh position={[-0.06, -0.055, 0.166]} material={materials.portVoidMat}>
+                <boxGeometry args={[0.32, 0.032, 0.01]} />
+              </mesh>
+            </group>
+          );
+        })}
     </group>
   );
 };

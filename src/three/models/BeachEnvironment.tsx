@@ -45,6 +45,14 @@ export const BEACH_CAMPFIRE_POS: [number, number, number] = [
   0.6,
 ];
 
+export const BEACH_TIKI_SHACK_POS = { x: 5.6, z: 9.4, rotY: -0.38 } as const;
+export const BEACH_SURF_RACK_POS = { x: 12.8, z: -10.8, rotY: -0.42 } as const;
+export const CAMPFIRE_BENCH_SPECS = [
+  { ang: 0.2, r: 2.05 },
+  { ang: 1.42, r: 2.05 },
+  { ang: -1.02, r: 2.05 },
+] as const;
+
 interface BeachEnvironmentProps {
   config: TheaterConfiguration;
   lightFactor: number;
@@ -132,18 +140,14 @@ const BOLLARD_POSITIONS: [number, number][] = [
   [1.08, 7.0],
 ];
 
+// Slate stepping stones branch outward from the central wooden boardwalk into left & right sunken lounge pits
 const STEPPING_STONES: { x: number; z: number; rotY: number; w: number; d: number }[] = [
-  { x: -0.18, z: -8.4, rotY: 0.14, w: 0.72, d: 0.56 },
-  { x: 0.2, z: -6.9, rotY: -0.12, w: 0.76, d: 0.54 },
-  { x: -0.16, z: -5.4, rotY: 0.08, w: 0.74, d: 0.58 },
-  { x: 0.18, z: -3.9, rotY: -0.15, w: 0.72, d: 0.55 },
-  { x: -0.14, z: -2.4, rotY: 0.11, w: 0.78, d: 0.56 },
-  { x: 0.16, z: -0.9, rotY: -0.09, w: 0.74, d: 0.58 },
-  { x: -0.18, z: 0.6, rotY: 0.16, w: 0.76, d: 0.55 },
-  { x: 0.18, z: 2.1, rotY: -0.13, w: 0.74, d: 0.57 },
-  { x: -0.15, z: 3.6, rotY: 0.07, w: 0.76, d: 0.54 },
-  { x: 0.15, z: 5.1, rotY: -0.1, w: 0.72, d: 0.56 },
-  { x: -0.12, z: 6.6, rotY: 0.12, w: 0.78, d: 0.58 },
+  { x: -1.12, z: -2.3, rotY: 0.14, w: 0.68, d: 0.52 },
+  { x: -1.68, z: -2.18, rotY: -0.18, w: 0.72, d: 0.54 },
+  { x: -2.24, z: -2.32, rotY: 0.08, w: 0.74, d: 0.56 },
+  { x: 1.12, z: -2.3, rotY: -0.14, w: 0.68, d: 0.52 },
+  { x: 1.68, z: -2.18, rotY: 0.18, w: 0.72, d: 0.54 },
+  { x: 2.24, z: -2.32, rotY: -0.08, w: 0.74, d: 0.56 },
 ];
 
 function createSandGeometry(variant: BeachTerrainVariant): THREE.BufferGeometry {
@@ -383,6 +387,348 @@ function buildCurvedBackingArc(width: number, height: number, arcAngle: number):
   return g;
 }
 
+interface BoardwalkPlankInstance {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  pitchX: number;
+  rotY: number;
+  tint: number;
+}
+
+interface BoardwalkStringer {
+  x: number;
+  y: number;
+  z: number;
+  len: number;
+  pitchX: number;
+}
+
+function buildWoodenBoardwalkLayout(variant: BeachTerrainVariant): {
+  planks: BoardwalkPlankInstance[];
+  stringers: BoardwalkStringer[];
+  posts: { x: number; y: number; z: number }[];
+} {
+  const planks: BoardwalkPlankInstance[] = [];
+  const stringers: BoardwalkStringer[] = [];
+  const posts: { x: number; y: number; z: number }[] = [];
+
+  const sampleBoardwalk = (x: number, z: number) => {
+    const h0 = beachHeightAt(x, z, variant);
+    const hF = beachHeightAt(x, z - 0.14, variant);
+    const hB = beachHeightAt(x, z + 0.14, variant);
+    const pitchX = Math.atan2(hF - hB, 0.28);
+    return { y: h0 + 0.056, pitchX };
+  };
+
+  // 1. Rear entrance approach boardwalk (z = 12.25 down to 10.15)
+  for (let z = 12.25; z >= 10.15; z -= 0.26) {
+    const { y, pitchX } = sampleBoardwalk(0, z);
+    planks.push({
+      x: 0,
+      y,
+      z,
+      w: 1.72,
+      pitchX,
+      rotY: Math.sin(z * 3.7) * 0.012,
+      tint: 0.9 + ((Math.abs(Math.round(z * 11)) % 5) - 2) * 0.045,
+    });
+  }
+
+  // 2. Split perimeter deck wrapping cleanly around the rear center projector (z = 9.95 down to 7.65)
+  for (let z = 9.95; z >= 7.65; z -= 0.26) {
+    [-1.24, 1.24].forEach((sideX) => {
+      const { y, pitchX } = sampleBoardwalk(sideX, z);
+      planks.push({
+        x: sideX,
+        y,
+        z,
+        w: 0.88,
+        pitchX,
+        rotY: Math.sin(z * 4.3 + sideX) * 0.014,
+        tint: 0.92 + ((Math.abs(Math.round(z * 9 + sideX)) % 4) - 1.5) * 0.04,
+      });
+    });
+  }
+
+  // Cross-bridges connecting split wings at front/back of projector island
+  [10.0, 7.55].forEach((bz) => {
+    const { y, pitchX } = sampleBoardwalk(0, bz);
+    planks.push({
+      x: 0,
+      y,
+      z: bz,
+      w: 3.34,
+      pitchX,
+      rotY: 0,
+      tint: 0.94,
+    });
+  });
+
+  // 3. Main central seating aisle boardwalk down toward the screen (z = 7.3 down to -8.4)
+  for (let z = 7.3; z >= -8.4; z -= 0.26) {
+    const { y, pitchX } = sampleBoardwalk(0, z);
+    planks.push({
+      x: 0,
+      y,
+      z,
+      w: 1.38,
+      pitchX,
+      rotY: Math.sin(z * 5.1) * 0.015,
+      tint: 0.9 + ((Math.abs(Math.round(z * 13)) % 5) - 2) * 0.048,
+    });
+  }
+
+  // Longitudinal timber stringers beneath planks (segmented every ~2.2m to hug dune profile)
+  const addStringerRun = (xs: number[], zStart: number, zEnd: number) => {
+    const segLen = 2.2;
+    const total = Math.abs(zStart - zEnd);
+    const steps = Math.max(1, Math.round(total / segLen));
+    for (let i = 0; i < steps; i++) {
+      const zA = THREE.MathUtils.lerp(zStart, zEnd, i / steps);
+      const zB = THREE.MathUtils.lerp(zStart, zEnd, (i + 1) / steps);
+      const zM = (zA + zB) * 0.5;
+      const len = Math.hypot(zA - zB, 0) + 0.08;
+      xs.forEach((sx) => {
+        const yA = beachHeightAt(sx, zA, variant) + 0.02;
+        const yB = beachHeightAt(sx, zB, variant) + 0.02;
+        const pitchX = Math.atan2(yB - yA, Math.abs(zA - zB));
+        stringers.push({ x: sx, y: (yA + yB) * 0.5, z: zM, len, pitchX });
+      });
+    }
+  };
+  addStringerRun([-0.64, 0.64], 12.3, 10.05);
+  addStringerRun([-1.52, -0.96, 0.96, 1.52], 10.0, 7.55);
+  addStringerRun([-0.54, 0.54], 7.45, -8.5);
+
+  // Low timber post bollards along Sunset boardwalk (Bioluminescent already renders frosted-glass bollards)
+  if (variant === 'sunset') {
+    [-7.8, -4.6, -1.4, 1.8, 5.0, 11.4].forEach((pz) => {
+      const pxOff = pz > 10.2 ? 0.94 : 0.78;
+      [-pxOff, pxOff].forEach((px) => {
+        posts.push({ x: px, y: beachHeightAt(px, pz, variant), z: pz });
+      });
+    });
+  }
+
+  return { planks, stringers, posts };
+}
+
+function createBoardwalkWoodTexture(isBio: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = isBio ? '#2b282b' : '#73533a';
+  ctx.fillRect(0, 0, 512, 128);
+
+  for (let i = 0; i < 64; i++) {
+    const y = (i / 64) * 128;
+    ctx.strokeStyle = i % 2 === 0 ? 'rgba(0,0,0,0.16)' : 'rgba(255,235,205,0.09)';
+    ctx.lineWidth = 1.5 + (i % 3);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.bezierCurveTo(160, y + ((i % 5) - 2) * 3, 340, y - ((i % 4) - 1.5) * 3, 512, y);
+    ctx.stroke();
+  }
+  // Subtle wood knots
+  ctx.fillStyle = isBio ? 'rgba(10,12,18,0.28)' : 'rgba(42,24,14,0.24)';
+  [120, 385].forEach((kx, ki) => {
+    ctx.beginPath();
+    ctx.ellipse(kx, 42 + ki * 38, 18, 7, 0.08, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createTikiMenuTexture(isBio: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = isBio ? '#081822' : '#1b130d';
+  ctx.fillRect(0, 0, 512, 256);
+
+  const accent = isBio ? '#00f5d4' : '#f59e0b';
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(12, 12, 488, 232);
+
+  ctx.fillStyle = accent;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 42px Georgia, serif';
+  ctx.fillText(isBio ? 'LAGOON TIKI BAR' : 'SUNSET TIKI BAR', 256, 76);
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = '600 22px sans-serif';
+  ctx.fillText('CHILLED DRINKS · TROPICAL MOCKTAILS', 256, 134);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '600 20px sans-serif';
+  ctx.fillText('WARM BUTTER POPCORN · ICE CHEST', 256, 184);
+  ctx.textAlign = 'left';
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createSurfboardTextures(isBio: boolean): THREE.CanvasTexture[] {
+  const palettes = isBio
+    ? [
+        ['#0a192f', '#00f5d4', '#00bbf9'],
+        ['#1e1b4b', '#f15bb5', '#38bdf8'],
+        ['#0f172a', '#22d3ee', '#a855f7'],
+      ]
+    : [
+        ['#fdf8ef', '#ea580c', '#0d9488'],
+        ['#fef3c7', '#0284c7', '#f59e0b'],
+        ['#fff7ed', '#e11d48', '#14b8a6'],
+      ];
+
+  return palettes.map(([base, stripeA, stripeB]) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, 256, 512);
+
+    // Dual racing stripes & center timber stringer
+    ctx.fillStyle = stripeA;
+    ctx.fillRect(0, 140, 256, 48);
+    ctx.fillStyle = stripeB;
+    ctx.fillRect(0, 200, 256, 26);
+    ctx.fillStyle = stripeA;
+    ctx.fillRect(0, 340, 256, 18);
+    ctx.fillStyle = '#5c3c24';
+    ctx.fillRect(123, 0, 10, 512);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    tex.needsUpdate = true;
+    return tex;
+  });
+}
+
+function buildSurfboardGeometry(): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.96);
+  shape.bezierCurveTo(0.24, 0.68, 0.28, 0.14, 0.22, -0.54);
+  shape.bezierCurveTo(0.18, -0.82, 0.1, -0.94, 0, -0.96);
+  shape.bezierCurveTo(-0.1, -0.94, -0.18, -0.82, -0.22, -0.54);
+  shape.bezierCurveTo(-0.28, 0.14, -0.24, 0.68, 0, 0.96);
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.044,
+    bevelEnabled: true,
+    bevelThickness: 0.014,
+    bevelSize: 0.016,
+    bevelSegments: 2,
+    curveSegments: 20,
+  });
+  geo.center();
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildRowboatGeometries(variant: BeachTerrainVariant): {
+  outerHullGeo: THREE.BufferGeometry;
+  gunwaleGeo: THREE.TubeGeometry;
+  ropeGeo: THREE.TubeGeometry;
+} {
+  // Parametric lofted open timber skiff hull (length along Z: -1.55 bow .. +1.55 stern)
+  const rings = 18;
+  const arcPts = 14;
+  const pos: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+
+  for (let iz = 0; iz <= rings; iz++) {
+    const v = iz / rings; // 0 = bow (-Z), 1 = stern (+Z)
+    const z = THREE.MathUtils.lerp(-1.55, 1.5, v);
+    const beamFactor = Math.sin(Math.pow(v, 0.62) * Math.PI * 0.88);
+    const halfBeam = 0.62 * Math.max(0.05, beamFactor);
+    const rocker = Math.pow(Math.abs(v - 0.52) * 2, 1.9) * 0.11;
+    const depth = 0.36 + (1 - v) * 0.05;
+
+    for (let ia = 0; ia <= arcPts; ia++) {
+      const u = ia / arcPts; // 0 = port gunwale .. 0.5 = keel .. 1 = starboard gunwale
+      const theta = (u - 0.5) * Math.PI;
+      const x = Math.sin(theta) * halfBeam;
+      const y = (1 - Math.cos(theta)) * depth + rocker - 0.12;
+      pos.push(x, y, z);
+      uvs.push(u * 2, v * 3);
+    }
+  }
+
+  const stride = arcPts + 1;
+  for (let iz = 0; iz < rings; iz++) {
+    for (let ia = 0; ia < arcPts; ia++) {
+      const a = iz * stride + ia;
+      const b = a + 1;
+      const c = a + stride;
+      const d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+
+  const outerHullGeo = new THREE.BufferGeometry();
+  outerHullGeo.setIndex(idx);
+  outerHullGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  outerHullGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  outerHullGeo.computeVertexNormals();
+
+  // Closed perimeter gunwale rail following boat lip
+  const rimPts: THREE.Vector3[] = [];
+  for (let iz = 0; iz <= rings; iz++) {
+    const v = iz / rings;
+    const z = THREE.MathUtils.lerp(-1.55, 1.5, v);
+    const beamFactor = Math.sin(Math.pow(v, 0.62) * Math.PI * 0.88);
+    const halfBeam = 0.62 * Math.max(0.04, beamFactor);
+    const rocker = Math.pow(Math.abs(v - 0.52) * 2, 1.9) * 0.11;
+    const depth = 0.36 + (1 - v) * 0.05;
+    rimPts.push(new THREE.Vector3(halfBeam, depth + rocker - 0.12, z));
+  }
+  for (let iz = rings; iz >= 0; iz--) {
+    const v = iz / rings;
+    const z = THREE.MathUtils.lerp(-1.55, 1.5, v);
+    const beamFactor = Math.sin(Math.pow(v, 0.62) * Math.PI * 0.88);
+    const halfBeam = 0.62 * Math.max(0.04, beamFactor);
+    const rocker = Math.pow(Math.abs(v - 0.52) * 2, 1.9) * 0.11;
+    const depth = 0.36 + (1 - v) * 0.05;
+    rimPts.push(new THREE.Vector3(-halfBeam, depth + rocker - 0.12, z));
+  }
+  const gunwaleCurve = new THREE.CatmullRomCurve3(rimPts, true);
+  const gunwaleGeo = new THREE.TubeGeometry(gunwaleCurve, 54, 0.036, 8, true);
+
+  // Slack catenary bow mooring rope connecting shoreline timber piling (-0.78, pilingTop, 1.72)
+  // directly to the boat's shore-facing bow eye (-0.52, bowY, 1.38)
+  const pilingTopY = beachHeightAt(11.82, -12.38, variant) + 0.44;
+  const bowEyeY = BEACH_WATER_Y + 0.38;
+  const midY = Math.min(pilingTopY, bowEyeY) - 0.18;
+  const ropeCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.78, pilingTopY, 1.72),
+    new THREE.Vector3(-0.7, midY, 1.6),
+    new THREE.Vector3(-0.6, midY - 0.03, 1.48),
+    new THREE.Vector3(-0.52, bowEyeY, 1.38),
+  ]);
+  const ropeGeo = new THREE.TubeGeometry(ropeCurve, 20, 0.018, 6, false);
+
+  return { outerHullGeo, gunwaleGeo, ropeGeo };
+}
+
 export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
   config,
   lightFactor,
@@ -409,6 +755,9 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
   const bioLensLeftMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const bioLensRightMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const bioShoreGlowMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const rowboatGroupRef = useRef<THREE.Group>(null);
+  const tikiLanternLightRef = useRef<THREE.PointLight>(null);
+  const boardwalkPlanksRef = useRef<THREE.InstancedMesh>(null);
 
   // 1. Sky / Night Dome + Animated Water
   const {
@@ -664,6 +1013,18 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
   const shoreFoamGeo = useMemo(() => createShoreFoamGeometry(), []);
   const palmFrondGeo = useMemo(() => createPalmFrondGeometry(), []);
   const glowSpriteTex = useMemo(() => createGlowParticleTexture(), []);
+  const boardwalkWoodTex = useMemo(
+    () => createBoardwalkWoodTexture(isBioluminescent),
+    [isBioluminescent],
+  );
+  const tikiMenuTex = useMemo(() => createTikiMenuTexture(isBioluminescent), [isBioluminescent]);
+  const surfboardTextures = useMemo(
+    () => createSurfboardTextures(isBioluminescent),
+    [isBioluminescent],
+  );
+  const boardwalkLayout = useMemo(() => buildWoodenBoardwalkLayout(variant), [variant]);
+  const rowboatGeos = useMemo(() => buildRowboatGeometries(variant), [variant]);
+  const surfboardGeo = useMemo(() => buildSurfboardGeometry(), []);
 
   const pitSlateGeos = useMemo(
     () => (isBioluminescent ? buildPitSlateStructures() : null),
@@ -689,6 +1050,13 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
       shoreFoamGeo.dispose();
       palmFrondGeo.dispose();
       glowSpriteTex.dispose();
+      boardwalkWoodTex.dispose();
+      tikiMenuTex.dispose();
+      surfboardTextures.forEach((t) => t.dispose());
+      rowboatGeos.outerHullGeo.dispose();
+      rowboatGeos.gunwaleGeo.dispose();
+      rowboatGeos.ropeGeo.dispose();
+      surfboardGeo.dispose();
       pitSlateGeos?.wallGeo.dispose();
       pitSlateGeos?.copingGeo.dispose();
       pitSlateGeos?.underGlowGeo.dispose();
@@ -702,6 +1070,11 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
     shoreFoamGeo,
     palmFrondGeo,
     glowSpriteTex,
+    boardwalkWoodTex,
+    tikiMenuTex,
+    surfboardTextures,
+    rowboatGeos,
+    surfboardGeo,
     pitSlateGeos,
     curvedBackArcGeo,
     palmWrapGeos,
@@ -930,6 +1303,108 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
       roughness: 0.25,
     });
 
+    const boardwalkPlankMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: boardwalkWoodTex,
+        color: isBioluminescent ? '#7f8c9d' : '#d2b494',
+        roughness: 0.84,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+
+    const thatchMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isBioluminescent ? '#5b5343' : '#9c7c48',
+        roughness: 0.94,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+
+    const barCounterTopMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isBioluminescent ? '#332b26' : '#85583a',
+        roughness: 0.42,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+
+    const tikiLanternMat = new THREE.MeshStandardMaterial({
+      color: isBioluminescent ? '#67e8f9' : '#fed7aa',
+      emissive: isBioluminescent ? '#00f5d4' : '#ff9933',
+      emissiveIntensity: 2.1,
+      toneMapped: false,
+      roughness: 0.24,
+    });
+
+    const coolerBodyMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isBioluminescent ? '#1e3a4c' : '#1b5a7a',
+        roughness: 0.46,
+        metalness: 0.14,
+      }),
+      screenBounceUniforms,
+    );
+
+    const iceCrystalMat = new THREE.MeshStandardMaterial({
+      color: '#d8f3ff',
+      emissive: isBioluminescent ? '#0ea5e9' : '#38bdf8',
+      emissiveIntensity: 0.22,
+      roughness: 0.16,
+      metalness: 0.1,
+    });
+
+    const boatHullMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isBioluminescent ? '#2c3648' : '#6c4931',
+        roughness: 0.72,
+        metalness: 0.06,
+        side: THREE.DoubleSide,
+      }),
+      screenBounceUniforms,
+    );
+
+    const wetRockMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isBioluminescent ? '#1e2633' : '#3d3f44',
+        roughness: 0.34,
+        metalness: 0.12,
+      }),
+      screenBounceUniforms,
+    );
+
+    const tidePoolWaterMat = new THREE.MeshStandardMaterial({
+      color: isBioluminescent ? '#053b48' : '#164e63',
+      emissive: isBioluminescent ? '#00f5d4' : '#38bdf8',
+      emissiveIntensity: isBioluminescent ? 1.85 : 0.42,
+      roughness: 0.08,
+      metalness: 0.25,
+      transparent: true,
+      opacity: 0.88,
+      toneMapped: false,
+    });
+
+    const boardwalkCapGlowMat = new THREE.MeshStandardMaterial({
+      color: '#2a1d10',
+      emissive: '#ffaa44',
+      emissiveIntensity: 1.9,
+      toneMapped: false,
+      roughness: 0.28,
+    });
+
+    const surfboardMats = surfboardTextures.map((tex) =>
+      applyScreenBounceToMaterial(
+        new THREE.MeshStandardMaterial({
+          map: tex,
+          roughness: 0.16,
+          metalness: 0.08,
+        }),
+        screenBounceUniforms,
+      ),
+    );
+
     return {
       sandMat,
       timberMat,
@@ -948,12 +1423,36 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
       bollardGlassMat,
       pitEdgeGlowMat,
       screenTrimCyanMat,
+      boardwalkPlankMat,
+      thatchMat,
+      barCounterTopMat,
+      tikiLanternMat,
+      coolerBodyMat,
+      iceCrystalMat,
+      boatHullMat,
+      wetRockMat,
+      tidePoolWaterMat,
+      boardwalkCapGlowMat,
+      surfboardMats,
     };
-  }, [sandTextures, slateTextures, screenBounceUniforms, isBioluminescent]);
+  }, [
+    sandTextures,
+    slateTextures,
+    boardwalkWoodTex,
+    surfboardTextures,
+    screenBounceUniforms,
+    isBioluminescent,
+  ]);
 
   useEffect(() => {
     return () => {
-      Object.values(materials).forEach((m) => m?.dispose());
+      Object.values(materials).forEach((m) => {
+        if (Array.isArray(m)) {
+          m.forEach((item) => item?.dispose());
+        } else {
+          m?.dispose();
+        }
+      });
     };
   }, [materials]);
 
@@ -1042,72 +1541,92 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
       materials.bollardGlassMat.emissiveIntensity = lightFactor * 2.7;
       materials.pitEdgeGlowMat.emissiveIntensity = lightFactor * 1.75;
       materials.screenTrimCyanMat.emissiveIntensity = 0.04 + lightFactor * 1.45;
-      return;
+      materials.tikiLanternMat.emissiveIntensity = 0.2 + lightFactor * 2.1;
+      if (tikiLanternLightRef.current) {
+        tikiLanternLightRef.current.intensity = 0.25 + lightFactor * 1.65;
+      }
+      materials.tidePoolWaterMat.emissiveIntensity =
+        (1.35 + lightFactor * 0.9) * (0.82 + 0.18 * Math.sin(t * 1.8));
+    } else {
+      // Sunset Cove: smoothly fade OFF all decorative environment lighting when show starts (lightFactor -> 0)
+      materials.fairyBulbMat.emissiveIntensity = lightFactor * 2.3;
+      materials.charredLogMat.emissiveIntensity = 0.04 + lightFactor * 0.25;
+      materials.boardwalkCapGlowMat.emissiveIntensity = 0.12 + lightFactor * 1.8;
+      materials.tikiLanternMat.emissiveIntensity = 0.22 + lightFactor * 2.15;
+      if (tikiLanternLightRef.current) {
+        tikiLanternLightRef.current.intensity = 0.2 + lightFactor * 1.8;
+      }
+      materials.tidePoolWaterMat.emissiveIntensity =
+        (0.28 + lightFactor * 0.35) * (0.85 + 0.15 * Math.sin(t * 1.5));
+
+      fairyPointLightRefs.current.forEach((pl) => {
+        if (pl) pl.intensity = lightFactor * 1.55;
+      });
+
+      TORCH_SPECS.forEach((spec, idx) => {
+        const flicker =
+          0.86 + Math.sin(t * 9.5 + spec.phase) * 0.09 + Math.cos(t * 15.2 + spec.phase) * 0.06;
+        const flame = torchFlameRefs.current[idx];
+        if (flame) {
+          flame.visible = lightFactor > 0.015;
+          flame.scale.set(0.95 + (flicker - 1) * 0.4, flicker * Math.max(0.05, lightFactor), 0.95 + (flicker - 1) * 0.4);
+        }
+        const flameMat = torchFlameMatRefs.current[idx];
+        if (flameMat) {
+          flameMat.emissiveIntensity = lightFactor * 2.6 * flicker;
+        }
+        const light = torchLightRefs.current[idx];
+        if (light) {
+          light.intensity = lightFactor * 2.0 * flicker;
+        }
+      });
+
+      // Campfire flames, embers & warm PointLight fade cleanly OFF during movie playback
+      const fireFlicker =
+        0.88 + Math.sin(t * 11.4) * 0.08 + Math.sin(t * 19.7 + 1.1) * 0.05;
+      if (campfireLightRef.current) {
+        campfireLightRef.current.intensity = lightFactor * 3.0 * fireFlicker;
+      }
+      campfireFlameRefs.current.forEach((mesh, idx) => {
+        if (!mesh) return;
+        mesh.visible = lightFactor > 0.015;
+        const phase = idx * 1.4;
+        const f = 0.85 + Math.sin(t * 12.2 + phase) * 0.16;
+        mesh.scale.set(0.95, f * Math.max(0.05, lightFactor), 0.95);
+      });
+      campfireFlameMatRefs.current.forEach((m) => {
+        if (m) m.emissiveIntensity = lightFactor * 2.8 * fireFlicker;
+      });
+      if (emberMatRef.current) {
+        emberMatRef.current.opacity = lightFactor * 0.9;
+      }
+
+      const { count, positions, velocities, phases, posAttr } = emberParticleState;
+      for (let i = 0; i < count; i++) {
+        const ix = i * 3;
+        const iy = ix + 1;
+        const iz = ix + 2;
+        positions[iy] += velocities[iy] * dt;
+        positions[ix] += (velocities[ix] + Math.sin(t * 2.4 + phases[i]) * 0.14) * dt;
+        positions[iz] += (velocities[iz] + Math.cos(t * 2.1 + phases[i]) * 0.14) * dt;
+
+        if (positions[iy] > 1.75) {
+          const ang = (i * 2.39996 + t * 0.7) % (Math.PI * 2);
+          const rad = ((i % 7) / 7) * 0.24;
+          positions[ix] = Math.cos(ang) * rad;
+          positions[iy] = 0.06;
+          positions[iz] = Math.sin(ang) * rad;
+        }
+      }
+      posAttr.needsUpdate = true;
     }
 
-    // Sunset Cove: smoothly fade OFF all decorative environment lighting when show starts (lightFactor -> 0)
-    materials.fairyBulbMat.emissiveIntensity = lightFactor * 2.3;
-    materials.charredLogMat.emissiveIntensity = 0.04 + lightFactor * 0.25;
-    fairyPointLightRefs.current.forEach((pl) => {
-      if (pl) pl.intensity = lightFactor * 1.55;
-    });
-
-    TORCH_SPECS.forEach((spec, idx) => {
-      const flicker =
-        0.86 + Math.sin(t * 9.5 + spec.phase) * 0.09 + Math.cos(t * 15.2 + spec.phase) * 0.06;
-      const flame = torchFlameRefs.current[idx];
-      if (flame) {
-        flame.visible = lightFactor > 0.015;
-        flame.scale.set(0.95 + (flicker - 1) * 0.4, flicker * Math.max(0.05, lightFactor), 0.95 + (flicker - 1) * 0.4);
-      }
-      const flameMat = torchFlameMatRefs.current[idx];
-      if (flameMat) {
-        flameMat.emissiveIntensity = lightFactor * 2.6 * flicker;
-      }
-      const light = torchLightRefs.current[idx];
-      if (light) {
-        light.intensity = lightFactor * 2.0 * flicker;
-      }
-    });
-
-    // Campfire flames, embers & warm PointLight fade cleanly OFF during movie playback
-    const fireFlicker =
-      0.88 + Math.sin(t * 11.4) * 0.08 + Math.sin(t * 19.7 + 1.1) * 0.05;
-    if (campfireLightRef.current) {
-      campfireLightRef.current.intensity = lightFactor * 3.0 * fireFlicker;
+    // Gentle ocean swell rock & bob on the moored wooden rowboat
+    if (rowboatGroupRef.current) {
+      rowboatGroupRef.current.position.y = BEACH_WATER_Y + 0.02 + Math.sin(t * 1.15) * 0.032;
+      rowboatGroupRef.current.rotation.z = Math.sin(t * 0.95 + 0.6) * 0.042;
+      rowboatGroupRef.current.rotation.x = Math.cos(t * 1.25) * 0.026;
     }
-    campfireFlameRefs.current.forEach((mesh, idx) => {
-      if (!mesh) return;
-      mesh.visible = lightFactor > 0.015;
-      const phase = idx * 1.4;
-      const f = 0.85 + Math.sin(t * 12.2 + phase) * 0.16;
-      mesh.scale.set(0.95, f * Math.max(0.05, lightFactor), 0.95);
-    });
-    campfireFlameMatRefs.current.forEach((m) => {
-      if (m) m.emissiveIntensity = lightFactor * 2.8 * fireFlicker;
-    });
-    if (emberMatRef.current) {
-      emberMatRef.current.opacity = lightFactor * 0.9;
-    }
-
-    const { count, positions, velocities, phases, posAttr } = emberParticleState;
-    for (let i = 0; i < count; i++) {
-      const ix = i * 3;
-      const iy = ix + 1;
-      const iz = ix + 2;
-      positions[iy] += velocities[iy] * dt;
-      positions[ix] += (velocities[ix] + Math.sin(t * 2.4 + phases[i]) * 0.14) * dt;
-      positions[iz] += (velocities[iz] + Math.cos(t * 2.1 + phases[i]) * 0.14) * dt;
-
-      if (positions[iy] > 1.75) {
-        const ang = (i * 2.39996 + t * 0.7) % (Math.PI * 2);
-        const rad = ((i % 7) / 7) * 0.24;
-        positions[ix] = Math.cos(ang) * rad;
-        positions[iy] = 0.06;
-        positions[iz] = Math.sin(ang) * rad;
-      }
-    }
-    posAttr.needsUpdate = true;
   });
 
   // Ground coordinates for screen frame & projector
@@ -1154,6 +1673,26 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
     bulbRef.current.instanceMatrix.needsUpdate = true;
     bulbRef.current.computeBoundingSphere();
   }, [fairyBulbPositions]);
+
+  // Populate Wooden Sand Boardwalk slatted timber planks
+  useEffect(() => {
+    const mesh = boardwalkPlanksRef.current;
+    if (!mesh || boardwalkLayout.planks.length === 0) return;
+    const dummy = new THREE.Object3D();
+    const tint = new THREE.Color();
+    boardwalkLayout.planks.forEach((pk, idx) => {
+      dummy.position.set(pk.x, pk.y, pk.z);
+      dummy.rotation.set(pk.pitchX, pk.rotY, 0);
+      dummy.scale.set(pk.w, 1, 1);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(idx, dummy.matrix);
+      tint.setScalar(pk.tint);
+      mesh.setColorAt(idx, tint);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [boardwalkLayout]);
 
   // Tension cable transforms for Bioluminescent Cove curved frameless tension screen
   const bioCablePlacements = useMemo(() => {
@@ -1252,7 +1791,41 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
       {/* 3. Sculpted Fine-Grain Coastal Sand Dunes & Amphitheater Bowl */}
       <mesh geometry={sandGeo} material={materials.sandMat} receiveShadow />
 
-      {/* Bioluminescent Cove: Dark Slate Pit Retaining Walls, Coping Rims & Central Stepping Stones */}
+      {/* 3B. Wooden Sand Boardwalk: Slatted Timber Aisle Leading From Entrance Gate Down to Center Cove */}
+      <group>
+        <instancedMesh
+          ref={boardwalkPlanksRef}
+          args={[undefined, undefined, boardwalkLayout.planks.length]}
+          material={materials.boardwalkPlankMat}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[1, 0.04, 0.21]} />
+        </instancedMesh>
+        {boardwalkLayout.stringers.map((st, si) => (
+          <mesh
+            key={`bw-stringer-${si}`}
+            position={[st.x, st.y, st.z]}
+            rotation={[st.pitchX, 0, 0]}
+            material={materials.timberMat}
+            receiveShadow
+          >
+            <boxGeometry args={[0.1, 0.06, st.len]} />
+          </mesh>
+        ))}
+        {boardwalkLayout.posts.map((pt, pi) => (
+          <group key={`bw-post-${pi}`} position={[pt.x, pt.y, pt.z]}>
+            <mesh position={[0, 0.16, 0]} material={materials.driftwoodMat} castShadow>
+              <cylinderGeometry args={[0.048, 0.056, 0.44, 8]} />
+            </mesh>
+            <mesh position={[0, 0.39, 0]} material={materials.boardwalkCapGlowMat}>
+              <cylinderGeometry args={[0.044, 0.044, 0.05, 8]} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+
+      {/* Bioluminescent Cove: Dark Slate Pit Retaining Walls, Coping Rims & Pit Entry Stepping Stones */}
       {isBioluminescent && pitSlateGeos && materials.slateMat && (
         <group>
           <mesh
@@ -1269,7 +1842,7 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
           />
           <mesh geometry={pitSlateGeos.underGlowGeo} material={materials.pitEdgeGlowMat} />
 
-          {/* Dark Slate Stepping Stones Along Central Walkway */}
+          {/* Dark Slate Stepping Stones Branching from Boardwalk Into Lounge Pits */}
           {materials.slateMat &&
             STEPPING_STONES.map((st, si) => {
               const sy = beachHeightAt(st.x, st.z, 'bioluminescent') + 0.022;
@@ -1817,11 +2390,343 @@ export const BeachEnvironment: React.FC<BeachEnvironmentProps> = ({
               decay={1.9}
             />
           </group>
+
+          {/* 9B. Sunset Cove: Sculpted Driftwood Log Benches Around Campfire */}
+          {CAMPFIRE_BENCH_SPECS.map((bench, bi) => {
+            const bx = BEACH_CAMPFIRE_POS[0] + Math.cos(bench.ang) * bench.r;
+            const bz = BEACH_CAMPFIRE_POS[2] + Math.sin(bench.ang) * bench.r;
+            const by = beachHeightAt(bx, bz, 'sunset');
+            const faceRotY = Math.atan2(BEACH_CAMPFIRE_POS[0] - bx, BEACH_CAMPFIRE_POS[2] - bz);
+            return (
+              <group key={`campfire-bench-${bi}`} position={[bx, by, bz]} rotation={[0, faceRotY, 0]}>
+                {/* Notched Stump Cradle Legs Sunk Into Sand */}
+                {[-0.56, 0.56].map((lx, li) => (
+                  <mesh key={`stump-${li}`} position={[lx, 0.08, 0]} material={materials.timberMat} castShadow receiveShadow>
+                    <cylinderGeometry args={[0.14, 0.16, 0.42, 8]} />
+                  </mesh>
+                ))}
+                {/* Main Split Driftwood Seat Log */}
+                <mesh position={[0, 0.34, 0]} rotation={[0, 0, Math.PI / 2]} material={materials.driftwoodMat} castShadow receiveShadow>
+                  <cylinderGeometry args={[0.17, 0.18, 1.56, 10]} />
+                </mesh>
+                {/* Planed Flat Seating Plank Cap */}
+                <mesh position={[0, 0.46, 0]} material={materials.boardwalkPlankMat} castShadow receiveShadow>
+                  <boxGeometry args={[1.52, 0.06, 0.3]} />
+                </mesh>
+              </group>
+            );
+          })}
         </>
       )}
+
+      {/* 10. Beach Tiki Snack Shack & Ice Cooler Chest (Rear Cove Terrace) */}
+      {(() => {
+        const sx = BEACH_TIKI_SHACK_POS.x;
+        const sz = BEACH_TIKI_SHACK_POS.z;
+        const sy = beachHeightAt(sx, sz, variant);
+        return (
+          <group position={[sx, sy, sz]} rotation={[0, BEACH_TIKI_SHACK_POS.rotY, 0]}>
+            {/* Grounded Timber Deck Platform & Deep Sand Footing Skirt */}
+            <mesh position={[0, 0.04, 0]} material={materials.timberMat} receiveShadow castShadow>
+              <boxGeometry args={[2.86, 0.24, 1.92]} />
+            </mesh>
+            <mesh position={[0, 0.17, 0]} material={materials.boardwalkPlankMat} receiveShadow>
+              <boxGeometry args={[2.76, 0.04, 1.82]} />
+            </mesh>
+
+            {/* 4 Corner Bamboo Timber Support Posts */}
+            {[
+              [-1.24, -0.78],
+              [1.24, -0.78],
+              [-1.24, 0.78],
+              [1.24, 0.78],
+            ].map(([px, pz], pi) => (
+              <mesh key={`tiki-post-${pi}`} position={[px, 1.24, pz]} material={materials.driftwoodMat} castShadow>
+                <cylinderGeometry args={[0.065, 0.08, 2.24, 8]} />
+              </mesh>
+            ))}
+
+            {/* Diagonal Corner Knee Braces & Top Crossbeams */}
+            <mesh position={[0, 2.28, -0.78]} material={materials.timberMat}>
+              <boxGeometry args={[2.68, 0.09, 0.09]} />
+            </mesh>
+            <mesh position={[0, 2.28, 0.78]} material={materials.timberMat}>
+              <boxGeometry args={[2.68, 0.09, 0.09]} />
+            </mesh>
+
+            {/* Pitched Dual-Slope Layered Thatched Roof Canopy + Ridge Beam */}
+            {[-1, 1].map((slopeSide) => (
+              <group
+                key={`tiki-thatch-${slopeSide}`}
+                position={[0, 2.58, slopeSide * 0.56]}
+                rotation={[slopeSide * 0.44, 0, 0]}
+              >
+                <mesh material={materials.thatchMat} castShadow receiveShadow>
+                  <boxGeometry args={[3.36, 0.14, 1.46]} />
+                </mesh>
+                <mesh position={[0, -0.055, slopeSide * 0.62]} material={materials.driftwoodMat}>
+                  <boxGeometry args={[3.38, 0.06, 0.16]} />
+                </mesh>
+              </group>
+            ))}
+            <mesh position={[0, 2.9, 0]} rotation={[0, 0, Math.PI / 2]} material={materials.timberMat} castShadow>
+              <cylinderGeometry args={[0.075, 0.075, 3.48, 8]} />
+            </mesh>
+
+            {/* Slatted Bamboo Drink Counter & Polished Driftwood Top Slab (Front Facing -Z) */}
+            <group position={[0.24, 0.19, -0.58]}>
+              <mesh position={[0, 0.44, 0]} material={materials.timberMat} castShadow receiveShadow>
+                <boxGeometry args={[1.92, 0.88, 0.46]} />
+              </mesh>
+              {Array.from({ length: 13 }, (_, si) => (
+                <mesh
+                  key={`tiki-slat-${si}`}
+                  position={[THREE.MathUtils.lerp(-0.88, 0.88, si / 12), 0.44, -0.24]}
+                  material={materials.driftwoodMat}
+                >
+                  <cylinderGeometry args={[0.028, 0.028, 0.86, 6]} />
+                </mesh>
+              ))}
+              <mesh position={[0, 0.91, -0.04]} material={materials.barCounterTopMat} castShadow>
+                <boxGeometry args={[2.06, 0.065, 0.62]} />
+              </mesh>
+
+              {/* On-Counter Popcorn Bucket & Chilled Tiki Beverages */}
+              <mesh position={[-0.58, 1.07, -0.04]} material={materials.surfboardMats[0]} castShadow>
+                <cylinderGeometry args={[0.095, 0.075, 0.24, 12]} />
+              </mesh>
+              {[-0.22, -0.04, 0.48].map((dx, di) => (
+                <group key={`tiki-drink-${di}`} position={[dx, 1.03, -0.08]}>
+                  <mesh material={materials.thatchMat}>
+                    <cylinderGeometry args={[0.042, 0.036, 0.16, 10]} />
+                  </mesh>
+                  <mesh position={[0.015, 0.11, 0]} rotation={[0, 0, -0.24]} material={materials.tikiLanternMat}>
+                    <cylinderGeometry args={[0.005, 0.005, 0.1, 6]} />
+                  </mesh>
+                </group>
+              ))}
+            </group>
+
+            {/* Illuminated Menu Slate Header Sign */}
+            <group position={[0, 2.08, -0.82]}>
+              <mesh material={materials.timberMat}>
+                <boxGeometry args={[1.48, 0.56, 0.06]} />
+              </mesh>
+              <mesh position={[0, 0, -0.036]} rotation={[0, Math.PI, 0]}>
+                <planeGeometry args={[1.38, 0.46]} />
+                <meshStandardMaterial
+                  map={tikiMenuTex}
+                  emissive="#ffffff"
+                  emissiveMap={tikiMenuTex}
+                  emissiveIntensity={0.28 + lightFactor * 0.52}
+                  roughness={0.32}
+                />
+              </mesh>
+            </group>
+
+            {/* Open Cedar & Coastal Cooler Ice Chest Packed With Ice & Drinks */}
+            <group position={[-0.98, 0.19, -0.35]} rotation={[0, 0.18, 0]}>
+              <mesh position={[0, 0.22, 0]} material={materials.coolerBodyMat} castShadow receiveShadow>
+                <boxGeometry args={[0.62, 0.44, 0.44]} />
+              </mesh>
+              {/* Brushed Metal Trim Corner Strap */}
+              <mesh position={[0, 0.43, 0]} material={materials.blackTrussMat}>
+                <boxGeometry args={[0.64, 0.035, 0.46]} />
+              </mesh>
+              {/* Propped-Open Hinged Cooler Lid */}
+              <group position={[0, 0.44, 0.2]} rotation={[1.18, 0, 0]}>
+                <mesh position={[0, 0.03, -0.2]} material={materials.coolerBodyMat} castShadow>
+                  <boxGeometry args={[0.64, 0.06, 0.45]} />
+                </mesh>
+              </group>
+              {/* Faceted Ice Bed & Chilled Glass Bottles */}
+              <mesh position={[0, 0.445, 0]} material={materials.iceCrystalMat}>
+                <boxGeometry args={[0.52, 0.045, 0.34]} />
+              </mesh>
+              {[
+                [-0.14, -0.06],
+                [0.02, 0.05],
+                [0.15, -0.04],
+                [-0.04, -0.09],
+              ].map(([bx, bz], bi) => (
+                <group key={`ice-bottle-${bi}`} position={[bx, 0.5, bz]} rotation={[(bi % 2 - 0.5) * 0.22, 0, (bi % 3 - 1) * 0.16]}>
+                  <mesh material={materials.surfboardMats[bi % surfboardMatsLenFallback(materials.surfboardMats.length)]}>
+                    <cylinderGeometry args={[0.022, 0.03, 0.14, 8]} />
+                  </mesh>
+                  <mesh position={[0, 0.09, 0]} material={materials.iceCrystalMat}>
+                    <cylinderGeometry args={[0.012, 0.022, 0.06, 8]} />
+                  </mesh>
+                </group>
+              ))}
+            </group>
+
+            {/* Twin Hanging Woven Rope Lanterns Under Front Eave + Warm Fill Light */}
+            {[-0.95, 0.95].map((lx, li) => (
+              <group key={`tiki-lantern-${li}`} position={[lx, 2.16, -0.96]}>
+                <mesh position={[0, 0.14, 0]} material={materials.blackTrussMat}>
+                  <cylinderGeometry args={[0.008, 0.008, 0.28, 6]} />
+                </mesh>
+                <mesh position={[0, 0.03, 0]} material={materials.timberMat}>
+                  <cylinderGeometry args={[0.09, 0.06, 0.04, 10]} />
+                </mesh>
+                <mesh position={[0, -0.08, 0]} material={materials.tikiLanternMat}>
+                  <cylinderGeometry args={[0.068, 0.085, 0.18, 12]} />
+                </mesh>
+                <mesh position={[0, -0.18, 0]} material={materials.timberMat}>
+                  <cylinderGeometry args={[0.085, 0.045, 0.03, 10]} />
+                </mesh>
+              </group>
+            ))}
+            <pointLight
+              ref={tikiLanternLightRef}
+              position={[0, 1.95, -0.98]}
+              color={isBioluminescent ? '#38bdf8' : '#ff9933'}
+              intensity={1.65}
+              distance={9.5}
+              decay={2}
+            />
+          </group>
+        );
+      })()}
+
+      {/* 11. Coastal Shoreline Props: Moored Wooden Rowboat, Surfboard Rack & Glowing Tide-Pool Rocks */}
+      <group>
+        {/* Moored Wooden Rowboat Gently Bobbing Off Right Cove Bank */}
+        <group position={[12.6, 0, -14.1]}>
+          <group
+            ref={rowboatGroupRef}
+            position={[0, BEACH_WATER_Y + 0.02, 0]}
+            rotation={[0, Math.PI - 0.36, 0]}
+          >
+            {/* Lofted Curved Hull */}
+            <mesh geometry={rowboatGeos.outerHullGeo} material={materials.boatHullMat} castShadow receiveShadow />
+            {/* Perimeter Gunwale Rim */}
+            <mesh geometry={rowboatGeos.gunwaleGeo} material={materials.driftwoodMat} castShadow />
+            {/* 3 Interior Bench Thwarts + Triangular Bow Foredeck */}
+            {[-0.68, 0.04, 0.72].map((tz, ti) => (
+              <mesh key={`boat-thwart-${ti}`} position={[0, 0.18, tz]} material={materials.boardwalkPlankMat} castShadow>
+                <boxGeometry args={[ti === 0 ? 0.74 : 0.96, 0.04, 0.24]} />
+              </mesh>
+            ))}
+            <mesh position={[0, 0.24, -1.16]} material={materials.timberMat}>
+              <boxGeometry args={[0.42, 0.035, 0.44]} />
+            </mesh>
+            {/* Pair of Horizontal Resting Wooden Oars */}
+            {[-0.24, 0.24].map((ox, oi) => (
+              <group key={`boat-oar-${oi}`} position={[ox, 0.225, 0.14]} rotation={[0.02, oi === 0 ? 0.14 : -0.14, 0]}>
+                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.boardwalkPlankMat}>
+                  <cylinderGeometry args={[0.018, 0.018, 1.78, 8]} />
+                </mesh>
+                <mesh position={[0, 0, 0.88]} material={materials.surfboardMats[oi % materials.surfboardMats.length]}>
+                  <boxGeometry args={[0.14, 0.022, 0.42]} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+
+          {/* Driven Timber Mooring Piling on Wet Sand + Catenary Rope */}
+          <mesh
+            position={[-0.78, beachHeightAt(11.82, -12.38, variant) + 0.26, 1.72]}
+            material={materials.timberMat}
+            castShadow
+          >
+            <cylinderGeometry args={[0.075, 0.088, 0.85, 8]} />
+          </mesh>
+          <mesh geometry={rowboatGeos.ropeGeo} material={materials.driftwoodMat} />
+        </group>
+
+        {/* Coastal Timber Surfboard Rack With 3 Sculpted Glassed Boards */}
+        {(() => {
+          const rx = BEACH_SURF_RACK_POS.x;
+          const rz = BEACH_SURF_RACK_POS.z;
+          const ry = beachHeightAt(rx, rz, variant);
+          return (
+            <group position={[rx, ry, rz]} rotation={[0, BEACH_SURF_RACK_POS.rotY, 0]}>
+              {/* Base Skid Rails & Side A-Frame Stanchions */}
+              {[-0.78, 0.78].map((ax, ai) => (
+                <group key={`rack-a-${ai}`} position={[ax, 0, 0]}>
+                  <mesh position={[0, 0.02, 0]} material={materials.timberMat} castShadow receiveShadow>
+                    <boxGeometry args={[0.09, 0.08, 0.92]} />
+                  </mesh>
+                  <mesh position={[0, 0.68, 0.18]} rotation={[0.24, 0, 0]} material={materials.driftwoodMat} castShadow>
+                    <boxGeometry args={[0.075, 1.38, 0.075]} />
+                  </mesh>
+                  <mesh position={[0, 0.68, -0.18]} rotation={[-0.24, 0, 0]} material={materials.driftwoodMat} castShadow>
+                    <boxGeometry args={[0.075, 1.38, 0.075]} />
+                  </mesh>
+                </group>
+              ))}
+              {/* Horizontal Crossbars */}
+              {[0.38, 1.05].map((cy, ci) => (
+                <mesh key={`rack-bar-${ci}`} position={[0, cy, ci === 1 ? 0.05 : -0.12]} material={materials.timberMat} castShadow>
+                  <boxGeometry args={[1.72, 0.065, 0.065]} />
+                </mesh>
+              ))}
+              {/* 3 Sculpted Teardrop Surfboards With Dorsal Skeg Fins */}
+              {[-0.46, 0, 0.46].map((bx, bi) => (
+                <group key={`surfboard-${bi}`} position={[bx, 1.02, 0.02]} rotation={[-0.22, (bi - 1) * 0.04, 0]}>
+                  <mesh
+                    geometry={surfboardGeo}
+                    material={materials.surfboardMats[bi % materials.surfboardMats.length]}
+                    castShadow
+                    receiveShadow
+                  />
+                  {/* Dorsal Fin */}
+                  <mesh position={[0, -0.74, 0.06]} rotation={[0.35, 0, 0]} material={materials.blackTrussMat}>
+                    <boxGeometry args={[0.018, 0.18, 0.14]} />
+                  </mesh>
+                </group>
+              ))}
+            </group>
+          );
+        })()}
+
+        {/* Glowing Tide-Pool Coastal Rock Clusters Near Water's Edge */}
+        {[
+          { cx: -11.2, rotY: 0.4 },
+          { cx: 10.4, rotY: -0.5 },
+        ].map((cluster, ci) => {
+          const cz = beachShorelineZ(cluster.cx) + 0.15;
+          return (
+            <group
+              key={`tide-pool-${ci}`}
+              position={[cluster.cx, BEACH_WATER_Y + 0.02, cz]}
+              rotation={[0, cluster.rotY, 0]}
+            >
+              {/* Luminous Shimmering Tide Pool Basin */}
+              <mesh position={[0, 0.045, 0]} rotation={[-Math.PI / 2, 0, 0]} material={materials.tidePoolWaterMat}>
+                <circleGeometry args={[0.92, 18]} />
+              </mesh>
+              {/* Ring of Wet Faceted Coastal Rocks Framing the Tide Pool */}
+              {Array.from({ length: 9 }, (_, ri) => {
+                const ang = (ri / 9) * Math.PI * 2 + ci * 0.7;
+                const rad = 0.86 + Math.sin(ri * 2.1) * 0.12;
+                const s = 0.24 + (ri % 3) * 0.09;
+                return (
+                  <mesh
+                    key={`tp-rock-${ri}`}
+                    position={[Math.cos(ang) * rad, s * 0.35, Math.sin(ang) * rad]}
+                    rotation={[0.25 * (ri % 2), ang, 0.18]}
+                    scale={[s * 1.25, s * 0.78, s * 1.05]}
+                    material={materials.wetRockMat}
+                    castShadow
+                    receiveShadow
+                  >
+                    <dodecahedronGeometry args={[1, 0]} />
+                  </mesh>
+                );
+              })}
+            </group>
+          );
+        })}
+      </group>
     </group>
   );
 };
+
+function surfboardMatsLenFallback(len: number): number {
+  return Math.max(1, len);
+}
 
 function buildOceanSurfBuffer(ctx: AudioContext): AudioBuffer {
   const duration = 6.0;

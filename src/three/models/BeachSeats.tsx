@@ -268,6 +268,146 @@ function buildDeckLoungerSlingGeo(width = 0.6, halfThick = 0.018): THREE.BufferG
   return geo;
 }
 
+function buildBeachTactileAtlas(
+  seats: SeatData[],
+  isBio: boolean,
+): { texture: THREE.CanvasTexture; cols: number; rows: number } {
+  const count = Math.max(1, seats.length);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.max(1, Math.ceil(count / cols));
+  const cellW = 64;
+  const cellH = 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = cols * cellW;
+  canvas.height = rows * cellH;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#12151c';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const rim = isBio ? '#22d3ee' : '#d4af37';
+  const txt = isBio ? '#cffafe' : '#fef3c7';
+  for (let i = 0; i < seats.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x0 = col * cellW;
+    const y0 = row * cellH;
+    ctx.fillStyle = isBio ? '#0c1821' : '#1b140d';
+    ctx.fillRect(x0 + 2, y0 + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = rim;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x0 + 3, y0 + 3, cellW - 6, cellH - 6);
+    ctx.fillStyle = txt;
+    ctx.font = 'bold 19px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(seats[i].id, x0 + cellW * 0.5, y0 + cellH * 0.45);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return { texture, cols, rows };
+}
+
+function buildBeachTactileQuadsGeo(
+  seats: SeatData[],
+  cols: number,
+  rows: number,
+  isBio: boolean,
+): THREE.BufferGeometry {
+  const n = seats.length;
+  const positions = new Float32Array(n * 4 * 3);
+  const normals = new Float32Array(n * 4 * 3);
+  const uvs = new Float32Array(n * 4 * 2);
+  const indices: number[] = [];
+
+  const hw = 0.028;
+  const hd = 0.017;
+  const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const quat = new THREE.Quaternion();
+  const vec = new THREE.Vector3();
+  const norm = new THREE.Vector3();
+
+  for (let i = 0; i < n; i++) {
+    const seat = seats[i];
+    const [sx, sy, sz] = seat.worldPosition;
+    const yaw = seat.yaw ?? 0;
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+
+    let lx = -0.34;
+    let ly = 0.533;
+    let lz = -0.27;
+    let rx = 0.14;
+
+    if (isBio) {
+      if (seat.rowIndex <= 1) {
+        lx = -0.28;
+        ly = 0.286;
+        lz = -0.34;
+        rx = 0.16;
+      } else {
+        lx = -0.38;
+        ly = 0.383;
+        lz = -0.29;
+        rx = 0.14;
+      }
+    } else if (seat.rowIndex > 1) {
+      lx = -0.22;
+      ly = 0.18;
+      lz = -0.35;
+      rx = 0.4;
+    }
+
+    const cx = sx + lx * cosY + lz * sinY;
+    const cy = sy + ly;
+    const cz = sz - lx * sinY + lz * cosY;
+
+    euler.set(rx, yaw, 0, 'YXZ');
+    quat.setFromEuler(euler);
+    norm.set(0, 1, 0).applyQuaternion(quat).normalize();
+
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const padU = 0.04 / cols;
+    const padV = 0.04 / rows;
+    const u0 = col / cols + padU;
+    const u1 = (col + 1) / cols - padU;
+    const v1 = 1 - row / rows - padV;
+    const v0 = 1 - (row + 1) / rows + padV;
+
+    const corners: [number, number, number, number][] = [
+      [-hw, -hd, u0, v1],
+      [-hw, hd, u0, v0],
+      [hw, hd, u1, v0],
+      [hw, -hd, u1, v1],
+    ];
+    const vBase = i * 4;
+    for (let k = 0; k < 4; k++) {
+      const [qx, qz, qu, qv] = corners[k];
+      vec.set(qx, 0.004, qz).applyQuaternion(quat);
+      const vi = (vBase + k) * 3;
+      positions[vi] = cx + vec.x;
+      positions[vi + 1] = cy + vec.y;
+      positions[vi + 2] = cz + vec.z;
+      normals[vi] = norm.x;
+      normals[vi + 1] = norm.y;
+      normals[vi + 2] = norm.z;
+      const ui = (vBase + k) * 2;
+      uvs[ui] = qu;
+      uvs[ui + 1] = qv;
+    }
+    indices.push(vBase, vBase + 1, vBase + 2, vBase, vBase + 2, vBase + 3);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
 const OUTER_HAMMOCK_SPOTS: readonly {
   x: number;
   z: number;
@@ -300,14 +440,16 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
     const stripedCanvas = createBeachStripedCanvasTexture();
     const blanketTex = createWovenBlanketTexture();
     const leather = isBioluminescent ? createMatteLeatherTextures(256) : null;
-    return { stripedCanvas, blanketTex, leather };
-  }, [isBioluminescent]);
+    const tactileAtlas = buildBeachTactileAtlas(seats, isBioluminescent);
+    return { stripedCanvas, blanketTex, leather, tactileAtlas };
+  }, [isBioluminescent, seats]);
 
   useEffect(() => {
     return () => {
       textures.stripedCanvas.dispose();
       textures.blanketTex.dispose();
       textures.leather?.dispose();
+      textures.tactileAtlas.texture.dispose();
     };
   }, [textures]);
 
@@ -317,8 +459,21 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
     const podCushionGeo = isBioluminescent ? buildQuiltedPodCushionGeo() : null;
     const podBackGeo = isBioluminescent ? buildQuiltedPodBackGeo() : null;
     const hammockSlingGeo = isBioluminescent ? buildHammockSlingGeo() : null;
-    return { beanBagGeo, loungerSlingGeo, podCushionGeo, podBackGeo, hammockSlingGeo };
-  }, [isBioluminescent]);
+    const tactileFaceGeo = buildBeachTactileQuadsGeo(
+      seats,
+      textures.tactileAtlas.cols,
+      textures.tactileAtlas.rows,
+      isBioluminescent,
+    );
+    return {
+      beanBagGeo,
+      loungerSlingGeo,
+      podCushionGeo,
+      podBackGeo,
+      hammockSlingGeo,
+      tactileFaceGeo,
+    };
+  }, [isBioluminescent, seats, textures.tactileAtlas]);
 
   useEffect(() => {
     return () => {
@@ -327,6 +482,7 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
       geometries.podCushionGeo?.dispose();
       geometries.podBackGeo?.dispose();
       geometries.hammockSlingGeo?.dispose();
+      geometries.tactileFaceGeo.dispose();
     };
   }, [geometries]);
 
@@ -526,6 +682,14 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
       }),
       screenBounceUniforms,
     );
+    const tactileFaceMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: textures.tactileAtlas.texture,
+        roughness: 0.3,
+        metalness: 0.55,
+      }),
+      screenBounceUniforms,
+    );
 
     return {
       woodMat,
@@ -556,6 +720,7 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
       underSeatMagentaMat,
       brushedSteelMat,
       wovenRopeMat,
+      tactileFaceMat,
     };
   }, [textures, screenBounceUniforms]);
 
@@ -764,13 +929,21 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
             <mesh position={[0, 0.42, 0]} material={materials.leatherStitchSeamMat}>
               <boxGeometry args={[0.41, 0.022, 0.41]} />
             </mesh>
-            {/* Chilled Drink Tumblers */}
+            {/* Chilled Drink Tumblers + Popcorn Bucket */}
             <mesh
               position={[idx % 2 === 0 ? -0.08 : 0.08, 0.475, 0.04]}
               material={materials.drinkCanMat}
             >
               <cylinderGeometry args={[0.032, 0.026, 0.095, 10]} />
             </mesh>
+            <group position={[idx % 2 === 0 ? 0.07 : -0.07, 0.43, -0.05]}>
+              <mesh position={[0, 0.07, 0]} material={materials.popcornCupMat} castShadow>
+                <cylinderGeometry args={[0.058, 0.042, 0.14, 12]} />
+              </mesh>
+              <mesh position={[0, 0.14, 0]} material={materials.popcornFillMat}>
+                <sphereGeometry args={[0.054, 10, 8]} />
+              </mesh>
+            </group>
           </group>
         ))}
 
@@ -791,7 +964,7 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
             <mesh position={[0, 0.34, 0]} material={materials.leatherStitchSeamMat}>
               <boxGeometry args={[1.96, 0.03, 0.64]} />
             </mesh>
-            {/* Brushed Steel Ice Bucket + Pair of Glasses */}
+            {/* Brushed Steel Ice Bucket + Pair of Glasses + Popcorn Tubs */}
             <mesh position={[0, 0.44, 0]} material={materials.brushedSteelMat} castShadow>
               <cylinderGeometry args={[0.11, 0.085, 0.17, 14]} />
             </mesh>
@@ -803,6 +976,16 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
               >
                 <cylinderGeometry args={[0.032, 0.025, 0.11, 10]} />
               </mesh>
+            ))}
+            {[-0.64, 0.64].map((px, pi) => (
+              <group key={`pit-popcorn-${pi}`} position={[px, 0.355, -0.06]}>
+                <mesh position={[0, 0.072, 0]} material={materials.popcornCupMat} castShadow>
+                  <cylinderGeometry args={[0.062, 0.045, 0.145, 12]} />
+                </mesh>
+                <mesh position={[0, 0.145, 0]} material={materials.popcornFillMat}>
+                  <sphereGeometry args={[0.058, 10, 8]} />
+                </mesh>
+              </group>
             ))}
           </group>
         ))}
@@ -1130,6 +1313,29 @@ export const BeachSeats: React.FC<BeachSeatsProps> = ({
           </group>
         );
       })}
+
+      {/* Single-Draw-Call Tactile Brass/Cyan Seat-Number Plates (A1, C7, D8...) */}
+      <mesh geometry={geometries.tactileFaceGeo} material={materials.tactileFaceMat} />
+
+      {/* Personal Popcorn & Drink on Selected Sunset Cove Lounger Armrest */}
+      {selectedSeat && !isBioluminescent && selectedSeat.rowIndex <= 1 && (
+        <group
+          position={selectedSeat.worldPosition}
+          rotation={[0, selectedSeat.yaw ?? 0, 0]}
+        >
+          <group position={[0.34, 0.531, -0.18]}>
+            <mesh position={[0, 0.068, 0]} material={materials.popcornCupMat} castShadow>
+              <cylinderGeometry args={[0.054, 0.04, 0.135, 12]} />
+            </mesh>
+            <mesh position={[0, 0.136, 0]} material={materials.popcornFillMat}>
+              <sphereGeometry args={[0.05, 10, 8]} />
+            </mesh>
+          </group>
+          <mesh position={[-0.34, 0.585, -0.02]} material={materials.drinkCanMat} castShadow>
+            <cylinderGeometry args={[0.028, 0.024, 0.105, 10]} />
+          </mesh>
+        </group>
+      )}
 
       {/* Grounded 3D Reserved plaque & folded screening program on selected beach seat */}
       {selectedSeat && (

@@ -747,6 +747,308 @@ function buildSculptedArmrestGeo(w: number, h: number, d: number): THREE.BufferG
   return geo;
 }
 
+function createPopcornBucketTexture(isLuxury: boolean): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+
+  if (isLuxury) {
+    ctx.fillStyle = '#14161c';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let x = 0; x < 256; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 === 0 ? '#1b1e27' : '#111319';
+      ctx.fillRect(x, 0, 32, 256);
+      ctx.fillStyle = '#c9a861';
+      ctx.fillRect(x, 0, 3, 256);
+    }
+    ctx.fillStyle = '#c9a861';
+    ctx.fillRect(0, 12, 256, 12);
+    ctx.fillRect(0, 232, 256, 10);
+    ctx.fillStyle = '#111319';
+    ctx.fillRect(42, 88, 172, 74);
+    ctx.strokeStyle = '#c9a861';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(42, 88, 172, 74);
+    ctx.fillStyle = '#f5dfb0';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('AURELIA', 128, 114);
+    ctx.font = '600 15px sans-serif';
+    ctx.fillText('BUTTER POPCORN', 128, 142);
+  } else {
+    ctx.fillStyle = '#f8f2e4';
+    ctx.fillRect(0, 0, 256, 256);
+    for (let x = 0; x < 256; x += 32) {
+      ctx.fillStyle = (x / 32) % 2 === 0 ? '#b91c1c' : '#f8f2e4';
+      ctx.fillRect(x, 0, 16, 256);
+    }
+    ctx.fillStyle = '#d4af37';
+    ctx.fillRect(0, 10, 256, 12);
+    ctx.fillRect(0, 234, 256, 10);
+    ctx.fillStyle = '#181410';
+    ctx.fillRect(36, 86, 184, 78);
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(36, 86, 184, 78);
+    ctx.fillStyle = '#fef3c7';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('POPCORN', 128, 116);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#eab308';
+    ctx.fillText('FRESH BUTTERED', 128, 144);
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createPopcornMoundTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#eab308';
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 180; i++) {
+    const x = (i * 53 + (i % 7) * 19) % 128;
+    const y = (i * 89 + (i % 11) * 13) % 128;
+    const r = 5 + (i % 6);
+    ctx.fillStyle =
+      i % 4 === 0 ? '#fffbeb' : i % 3 === 0 ? '#fef08a' : i % 2 === 0 ? '#fde047' : '#d97706';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function createSodaCupTexture(isLuxury: boolean, accentHex: string): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = isLuxury ? '#12151c' : '#1b202b';
+  ctx.fillRect(0, 0, 256, 256);
+
+  ctx.fillStyle = isLuxury ? '#c9a861' : accentHex;
+  ctx.fillRect(0, 16, 256, 18);
+  ctx.fillRect(0, 198, 256, 12);
+  ctx.globalAlpha = 0.25;
+  for (let i = -128; i < 384; i += 36) {
+    ctx.beginPath();
+    ctx.moveTo(i, 40);
+    ctx.lineTo(i + 20, 40);
+    ctx.lineTo(i + 68, 190);
+    ctx.lineTo(i + 48, 190);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('AURELIA', 128, 114);
+  ctx.font = '600 15px sans-serif';
+  ctx.fillStyle = isLuxury ? '#e7d3a3' : '#cbd5e1';
+  ctx.fillText('CINEMA SODA', 128, 144);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function buildPopcornMoundGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.IcosahedronGeometry(0.062, 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const bump =
+      1 +
+      0.18 * Math.sin(x * 78 + y * 55) +
+      0.14 * Math.cos(z * 84 - y * 62);
+    pos.setXYZ(i, x * bump, Math.max(-0.015, y * 0.56 * bump), z * bump);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildChampagneFluteGeometry(): THREE.BufferGeometry {
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.025, 0.0),
+    new THREE.Vector2(0.024, 0.004),
+    new THREE.Vector2(0.0045, 0.014),
+    new THREE.Vector2(0.0032, 0.078),
+    new THREE.Vector2(0.007, 0.088),
+    new THREE.Vector2(0.022, 0.118),
+    new THREE.Vector2(0.024, 0.155),
+    new THREE.Vector2(0.021, 0.182),
+  ];
+  const geo = new THREE.LatheGeometry(pts, 18);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildSeatTactileAtlasTexture(
+  seats: SeatData[],
+  isGold: boolean,
+): { texture: THREE.CanvasTexture; cols: number; rows: number } {
+  const count = Math.max(1, seats.length);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.max(1, Math.ceil(count / cols));
+  const cellW = 64;
+  const cellH = 40;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cols * cellW;
+  canvas.height = rows * cellH;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#111318';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const rimHex = isGold ? '#d4af37' : '#cbd5e1';
+  const textHex = isGold ? '#f7e5b7' : '#f1f5f9';
+
+  for (let i = 0; i < seats.length; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x0 = col * cellW;
+    const y0 = row * cellH;
+
+    ctx.fillStyle = isGold ? '#17130e' : '#12161e';
+    ctx.fillRect(x0 + 2, y0 + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = rimHex;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x0 + 3, y0 + 3, cellW - 6, cellH - 6);
+
+    ctx.fillStyle = textHex;
+    ctx.font = 'bold 19px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(seats[i].id, x0 + cellW * 0.5, y0 + cellH * 0.43);
+
+    // Subtle embossed Braille-style tactile dots along bottom edge
+    ctx.fillStyle = rimHex;
+    for (let d = -1; d <= 1; d++) {
+      ctx.beginPath();
+      ctx.arc(x0 + cellW * 0.5 + d * 7, y0 + cellH - 8, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.needsUpdate = true;
+  return { texture, cols, rows };
+}
+
+function buildSeatTactileQuadsGeometry(
+  seats: SeatData[],
+  cols: number,
+  rows: number,
+  getPlacement: (seat: SeatData) => {
+    lx: number;
+    ly: number;
+    lz: number;
+    rx: number;
+  },
+): THREE.BufferGeometry {
+  const n = seats.length;
+  const positions = new Float32Array(n * 4 * 3);
+  const normals = new Float32Array(n * 4 * 3);
+  const uvs = new Float32Array(n * 4 * 2);
+  const indices: number[] = [];
+
+  const hw = 0.027;
+  const hd = 0.016;
+  const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  const quat = new THREE.Quaternion();
+  const vec = new THREE.Vector3();
+  const norm = new THREE.Vector3();
+
+  for (let i = 0; i < n; i++) {
+    const seat = seats[i];
+    const [sx, sy, sz] = seat.worldPosition;
+    const yaw = seat.yaw ?? 0;
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    const { lx, ly, lz, rx } = getPlacement(seat);
+
+    const cx = sx + lx * cosY + lz * sinY;
+    const cy = sy + ly;
+    const cz = sz - lx * sinY + lz * cosY;
+
+    euler.set(rx, yaw, 0, 'YXZ');
+    quat.setFromEuler(euler);
+    norm.set(0, 1, 0).applyQuaternion(quat).normalize();
+
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const padU = 0.04 / cols;
+    const padV = 0.04 / rows;
+    const u0 = col / cols + padU;
+    const u1 = (col + 1) / cols - padU;
+    // Canvas row 0 is at top -> flipY maps canvas top to v = 1
+    const v1 = 1 - row / rows - padV;
+    const v0 = 1 - (row + 1) / rows + padV;
+
+    // TL, BL, BR, TR in CCW order facing +Y
+    const corners: [number, number, number, number][] = [
+      [-hw, -hd, u0, v1],
+      [-hw, hd, u0, v0],
+      [hw, hd, u1, v0],
+      [hw, -hd, u1, v1],
+    ];
+
+    const vBase = i * 4;
+    for (let k = 0; k < 4; k++) {
+      const [qx, qz, qu, qv] = corners[k];
+      vec.set(qx, 0.0045, qz).applyQuaternion(quat);
+      const vi = (vBase + k) * 3;
+      positions[vi] = cx + vec.x;
+      positions[vi + 1] = cy + vec.y;
+      positions[vi + 2] = cz + vec.z;
+
+      normals[vi] = norm.x;
+      normals[vi + 1] = norm.y;
+      normals[vi + 2] = norm.z;
+
+      const ui = (vBase + k) * 2;
+      uvs[ui] = qu;
+      uvs[ui + 1] = qv;
+    }
+
+    indices.push(vBase, vBase + 1, vBase + 2, vBase, vBase + 2, vBase + 3);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeBoundingSphere();
+  return geo;
+}
+
 const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   config,
   seats,
@@ -797,6 +1099,13 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   const throwBlanketRef = useRef<THREE.InstancedMesh>(null);
   const lampStemRef = useRef<THREE.InstancedMesh>(null);
   const lampShadeRef = useRef<THREE.InstancedMesh>(null);
+  const popcornBucketRef = useRef<THREE.InstancedMesh>(null);
+  const popcornMoundRef = useRef<THREE.InstancedMesh>(null);
+  const sodaCupRef = useRef<THREE.InstancedMesh>(null);
+  const sodaLidRef = useRef<THREE.InstancedMesh>(null);
+  const sodaStrawRef = useRef<THREE.InstancedMesh>(null);
+  const fluteGlassRef = useRef<THREE.InstancedMesh>(null);
+  const fluteLiquidRef = useRef<THREE.InstancedMesh>(null);
   const seatGroupRef = useRef<THREE.Group>(null);
 
   const count = seats.length;
@@ -857,6 +1166,34 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     [isDolbyVeilSeat],
   );
 
+  const isLuxuryConcessions =
+    environmentProfile.architectureStyle === 'private' ||
+    isDolbyVeilSeat ||
+    isDolbyObsidianSeat ||
+    isDolbyCobaltSeat ||
+    isIceCobaltArmchair ||
+    isIceObsidianRecliner;
+  const isGoldTactile =
+    environmentProfile.architectureStyle === 'private' ||
+    config.sideLightStyle === 'art_deco_navy_sunburst' ||
+    config.sideLightStyle === 'art_deco_stepped_fins' ||
+    config.sideLightStyle === 'indian_mandap_jali' ||
+    config.sideLightStyle === 'brass_torchieres';
+
+  const popcornBucketMap = useMemo(
+    () => createPopcornBucketTexture(isLuxuryConcessions),
+    [isLuxuryConcessions],
+  );
+  const popcornMoundMap = useMemo(() => createPopcornMoundTexture(), []);
+  const sodaCupMap = useMemo(
+    () => createSodaCupTexture(isLuxuryConcessions, config.lightingProfile.accentColor),
+    [isLuxuryConcessions, config.lightingProfile.accentColor],
+  );
+  const tactileAtlas = useMemo(
+    () => buildSeatTactileAtlasTexture(seats, isGoldTactile),
+    [seats, isGoldTactile],
+  );
+
   // Group modular synchronized 4DX motion pods so every 4-seat (or 3-seat center) bank sits on an articulated hydraulic chassis deck
   const fourSeatPods = useMemo(() => {
     if (!isAny4dxPod) return [];
@@ -888,8 +1225,19 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     return () => {
       upholsteryTex.dispose();
       marbleTrayMap?.dispose();
+      popcornBucketMap.dispose();
+      popcornMoundMap.dispose();
+      sodaCupMap.dispose();
+      tactileAtlas.texture.dispose();
     };
-  }, [upholsteryTex, marbleTrayMap]);
+  }, [
+    upholsteryTex,
+    marbleTrayMap,
+    popcornBucketMap,
+    popcornMoundMap,
+    sodaCupMap,
+    tactileAtlas,
+  ]);
 
   const materials = useMemo(() => {
     const primaryMat = applyScreenBounceToMaterial(
@@ -1214,6 +1562,78 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       roughness: 0.42,
       metalness: 0.05,
     });
+    const popcornBucketMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: popcornBucketMap,
+        roughness: 0.62,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const popcornMoundMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: popcornMoundMap,
+        roughness: 0.88,
+        metalness: 0.01,
+      }),
+      screenBounceUniforms,
+    );
+    const sodaCupMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: sodaCupMap,
+        roughness: 0.48,
+        metalness: 0.06,
+      }),
+      screenBounceUniforms,
+    );
+    const sodaLidMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#e2e8f0',
+        roughness: 0.36,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const sodaStrawMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isLuxuryConcessions ? '#d4af37' : '#ef4444',
+        roughness: 0.32,
+        metalness: 0.08,
+      }),
+      screenBounceUniforms,
+    );
+    const fluteGlassMat = new THREE.MeshPhysicalMaterial({
+      color: '#edf6ff',
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.06,
+      metalness: 0.08,
+      reflectivity: 0.92,
+      depthWrite: false,
+    });
+    const fluteLiquidMat = new THREE.MeshStandardMaterial({
+      color: '#f4d375',
+      emissive: '#755411',
+      emissiveIntensity: 0.18,
+      roughness: 0.14,
+      metalness: 0.12,
+    });
+    const tactileBackingMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: isGoldTactile ? '#c9a861' : '#8d96a6',
+        roughness: 0.28,
+        metalness: 0.86,
+      }),
+      screenBounceUniforms,
+    );
+    const tactileFaceMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: tactileAtlas.texture,
+        roughness: 0.32,
+        metalness: 0.45,
+      }),
+      screenBounceUniforms,
+    );
     return {
       primaryMat,
       trimMat,
@@ -1232,6 +1652,15 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       cashmereMat,
       brassLampMat,
       lampShadeMat,
+      popcornBucketMat,
+      popcornMoundMat,
+      sodaCupMat,
+      sodaLidMat,
+      sodaStrawMat,
+      fluteGlassMat,
+      fluteLiquidMat,
+      tactileBackingMat,
+      tactileFaceMat,
     };
   }, [
     environmentProfile,
@@ -1264,6 +1693,12 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     isDolbyVeilSeat,
     screenBounceUniforms,
     config.lightingProfile.stepLightColor,
+    popcornBucketMap,
+    popcornMoundMap,
+    sodaCupMap,
+    tactileAtlas,
+    isLuxuryConcessions,
+    isGoldTactile,
   ]);
 
   useEffect(() => {
@@ -1333,7 +1768,43 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     const steelFootHangerGeo = new THREE.BoxGeometry(0.026, 0.26, 0.036);
     const lumbarCushionGeo = buildErgonomicCushionGeo(props.backrestWidth * 0.78, 0.19, 0.085);
     const actuatorPodGeo = new THREE.BoxGeometry(0.055, 0.22, 0.11);
-    const seatTagGeo = new THREE.BoxGeometry(0.058, 0.016, 0.028);
+    const seatTagGeo = new THREE.BoxGeometry(0.062, 0.008, 0.038);
+    const popcornBucketGeo = new THREE.CylinderGeometry(0.064, 0.046, 0.142, 16);
+    popcornBucketGeo.translate(0, 0.071, 0);
+    const popcornMoundGeo = buildPopcornMoundGeometry();
+    const sodaCupGeo = new THREE.CylinderGeometry(0.034, 0.026, 0.13, 16);
+    sodaCupGeo.translate(0, 0.065, 0);
+    const sodaLidGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.012, 16);
+    const sodaStrawGeo = new THREE.CylinderGeometry(0.0032, 0.0032, 0.066, 8);
+    const fluteGlassGeo = buildChampagneFluteGeometry();
+    const fluteLiquidGeo = new THREE.CylinderGeometry(0.019, 0.004, 0.062, 12);
+    const tactileFaceGeo = buildSeatTactileQuadsGeometry(
+      seats,
+      tactileAtlas.cols,
+      tactileAtlas.rows,
+      (seat) => {
+        const effArmX = isDolbyCobaltSeat
+          ? props.armOffsetX + 0.018
+          : isDolbyVeilSeat || isImaxAuroraSeat || isImaxSolarSeat
+            ? props.armOffsetX + 0.014
+            : isDolbyObsidianSeat
+              ? props.armOffsetX + 0.008
+              : props.armOffsetX;
+        const plateSide = isScreenXPit
+          ? seat.seatNumber % 2 === 1
+            ? 1
+            : -1
+          : isDolbyVeilSeat
+            ? 1
+            : -1;
+        return {
+          lx: plateSide * effArmX,
+          ly: props.armPosY + props.armHeight * 0.45,
+          lz: props.armPosZ - props.armDepth * 0.4,
+          rx: 0.14,
+        };
+      },
+    );
     const sideTablePostGeo = isScreenXPit
       ? new THREE.BoxGeometry(0.175, 0.016, 0.29)
       : isChampagneDaybed
@@ -1383,6 +1854,14 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       lumbarCushionGeo,
       actuatorPodGeo,
       seatTagGeo,
+      popcornBucketGeo,
+      popcornMoundGeo,
+      sodaCupGeo,
+      sodaLidGeo,
+      sodaStrawGeo,
+      fluteGlassGeo,
+      fluteLiquidGeo,
+      tactileFaceGeo,
       sideTablePostGeo,
       sideTableTopGeo,
       throwPillowGeo,
@@ -1390,7 +1869,22 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       lampStemGeo,
       lampShadeGeo,
     };
-  }, [props, isDolbyVeilSeat, isScreenXPit, isChampagneDaybed, isWalnutLoveseat, isIceObsidianRecliner, isIceCobaltArmchair, isParametricPurpleSeat]);
+  }, [
+    props,
+    seats,
+    tactileAtlas,
+    isDolbyVeilSeat,
+    isDolbyCobaltSeat,
+    isDolbyObsidianSeat,
+    isImaxAuroraSeat,
+    isImaxSolarSeat,
+    isScreenXPit,
+    isChampagneDaybed,
+    isWalnutLoveseat,
+    isIceObsidianRecliner,
+    isIceCobaltArmchair,
+    isParametricPurpleSeat,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1812,7 +2306,194 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
         }
       }
 
-      // (Dolby Obsidian Reference uses charcoal-and-black leather with blue accent stitching; Dolby Cobalt Noir uses wide espresso-charcoal armrests)
+      // Tactile Metallic Seat-Number Plate Backing on Front Corner of Clear Armrest
+      if (seatTagRef.current) {
+        const plateSide = isScreenXPit
+          ? seat.seatNumber % 2 === 1
+            ? 1
+            : -1
+          : isDolbyVeilSeat
+            ? 1
+            : -1;
+        setSeatPart(
+          sx,
+          sy,
+          sz,
+          yaw,
+          cosY,
+          sinY,
+          plateSide * effectiveArmOffsetX,
+          props.armPosY + props.armHeight * 0.45,
+          props.armPosZ - props.armDepth * 0.4,
+          0.14,
+        );
+        seatTagRef.current.setMatrixAt(idx, dummy.matrix);
+      }
+
+      // Popcorn Buckets & Drinks (Soda Cups or Champagne Flutes) in Cupholders, Swivel Tables & Armrests
+      const seed = seat.rowIndex * 13 + seat.seatNumber * 7;
+      const isOuterSuiteSeat = (isWalnutLoveseat || isChampagneDaybed) && (seat.seatNumber === 1 || seat.seatNumber === 4);
+      const isOuterCobaltSeat =
+        isIceCobaltArmchair &&
+        (seat.seatNumber === 1 ||
+          seat.seatNumber === 4 ||
+          seat.seatNumber === 5 ||
+          seat.seatNumber === 12 ||
+          seat.seatNumber === 13 ||
+          seat.seatNumber === 16);
+      const hasDrink =
+        isSelected ||
+        isOuterSuiteSeat ||
+        (seat.status === 'unavailable' && seed % 3 === 0) ||
+        seed % 7 === 0;
+      const hasPopcorn =
+        isSelected ||
+        (isOuterSuiteSeat && (seat.rowIndex % 2 === 0 || seat.seatNumber === 1)) ||
+        (seat.status === 'unavailable' && seed % 4 === 1) ||
+        seed % 9 === 0;
+
+      // Determine whether drink renders as a crystal Champagne Flute or cinema Soda Cup
+      const useChampagneFlute =
+        isWalnutLoveseat || isChampagneDaybed || isDolbyVeilSeat || isOuterCobaltSeat;
+
+      if (fluteGlassRef.current && fluteLiquidRef.current) {
+        if (hasDrink && useChampagneFlute) {
+          let fx = effectiveArmOffsetX;
+          let fy = props.armPosY + props.armHeight * 0.48;
+          let fz = props.armPosZ - 0.14;
+          if (isWalnutLoveseat) {
+            if (isOuterSuiteSeat) {
+              const outerDir = seat.seatNumber === 1 ? -1 : 1;
+              fx = outerDir * effectiveArmOffsetX - outerDir * 0.17;
+              fy = props.armPosY + props.armHeight * 0.5 + 0.214;
+              fz = props.armPosZ - props.armDepth * 0.28 - 0.08;
+            } else {
+              fx = (seat.seatNumber % 2 === 1 ? -1 : 1) * effectiveArmOffsetX;
+              fy = props.armPosY + props.armHeight * 0.48;
+              fz = props.armPosZ - 0.1;
+            }
+          } else if (isChampagneDaybed) {
+            if (isOuterSuiteSeat) {
+              const outerDir = seat.seatNumber === 1 ? -1 : 1;
+              fx = outerDir * (effectiveArmOffsetX + 0.34) - outerDir * 0.085;
+              fy = 0.581;
+              fz = -0.245;
+            } else {
+              fx = (seat.seatNumber % 2 === 1 ? -1 : 1) * effectiveArmOffsetX;
+              fy = props.armPosY + props.armHeight * 0.48;
+              fz = props.armPosZ - 0.12;
+            }
+          } else if (isDolbyVeilSeat) {
+            fx = -effectiveArmOffsetX;
+            fy = props.armPosY + props.armHeight * 0.5 + 0.02;
+            fz = props.armPosZ - 0.12;
+          } else if (isOuterCobaltSeat) {
+            const tableDir = seat.seatNumber === 1 || seat.seatNumber === 5 || seat.seatNumber === 13 ? -1 : 1;
+            fx = tableDir * (effectiveArmOffsetX + 0.22) + tableDir * 0.05;
+            fy = 0.581;
+            fz = -0.11;
+          }
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, fx, fy, fz);
+          fluteGlassRef.current.setMatrixAt(idx, dummy.matrix);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, fx, fy + 0.128, fz);
+          fluteLiquidRef.current.setMatrixAt(idx, dummy.matrix);
+        } else {
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, -10, 0, 0, 0.0001, 0.0001, 0.0001);
+          fluteGlassRef.current.setMatrixAt(idx, dummy.matrix);
+          fluteLiquidRef.current.setMatrixAt(idx, dummy.matrix);
+        }
+      }
+
+      if (sodaCupRef.current && sodaLidRef.current && sodaStrawRef.current) {
+        if (hasDrink && !useChampagneFlute) {
+          let cx = effectiveArmOffsetX;
+          let cy = props.armPosY + props.armHeight * 0.42 + 0.004;
+          let cz = props.armPosZ - props.armDepth * 0.34;
+          if (isScreenXPit) {
+            const armSide = seat.seatNumber % 2 === 1 ? -1 : 1;
+            cx = -armSide * effectiveArmOffsetX;
+            cy = props.armPosY + props.armHeight * 0.47;
+            cz = props.armPosZ - 0.2;
+          }
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, cx, cy, cz, 0, 0.94, 0.94, 0.94);
+          sodaCupRef.current.setMatrixAt(idx, dummy.matrix);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, cx, cy + 0.124, cz, 0, 0.94, 0.94, 0.94);
+          sodaLidRef.current.setMatrixAt(idx, dummy.matrix);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, cx, cy + 0.156, cz - 0.005, 0.18, 0.94, 0.94, 0.94);
+          sodaStrawRef.current.setMatrixAt(idx, dummy.matrix);
+        } else {
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, -10, 0, 0, 0.0001, 0.0001, 0.0001);
+          sodaCupRef.current.setMatrixAt(idx, dummy.matrix);
+          sodaLidRef.current.setMatrixAt(idx, dummy.matrix);
+          sodaStrawRef.current.setMatrixAt(idx, dummy.matrix);
+        }
+      }
+
+      if (popcornBucketRef.current && popcornMoundRef.current) {
+        if (hasPopcorn) {
+          let px = -effectiveArmOffsetX;
+          let py = props.armPosY + props.armHeight * 0.46;
+          let pz = isIceRecliner ? props.armPosZ + 0.09 : props.armPosZ - 0.01;
+          let pScale = isIceRecliner || isAnyIceSeat || isDolbyObsidianSeat || isDolbyCobaltSeat ? 0.86 : 0.78;
+          if (isWalnutLoveseat) {
+            if (isOuterSuiteSeat) {
+              const outerDir = seat.seatNumber === 1 ? -1 : 1;
+              px = outerDir * effectiveArmOffsetX - outerDir * 0.05;
+              py = props.armPosY + props.armHeight * 0.5 + 0.214;
+              pz = props.armPosZ - props.armDepth * 0.28 + 0.02;
+              pScale = 1.0;
+            } else {
+              px = (seat.seatNumber % 2 === 1 ? -1 : 1) * effectiveArmOffsetX;
+              py = props.armPosY + props.armHeight * 0.47;
+              pz = props.armPosZ + 0.04;
+              pScale = 0.85;
+            }
+          } else if (isChampagneDaybed) {
+            if (isOuterSuiteSeat) {
+              const outerDir = seat.seatNumber === 1 ? -1 : 1;
+              px = outerDir * (effectiveArmOffsetX + 0.34) - outerDir * 0.04;
+              py = 0.581;
+              pz = -0.105;
+              pScale = 1.02;
+            } else {
+              px = (seat.seatNumber % 2 === 1 ? -1 : 1) * effectiveArmOffsetX;
+              py = props.armPosY + props.armHeight * 0.47;
+              pz = props.armPosZ + 0.04;
+              pScale = 0.86;
+            }
+          } else if (isIceObsidianRecliner) {
+            px = -effectiveArmOffsetX + props.armWidth * 0.1 + 0.14;
+            py = props.armPosY + props.armHeight * 0.5 + 0.139;
+            pz = props.armPosZ - props.armDepth * 0.32 - 0.06;
+            pScale = 0.98;
+          } else if (isOuterCobaltSeat) {
+            const tableDir = seat.seatNumber === 1 || seat.seatNumber === 5 || seat.seatNumber === 13 ? -1 : 1;
+            px = tableDir * (effectiveArmOffsetX + 0.22) - tableDir * 0.045;
+            py = 0.581;
+            pz = -0.01;
+            pScale = 0.98;
+          } else if (isDolbyVeilSeat) {
+            px = -effectiveArmOffsetX;
+            py = props.armPosY + props.armHeight * 0.5 + 0.02;
+            pz = props.armPosZ + 0.03;
+            pScale = 0.88;
+          } else if (isScreenXPit) {
+            const armSide = seat.seatNumber % 2 === 1 ? -1 : 1;
+            px = -armSide * effectiveArmOffsetX;
+            py = props.armPosY + props.armHeight * 0.47;
+            pz = props.armPosZ - 0.02;
+            pScale = 0.82;
+          }
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, px, py, pz, 0, pScale, pScale, pScale);
+          popcornBucketRef.current.setMatrixAt(idx, dummy.matrix);
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, px, py + 0.14 * pScale, pz, 0, pScale, pScale, pScale);
+          popcornMoundRef.current.setMatrixAt(idx, dummy.matrix);
+        } else {
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, -10, 0, 0, 0.0001, 0.0001, 0.0001);
+          popcornBucketRef.current.setMatrixAt(idx, dummy.matrix);
+          popcornMoundRef.current.setMatrixAt(idx, dummy.matrix);
+        }
+      }
     });
 
     const meshes = [
@@ -1847,6 +2528,13 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       throwBlanketRef.current,
       lampStemRef.current,
       lampShadeRef.current,
+      popcornBucketRef.current,
+      popcornMoundRef.current,
+      sodaCupRef.current,
+      sodaLidRef.current,
+      sodaStrawRef.current,
+      fluteGlassRef.current,
+      fluteLiquidRef.current,
     ];
 
     meshes.forEach((m) => {
@@ -2192,6 +2880,51 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
           ))}
         </>
       )}
+
+      {/* Metallic Tactile Seat-Number Plates (A1, C7, D8...) Mounted on Every Seat Armrest */}
+      <instancedMesh
+        ref={seatTagRef}
+        args={[geometries.seatTagGeo, materials.tactileBackingMat, count]}
+        receiveShadow
+      />
+      <mesh
+        geometry={geometries.tactileFaceGeo}
+        material={materials.tactileFaceMat}
+      />
+
+      {/* Popcorn Buckets, Cinema Soda Cups & Crystal Champagne Flutes */}
+      <instancedMesh
+        ref={popcornBucketRef}
+        args={[geometries.popcornBucketGeo, materials.popcornBucketMat, count]}
+        castShadow
+        receiveShadow
+      />
+      <instancedMesh
+        ref={popcornMoundRef}
+        args={[geometries.popcornMoundGeo, materials.popcornMoundMat, count]}
+        castShadow
+      />
+      <instancedMesh
+        ref={sodaCupRef}
+        args={[geometries.sodaCupGeo, materials.sodaCupMat, count]}
+        castShadow
+      />
+      <instancedMesh
+        ref={sodaLidRef}
+        args={[geometries.sodaLidGeo, materials.sodaLidMat, count]}
+      />
+      <instancedMesh
+        ref={sodaStrawRef}
+        args={[geometries.sodaStrawGeo, materials.sodaStrawMat, count]}
+      />
+      <instancedMesh
+        ref={fluteGlassRef}
+        args={[geometries.fluteGlassGeo, materials.fluteGlassMat, count]}
+      />
+      <instancedMesh
+        ref={fluteLiquidRef}
+        args={[geometries.fluteLiquidGeo, materials.fluteLiquidMat, count]}
+      />
 
       {/* Grounded brass/cyan 3D Reserved plaque, folded screening program, and hall ring */}
       {selectedSeat && (
