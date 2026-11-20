@@ -18,6 +18,7 @@ import {
   Minimize,
   Monitor,
   Moon,
+  Orbit,
   Pause,
   Play,
   QrCode,
@@ -1445,7 +1446,7 @@ export const VirtualCinemaPage: React.FC = () => {
 
       {/* Pre-Show Lighting Presets + Start Show Bar */}
       {sceneReady && entranceComplete && showState === 'AUDITORIUM_OPEN' && (
-        <div className="absolute bottom-36 sm:bottom-28 left-1/2 z-30 -translate-x-1/2 flex flex-wrap items-center justify-center gap-2 max-w-[94vw]">
+        <div className="absolute bottom-24 sm:bottom-28 left-1/2 z-30 -translate-x-1/2 flex flex-wrap items-center justify-center gap-2 max-w-[94vw]">
           <div
             data-tour-id="lighting_presets"
             className="flex items-center rounded-lg border border-white/15 bg-[#090A0E]/92 p-1 text-[11px]"
@@ -1596,82 +1597,78 @@ export const VirtualCinemaPage: React.FC = () => {
               : 'opacity-0 hover:opacity-100'
         }`}
       >
-        <div className="flex items-center gap-1.5 sm:gap-2 max-w-[58vw] sm:max-w-none">
-          <div className="truncate rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs">
-            <span className="font-medium text-[#F4F1EA]">{selectedTheaterConfig.shortName}</span>
-            <span className="mx-1.5 sm:mx-2 text-neutral-600">·</span>
-            <span className="font-mono-tabular text-[#E5C158]">Seat {selectedSeat.id}</span>
-          </div>
-
+        <div className="flex items-center">
           {entranceComplete && !showCompleted && (
             <button
               type="button"
               onClick={handleReopenStepsGuide}
               title="View Steps"
-              aria-label="View theater steps"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-[11px] sm:text-xs text-neutral-200 hover:border-[#D4AF37]/60 hover:text-white cursor-pointer"
+              aria-label="View Steps"
+              className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-[#090A0E]/88 text-neutral-200 hover:border-[#D4AF37]/60 hover:text-white cursor-pointer"
             >
-              <HelpCircle className="h-3.5 w-3.5 text-[#D4AF37]" />
-              <span className="hidden sm:inline">Steps</span>
+              <HelpCircle className="h-4 w-4 text-[#D4AF37]" />
             </button>
           )}
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* View Mode Switcher: Seat / Walk / Hall (Click Any Seat) / Full Screen */}
+          {/* View Mode Switcher: Seat / Walk / Hall / Full Screen */}
           {entranceComplete && (
             <div
               data-tour-id="view_modes"
-              className="flex items-center rounded-lg border border-white/10 bg-[#090A0E]/88 p-0.5 text-[11px] sm:text-xs"
+              className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-[#090A0E]/88 p-0.5"
             >
               <button
                 type="button"
                 onClick={() => setViewMode('seat')}
-                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 sm:py-1.5 cursor-pointer transition-colors ${
+                title="Seat View (1)"
+                aria-label="Seat View"
+                className={`flex h-7 w-8 sm:h-8 sm:w-9 items-center justify-center rounded-md cursor-pointer transition-colors ${
                   viewMode === 'seat'
-                    ? 'bg-[#D4AF37] text-[#070709] font-semibold'
+                    ? 'bg-[#D4AF37] text-[#070709]'
                     : 'text-neutral-300 hover:text-white'
                 }`}
               >
-                <Armchair className="h-3.5 w-3.5" />
-                <span>Seat</span>
+                <Armchair className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('walk')}
-                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 sm:py-1.5 cursor-pointer transition-colors ${
+                title="Walk Hall (2)"
+                aria-label="Walk Hall"
+                className={`flex h-7 w-8 sm:h-8 sm:w-9 items-center justify-center rounded-md cursor-pointer transition-colors ${
                   viewMode === 'walk'
-                    ? 'bg-[#D4AF37] text-[#070709] font-semibold'
+                    ? 'bg-[#D4AF37] text-[#070709]'
                     : 'text-neutral-300 hover:text-white'
                 }`}
               >
-                <Footprints className="h-3.5 w-3.5" />
-                <span>Walk</span>
+                <Footprints className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('hall')}
-                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 sm:py-1.5 cursor-pointer transition-colors ${
+                title="Hall Orbit (3)"
+                aria-label="Hall Orbit"
+                className={`flex h-7 w-8 sm:h-8 sm:w-9 items-center justify-center rounded-md cursor-pointer transition-colors ${
                   viewMode === 'hall'
-                    ? 'bg-[#D4AF37] text-[#070709] font-semibold'
+                    ? 'bg-[#D4AF37] text-[#070709]'
                     : 'text-neutral-300 hover:text-white'
                 }`}
               >
-                <Compass className="h-3.5 w-3.5" />
-                <span>Hall</span>
+                <Orbit className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('screen_full')}
-                className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-md px-2 sm:px-2.5 py-1 sm:py-1.5 cursor-pointer transition-colors ${
+                title="Full Screen (4)"
+                aria-label="Full Screen"
+                className={`flex h-7 w-8 sm:h-8 sm:w-9 items-center justify-center rounded-md cursor-pointer transition-colors ${
                   viewMode === 'screen_full'
-                    ? 'bg-[#D4AF37] text-[#070709] font-semibold'
+                    ? 'bg-[#D4AF37] text-[#070709]'
                     : 'text-neutral-300 hover:text-white'
                 }`}
               >
-                <Maximize2 className="h-3.5 w-3.5" />
-                <span className="sm:hidden">Full</span>
-                <span className="hidden sm:inline">Full Screen</span>
+                <Maximize2 className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -1681,12 +1678,11 @@ export const VirtualCinemaPage: React.FC = () => {
               type="button"
               data-tour-id="reset_view"
               onClick={() => setResetViewSignal((n) => n + 1)}
-              title="Reset View to Screen Center (R)"
-              aria-label="Reset View to Screen Center"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs text-neutral-200 hover:border-[#D4AF37]/60 cursor-pointer"
+              title="Reset View (R)"
+              aria-label="Reset View"
+              className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-white/10 bg-[#090A0E]/88 text-neutral-200 hover:border-[#D4AF37]/60 cursor-pointer"
             >
-              <Compass className="h-3.5 w-3.5 text-[#D4AF37]" />
-              <span className="hidden md:inline">Reset View</span>
+              <Compass className="h-4 w-4 text-[#D4AF37]" />
             </button>
           )}
 
@@ -1694,11 +1690,11 @@ export const VirtualCinemaPage: React.FC = () => {
             type="button"
             data-tour-id="exit_show"
             onClick={() => setShowExitConfirm(true)}
+            title="Exit Show"
             aria-label="Exit Show"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#090A0E]/88 px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs text-neutral-200 hover:border-red-400/60 hover:text-red-300 cursor-pointer"
+            className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-white/10 bg-[#090A0E]/88 text-neutral-200 hover:border-red-400/60 hover:text-red-300 cursor-pointer"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Exit Show</span>
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </div>
@@ -1724,9 +1720,9 @@ export const VirtualCinemaPage: React.FC = () => {
             e.stopPropagation();
             bumpHudActivity();
           }}
-          className="absolute bottom-28 sm:bottom-32 left-3 sm:left-4 z-20 flex flex-col items-start gap-2"
+          className="absolute bottom-[74px] sm:bottom-32 left-2.5 sm:left-4 z-20 flex flex-col items-start gap-2"
         >
-          <div className="grid grid-cols-3 gap-1 rounded-xl border border-white/12 bg-[#090A0E]/88 p-1.5 shadow-lg">
+          <div className="grid grid-cols-3 gap-0.5 sm:gap-1 rounded-lg sm:rounded-xl border border-white/12 bg-[#090A0E]/88 p-1 sm:p-1.5 shadow-lg">
             <div />
             <button
               type="button"
@@ -1832,7 +1828,7 @@ export const VirtualCinemaPage: React.FC = () => {
             isHoveringHudRef.current = false;
             bumpHudActivity();
           }}
-          className={`absolute bottom-2.5 sm:bottom-4 left-1/2 z-20 w-[min(940px,96vw)] -translate-x-1/2 transition-opacity duration-300 ${
+          className={`absolute bottom-2 sm:bottom-4 left-1/2 z-20 w-[min(940px,95vw)] sm:w-[min(940px,96vw)] -translate-x-1/2 transition-opacity duration-300 ${
             effectiveHudVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -2006,13 +2002,13 @@ export const VirtualCinemaPage: React.FC = () => {
           )}
 
           {/* Main Compact Control Bar */}
-          <div className="rounded-xl border border-white/12 bg-[#090A0E]/92 px-3 py-2.5 sm:px-4 sm:py-3 space-y-2">
+          <div className="rounded-lg sm:rounded-xl border border-white/12 bg-[#090A0E]/92 px-2 py-1.5 sm:px-4 sm:py-3 space-y-1 sm:space-y-2">
             {/* Video Progress Scrubber & Exact Timing */}
             <div
               data-tour-id="scrubber"
-              className="flex items-center gap-2 sm:gap-3 text-[11px] font-mono-tabular text-neutral-300"
+              className="flex items-center gap-1.5 sm:gap-3 text-[10px] sm:text-[11px] font-mono-tabular text-neutral-300"
             >
-              <span className="min-w-[38px] text-right shrink-0">
+              <span className="min-w-[30px] sm:min-w-[38px] text-right shrink-0">
                 {formatDuration(currentTime)}
               </span>
               <input
@@ -2025,28 +2021,28 @@ export const VirtualCinemaPage: React.FC = () => {
                 onChange={handleSeek}
                 disabled={showState !== 'SHOW_PLAYING'}
                 aria-label="Video playback progress"
-                className="h-5 flex-1 touch-none accent-[#D4AF37] cursor-pointer"
+                className="h-3.5 sm:h-5 flex-1 touch-none accent-[#D4AF37] cursor-pointer"
               />
-              <span className="min-w-[38px] shrink-0 text-neutral-400">
+              <span className="min-w-[30px] sm:min-w-[38px] shrink-0 text-neutral-400">
                 {formatDuration(duration)}
               </span>
             </div>
 
             {/* Buttons & Playlist Readout */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1 sm:flex-wrap sm:gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 min-w-0 sm:flex-1">
                 <button
                   type="button"
                   data-tour-id="play_pause"
                   onClick={togglePlayPause}
                   disabled={showState !== 'SHOW_PLAYING'}
                   aria-label={isPaused ? 'Resume playback' : 'Pause playback'}
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md bg-[#D4AF37] text-[#070709] hover:bg-[#E5C158] disabled:opacity-40 cursor-pointer shrink-0"
+                  className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md bg-[#D4AF37] text-[#070709] hover:bg-[#E5C158] disabled:opacity-40 cursor-pointer shrink-0"
                 >
                   {isPaused ? (
-                    <Play className="h-4 w-4 fill-current" />
+                    <Play className="h-3 w-3 sm:h-4 sm:w-4 fill-current" />
                   ) : (
-                    <Pause className="h-4 w-4 fill-current" />
+                    <Pause className="h-3 w-3 sm:h-4 sm:w-4 fill-current" />
                   )}
                 </button>
 
@@ -2056,9 +2052,9 @@ export const VirtualCinemaPage: React.FC = () => {
                   onClick={handleRestartShow}
                   title="Restart Show"
                   aria-label="Restart show"
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer shrink-0"
+                  className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer shrink-0"
                 >
-                  <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4" />
                 </button>
 
                 <button
@@ -2068,10 +2064,10 @@ export const VirtualCinemaPage: React.FC = () => {
                   disabled={showState !== 'SHOW_PLAYING'}
                   title="Back 10 seconds (Left Arrow)"
                   aria-label="Rewind 10 seconds"
-                  className="inline-flex h-8 sm:h-9 items-center justify-center gap-1 rounded-md border border-white/10 px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
+                  className="inline-flex h-6 sm:h-9 items-center justify-center gap-0.5 sm:gap-1 rounded sm:rounded-md border border-white/10 px-1 sm:px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  <span className="font-mono-tabular text-[10px] sm:text-[11px] font-semibold leading-none">
+                  <RotateCcw className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" />
+                  <span className="font-mono-tabular text-[9px] sm:text-[11px] font-semibold leading-none">
                     10
                   </span>
                 </button>
@@ -2083,26 +2079,26 @@ export const VirtualCinemaPage: React.FC = () => {
                   disabled={showState !== 'SHOW_PLAYING'}
                   title="Forward 10 seconds (Right Arrow)"
                   aria-label="Forward 10 seconds"
-                  className="inline-flex h-8 sm:h-9 items-center justify-center gap-1 rounded-md border border-white/10 px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
+                  className="inline-flex h-6 sm:h-9 items-center justify-center gap-0.5 sm:gap-1 rounded sm:rounded-md border border-white/10 px-1 sm:px-2 text-neutral-300 hover:border-[#D4AF37]/60 hover:text-white disabled:opacity-40 cursor-pointer shrink-0"
                 >
-                  <span className="font-mono-tabular text-[10px] sm:text-[11px] font-semibold leading-none">
+                  <span className="font-mono-tabular text-[9px] sm:text-[11px] font-semibold leading-none">
                     10
                   </span>
-                  <RotateCw className="h-3.5 w-3.5" />
+                  <RotateCw className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" />
                 </button>
 
-                <div className="min-w-0 flex-1 pl-0.5 sm:pl-1">
-                  <p className="truncate text-[11px] sm:text-xs font-medium text-[#F4F1EA]">
+                <div className="hidden sm:block min-w-0 flex-1 pl-1">
+                  <p className="truncate text-xs font-medium text-[#F4F1EA]">
                     {currentItem ? currentItem.fileName : 'Loading'}
                   </p>
-                  <p className="font-mono-tabular text-[10px] sm:text-[11px] text-neutral-400">
+                  <p className="font-mono-tabular text-[11px] text-neutral-400">
                     {String(currentPlaybackIndex + 1).padStart(2, '0')} /{' '}
                     {String(playlist.length).padStart(2, '0')}
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                 {/* Screen Fill vs Aspect Fit Toggle */}
                 <button
                   type="button"
@@ -2115,12 +2111,9 @@ export const VirtualCinemaPage: React.FC = () => {
                       ? 'Screen framing: Fill entire projection screen (click for Fit)'
                       : 'Screen framing: Fit original aspect ratio (click for Fill)'
                   }
-                  className="inline-flex h-8 sm:h-9 items-center gap-1 rounded-md border border-white/10 px-2 sm:px-2.5 text-[11px] text-neutral-200 hover:border-[#D4AF37]/60 cursor-pointer"
+                  className="inline-flex h-6 w-6 sm:h-9 sm:w-auto items-center justify-center sm:gap-1 rounded sm:rounded-md border border-white/10 sm:px-2.5 text-[11px] text-neutral-200 hover:border-[#D4AF37]/60 cursor-pointer"
                 >
-                  <Monitor className="h-3.5 w-3.5 text-[#D4AF37]" />
-                  <span className="sm:hidden">
-                    {screenFraming === 'fill' ? 'Fill' : 'Fit'}
-                  </span>
+                  <Monitor className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-[#D4AF37]" />
                   <span className="hidden sm:inline">
                     {screenFraming === 'fill' ? 'Fill Screen' : 'Fit Frame'}
                   </span>
@@ -2135,19 +2128,21 @@ export const VirtualCinemaPage: React.FC = () => {
                       setShow4dxPopover((v) => !v);
                       setShowMixerPopover(false);
                     }}
-                    className={`inline-flex h-8 sm:h-9 items-center gap-1 rounded-md border px-2 sm:px-2.5 text-[11px] cursor-pointer ${
+                    title="4DX Motion & Effects"
+                    aria-label="4DX Motion & Effects"
+                    className={`inline-flex h-6 w-6 sm:h-9 sm:w-auto items-center justify-center sm:gap-1 rounded sm:rounded-md border sm:px-2.5 text-[11px] cursor-pointer ${
                       fourDxSettings.enabled
                         ? 'border-[#38bdf8]/60 bg-[#38bdf8]/15 text-[#7dd3fc]'
                         : 'border-white/10 text-neutral-300 hover:text-white'
                     }`}
                   >
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                     <span className="hidden sm:inline">4DX</span>
                   </button>
                 )}
 
                 {/* Mute & Master Volume */}
-                <div data-tour-id="mute_volume" className="flex items-center gap-1.5 sm:gap-2">
+                <div data-tour-id="mute_volume" className="flex items-center gap-1 sm:gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -2156,12 +2151,12 @@ export const VirtualCinemaPage: React.FC = () => {
                     }}
                     title="Mute / Unmute (M)"
                     aria-label={audioSettings.muted ? 'Unmute' : 'Mute'}
-                    className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                    className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
                   >
                     {audioSettings.muted ? (
-                      <VolumeX className="h-4 w-4 text-red-400" />
+                      <VolumeX className="h-3 w-3 sm:h-4 sm:w-4 text-red-400" />
                     ) : (
-                      <Volume2 className="h-4 w-4" />
+                      <Volume2 className="h-3 w-3 sm:h-4 sm:w-4" />
                     )}
                   </button>
 
@@ -2191,9 +2186,9 @@ export const VirtualCinemaPage: React.FC = () => {
                   }}
                   title="Audio & Visual Mixer"
                   aria-label="Open audio mixer"
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                  className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
                 >
-                  <Sliders className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <Sliders className="h-3 w-3 sm:h-4 sm:w-4" />
                 </button>
 
                 <button
@@ -2202,9 +2197,9 @@ export const VirtualCinemaPage: React.FC = () => {
                   onClick={() => setControlsManuallyHidden(true)}
                   title="Hide Controls (H)"
                   aria-label="Hide controls"
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                  className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
                 >
-                  <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <EyeOff className="h-3 w-3 sm:h-4 sm:w-4" />
                 </button>
 
                 <button
@@ -2213,12 +2208,12 @@ export const VirtualCinemaPage: React.FC = () => {
                   onClick={toggleFullscreen}
                   title={isFullscreen ? 'Exit Browser Fullscreen (F)' : 'Enter Browser Fullscreen (F)'}
                   aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-                  className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
+                  className="flex h-6 w-6 sm:h-9 sm:w-9 items-center justify-center rounded sm:rounded-md border border-white/10 text-neutral-300 hover:text-white cursor-pointer"
                 >
                   {isFullscreen ? (
-                    <Minimize className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <Minimize className="h-3 w-3 sm:h-4 sm:w-4" />
                   ) : (
-                    <Maximize className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    <Maximize className="h-3 w-3 sm:h-4 sm:w-4" />
                   )}
                 </button>
               </div>

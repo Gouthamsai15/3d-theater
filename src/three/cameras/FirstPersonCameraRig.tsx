@@ -910,8 +910,9 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
       const dy = THREE.MathUtils.clamp(rawDy, -maxStep, maxStep);
 
       const isTouch = e.pointerType === 'touch';
-      const yawStep = dx * (isTouch ? 0.0046 : 0.0042);
-      const pitchStep = dy * (isTouch ? 0.0033 : 0.0031);
+      const walkLookSign = viewMode === 'walk' ? -1 : 1;
+      const yawStep = dx * (isTouch ? 0.0046 : 0.0042) * walkLookSign;
+      const pitchStep = dy * (isTouch ? 0.0033 : 0.0031) * walkLookSign;
 
       const look = lookOffsetRef.current;
       look.targetYaw += yawStep;
