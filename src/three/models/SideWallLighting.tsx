@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { TheaterConfiguration } from '../../types/cinema';
 import {
   applyScreenBounceToMaterial,
@@ -11,6 +12,7 @@ import {
   createCarbonFiberTexture,
   createCrimsonStormGradientTexture,
   createDeccanBasaltWallTextures,
+  createDeccanWaterfallTextures,
   createImaxCyanChannelWashTexture,
   createImaxWithLaserSignTexture,
   createJaliLatticeTexture,
@@ -19,6 +21,7 @@ import {
   createVioletChannelGlowTexture,
   createVioletCoveWashTexture,
   DeccanBasaltTextureSet,
+  DeccanWaterfallTextureSet,
   TeluguWallPanelTextureSet,
 } from '../materials/proceduralTextures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -2605,17 +2608,42 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       }),
       screenBounceUniforms,
     );
-    const riverStoneMat = applyScreenBounceToMaterial(
+    const waterfallTexSet: DeccanWaterfallTextureSet = createDeccanWaterfallTextures();
+
+    const canyonStoneMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
         color: '#ffffff',
-        vertexColors: true,
+        map: waterfallTexSet.canyonStoneMap,
+        emissive: '#4d3d2d',
+        emissiveMap: waterfallTexSet.canyonStoneMap,
+        emissiveIntensity: 0.34,
         bumpMap: basaltTexSets[0].basaltBumpMap,
-        bumpScale: 0.024,
-        roughness: 0.82,
+        bumpScale: 0.036,
+        vertexColors: true,
+        roughness: 0.80,
         metalness: 0.04,
       }),
       screenBounceUniforms,
     );
+
+    const waterCascadeMat = applyScreenBounceToMaterial(
+      new THREE.MeshPhysicalMaterial({
+        color: '#ffffff',
+        map: waterfallTexSet.waterStreamMap,
+        emissive: '#8fa4a8',
+        emissiveMap: waterfallTexSet.waterStreamMap,
+        emissiveIntensity: 0.36,
+        bumpMap: waterfallTexSet.waterBumpMap,
+        bumpScale: 0.044,
+        vertexColors: true,
+        roughness: 0.16,
+        metalness: 0.06,
+        clearcoat: 0.92,
+        clearcoatRoughness: 0.12,
+      }),
+      screenBounceUniforms,
+    );
+
     const emeraldRimHaloMat = new THREE.MeshStandardMaterial({
       color: '#6effcb',
       emissive: '#2cf6ab',
@@ -2661,10 +2689,12 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
 
     return {
       basaltTexSets,
+      waterfallTexSet,
       basaltMats,
       emeraldFabricMat,
       darkFrontSlateMat,
-      riverStoneMat,
+      canyonStoneMat,
+      waterCascadeMat,
       emeraldRimHaloMat,
       emeraldRimWashTex,
       emeraldRimWashMat,
@@ -2676,10 +2706,12 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     return () => {
       if (!deccanResources) return;
       deccanResources.basaltTexSets.forEach((s) => s.dispose());
+      deccanResources.waterfallTexSet.dispose();
       deccanResources.basaltMats.forEach((m) => m.dispose());
       deccanResources.emeraldFabricMat.dispose();
       deccanResources.darkFrontSlateMat.dispose();
-      deccanResources.riverStoneMat.dispose();
+      deccanResources.canyonStoneMat.dispose();
+      deccanResources.waterCascadeMat.dispose();
       deccanResources.emeraldRimHaloMat.dispose();
       deccanResources.emeraldRimWashTex.dispose();
       deccanResources.emeraldRimWashMat.dispose();
@@ -2687,10 +2719,21 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [deccanResources]);
 
+  useFrame((_, delta) => {
+    if (!deccanResources) return;
+    const step = Math.min(delta, 0.05) * 0.16;
+    deccanResources.waterfallTexSet.waterStreamMap.offset.y =
+      (deccanResources.waterfallTexSet.waterStreamMap.offset.y + step) % 1;
+    deccanResources.waterfallTexSet.waterBumpMap.offset.y =
+      (deccanResources.waterfallTexSet.waterBumpMap.offset.y + step) % 1;
+  });
+
   if (deccanResources) {
     deccanResources.emeraldRimHaloMat.emissiveIntensity = 0.06 + lightFactor * 1.72;
     deccanResources.emeraldRimWashMat.opacity = 0.04 + lightFactor * 0.9;
-    deccanResources.riverWarmHaloMat.emissiveIntensity = 0.04 + lightFactor * 0.92;
+    deccanResources.riverWarmHaloMat.emissiveIntensity = 0.04 + lightFactor * 0.95;
+    deccanResources.canyonStoneMat.emissiveIntensity = 0.12 + lightFactor * 0.28;
+    deccanResources.waterCascadeMat.emissiveIntensity = 0.16 + lightFactor * 0.34;
   }
 
   const deccanMonsoonWall = useMemo(() => {
@@ -2889,89 +2932,131 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       };
     };
 
-    // 1. Sweeping Diagonal S-Curved 5-Ridge Carved River-Stone Canyon (framed cleanly in main rear-center view: z=-6.45 near Row 1 up to z=+0.75 at ceiling soffit)
-    const riverStartZ = frontZ + 8.3;
-    const riverEndZ = 0.75;
-    const riverPts: { z: number; yCenter: number; halfWidth: number }[] = [];
+    // 1. Organic Sinuous Double-S Sculpted Canyon & Braided Flowing Monsoon Waterfall
+    // Alternates steep vertical waterfall plunges with sweeping horizontal S-curve rock shelves
+    const waterfallCurve = new THREE.CatmullRomCurve3(
+      [
+        new THREE.Vector3(0, 0.10, frontZ + 8.35),
+        new THREE.Vector3(0, 1.55, frontZ + 8.65),
+        new THREE.Vector3(0, 3.05, frontZ + 9.45),
+        new THREE.Vector3(0, 4.10, frontZ + 11.45),
+        new THREE.Vector3(0, 5.45, frontZ + 11.95),
+        new THREE.Vector3(0, 7.25, frontZ + 12.25),
+        new THREE.Vector3(0, 9.25, frontZ + 14.20),
+        new THREE.Vector3(0, wallH + 0.16, 0.65),
+      ],
+      false,
+      'catmullrom',
+      0.5,
+    );
+
+    const segs = 88;
+    const sampledPts = waterfallCurve.getSpacedPoints(segs);
+    const waterfallFrames: {
+      z: number;
+      y: number;
+      nz: number;
+      ny: number;
+      halfW: number;
+      t: number;
+    }[] = [];
     const riverEdgeTopPts: THREE.Vector3[] = [];
     const riverEdgeBotPts: THREE.Vector3[] = [];
-    const segs = 46;
 
     for (let i = 0; i <= segs; i++) {
       const t = i / segs;
-      const z = THREE.MathUtils.lerp(riverStartZ, riverEndZ, t);
-      const sCurve =
-        Math.sin(t * Math.PI * 2.15) * 0.58 -
-        Math.cos(t * Math.PI * 1.1) * 0.24;
-      const yCenter = THREE.MathUtils.lerp(0.24, wallH + 0.06, Math.pow(t, 0.92)) + sCurve;
-      const halfWidth =
-        0.24 +
-        0.38 * Math.pow(t, 0.72) +
-        0.08 * Math.sin(t * Math.PI * 3.1);
-      riverPts.push({ z, yCenter, halfWidth });
+      const pt = sampledPts[i];
+      const tan = waterfallCurve.getTangentAt(t);
+      const tLen = Math.max(1e-4, Math.hypot(tan.z, tan.y));
+      const tz = tan.z / tLen;
+      const ty = tan.y / tLen;
+      // 2D normal perpendicular to the waterfall spline in the (z, y) wall plane so width stays full on steep drops
+      const nz = -ty;
+      const ny = tz;
 
-      // Tucked strictly behind the outer beveled shoulders so warm indirect amber glow smoothly frames both canyon banks without clipping
-      riverEdgeTopPts.push(new THREE.Vector3(0.072, yCenter + halfWidth + 0.014, z));
-      riverEdgeBotPts.push(new THREE.Vector3(0.072, yCenter - halfWidth - 0.014, z));
+      const halfW =
+        0.36 +
+        0.68 * Math.pow(t, 0.72) +
+        0.10 * Math.sin(t * Math.PI * 3.0);
+
+      waterfallFrames.push({
+        z: pt.z,
+        y: pt.y,
+        nz,
+        ny,
+        halfW,
+        t,
+      });
+
+      // Tucked strictly behind the outer stone canyon banks so warm indirect amber glow grazes the emerald wall
+      riverEdgeTopPts.push(
+        new THREE.Vector3(0.078, pt.y + ny * halfW * 0.99, pt.z + nz * halfW * 0.99),
+      );
+      riverEdgeBotPts.push(
+        new THREE.Vector3(0.078, pt.y - ny * halfW * 0.99, pt.z - nz * halfW * 0.99),
+      );
     }
 
-    // Build genuine 5-ridge contoured stone ribbon geometry facing +X (into the room) with rich carved sandstone-taupe depth
-    const buildSculptedRiverPair = () => {
+    // Layer A: Outer Sculpted Stratified Stone Canyon Trough (recessed wet riverbed + raised sculpted sandstone banks)
+    const buildSculptedCanyonPair = () => {
       const geo = new THREE.BufferGeometry();
       const positions: number[] = [];
       const colors: number[] = [];
       const uvs: number[] = [];
       const indices: number[] = [];
 
-      // Normalized cross-section profile v in [-1, 1] -> [depthInwardX, shadeBrightness]
-      const profile: [number, number, number][] = [
-        [-1.0, 0.072, 0.22],
-        [-0.92, 0.205, 0.68],
-        [-0.78, 0.325, 0.94],
-        [-0.62, 0.245, 0.62],
-        [-0.47, 0.125, 0.14],
-        [-0.31, 0.240, 0.68],
-        [-0.18, 0.305, 0.90],
-        [-0.08, 0.185, 0.30],
-        [0.0, 0.120, 0.10],
-        [0.08, 0.185, 0.30],
-        [0.18, 0.305, 0.90],
-        [0.31, 0.240, 0.68],
-        [0.47, 0.125, 0.14],
-        [0.62, 0.245, 0.62],
-        [0.78, 0.325, 0.94],
-        [0.92, 0.205, 0.68],
-        [1.0, 0.072, 0.22],
+      // [vNorm, depthInwardX, shadeBrightness]
+      const canyonProfile: [number, number, number][] = [
+        [-1.00, 0.068, 0.28],
+        [-0.93, 0.275, 0.68],
+        [-0.84, 0.435, 0.98],
+        [-0.75, 0.325, 0.72],
+        [-0.68, 0.148, 0.26],
+        [-0.42, 0.142, 0.20],
+        [0.00, 0.168, 0.30],
+        [0.42, 0.142, 0.20],
+        [0.68, 0.148, 0.26],
+        [0.75, 0.325, 0.72],
+        [0.84, 0.435, 0.98],
+        [0.93, 0.275, 0.68],
+        [1.00, 0.068, 0.28],
       ];
 
-      const cols = profile.length;
-      const baseCol = new THREE.Color();
-      for (let i = 0; i < riverPts.length; i++) {
-        const { z, yCenter, halfWidth } = riverPts[i];
-        const u = i / Math.max(1, riverPts.length - 1);
-        const ridgeSwell = 0.92 + 0.22 * Math.sin(u * Math.PI * 4.2);
+      const cols = canyonProfile.length;
+      const col = new THREE.Color();
+
+      for (let i = 0; i < waterfallFrames.length; i++) {
+        const { z, y, nz, ny, halfW, t } = waterfallFrames[i];
+        const rockSwell = 0.88 + 0.20 * Math.sin(t * Math.PI * 5.0) + 0.08 * Math.cos(t * Math.PI * 11.0);
+        const rimWave = Math.sin(t * Math.PI * 9.0) * 0.06;
 
         for (let j = 0; j < cols; j++) {
-          const [vNorm, depthBase, shade] = profile[j];
-          const meander = Math.sin(u * Math.PI * 5.0 + vNorm * 2.1) * 0.032 * (1 - Math.abs(vNorm));
-          const y = yCenter + (vNorm + meander) * halfWidth;
-          const x = 0.072 + (depthBase - 0.072) * ridgeSwell;
-          positions.push(x, y, z);
-          uvs.push(u * 6, vNorm * 0.5 + 0.5);
+          const [vNorm, depthBase, shade] = canyonProfile[j];
+          const edgeFlex = Math.abs(vNorm) > 0.72 ? vNorm * (1 + rimWave) : vNorm;
+          const offsetW = edgeFlex * halfW;
+          const py = y + ny * offsetW;
+          const pz = z + nz * offsetW;
+          const px = 0.068 + (depthBase - 0.068) * (Math.abs(vNorm) > 0.7 ? rockSwell : 1.0);
 
-          // Rich warm weathered Deccan limestone/taupe palette (deep dark channels -> warm taupe stone crests)
-          baseCol.setRGB(0.29 * shade, 0.24 * shade, 0.19 * shade);
-          colors.push(baseCol.r, baseCol.g, baseCol.b);
+          positions.push(px, py, pz);
+          uvs.push(vNorm * 0.5 + 0.5, t * 2.6);
+
+          const isWetBed = Math.abs(vNorm) <= 0.68;
+          if (isWetBed) {
+            col.setRGB(0.20 * shade, 0.25 * shade, 0.24 * shade);
+          } else {
+            col.setRGB(0.76 * shade, 0.67 * shade, 0.57 * shade);
+          }
+          colors.push(col.r, col.g, col.b);
         }
       }
 
-      for (let i = 0; i < riverPts.length - 1; i++) {
+      for (let i = 0; i < waterfallFrames.length - 1; i++) {
         for (let j = 0; j < cols - 1; j++) {
           const a = i * cols + j;
           const b = (i + 1) * cols + j;
           const c = (i + 1) * cols + (j + 1);
           const d = i * cols + (j + 1);
-          // Outward winding (+X facing into auditorium)
           indices.push(a, c, b, a, d, c);
         }
       }
@@ -2981,12 +3066,94 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
       geo.computeVertexNormals();
+      geo.computeBoundingSphere();
       return { left: geo, right: mirrorGeometryX(geo) };
     };
 
-    const riverPair = buildSculptedRiverPair();
-    const riverWarmTopLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeTopPts), 46, 0.009, 7, false);
-    const riverWarmBotLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeBotPts), 46, 0.009, 7, false);
+    // Layer B: Nested 5-Braided Flowing Water Cascade Streams Inside Canyon Trough
+    const buildBraidedWaterPair = () => {
+      const geo = new THREE.BufferGeometry();
+      const positions: number[] = [];
+      const colors: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      // [vNorm inside canyon trough, depthInwardX, foamBrightness]
+      const waterProfile: [number, number, number][] = [
+        [-0.74, 0.138, 0.26],
+        [-0.64, 0.255, 0.68],
+        [-0.52, 0.325, 0.96],
+        [-0.40, 0.215, 0.48],
+        [-0.30, 0.295, 0.90],
+        [-0.20, 0.335, 0.98],
+        [-0.10, 0.220, 0.46],
+        [0.00, 0.305, 0.94],
+        [0.10, 0.220, 0.46],
+        [0.20, 0.335, 0.98],
+        [0.30, 0.295, 0.90],
+        [0.40, 0.215, 0.48],
+        [0.52, 0.325, 0.96],
+        [0.64, 0.255, 0.68],
+        [0.74, 0.138, 0.26],
+      ];
+
+      const cols = waterProfile.length;
+      const col = new THREE.Color();
+
+      for (let i = 0; i < waterfallFrames.length; i++) {
+        const { z, y, nz, ny, halfW, t } = waterfallFrames[i];
+        const cascadeLedge = Math.max(0, Math.sin(t * Math.PI * 15.0)) * 0.036;
+        const streamSwell = 0.95 + 0.14 * Math.sin(t * Math.PI * 4.5);
+
+        for (let j = 0; j < cols; j++) {
+          const [vNorm, depthBase, foam] = waterProfile[j];
+          const innerFade = Math.max(0, 1 - Math.abs(vNorm) / 0.74);
+          const braidMeander =
+            Math.sin(t * Math.PI * 6.5 + vNorm * 3.1) * 0.045 * innerFade;
+          const offsetW = (vNorm + braidMeander) * halfW;
+          const py = y + ny * offsetW;
+          const pz = z + nz * offsetW;
+          const px =
+            depthBase * streamSwell +
+            cascadeLedge * innerFade * (foam > 0.7 ? 1.0 : 0.45);
+
+          positions.push(px, py, pz);
+          uvs.push((vNorm / 0.74) * 0.5 + 0.5, t * 1.8);
+
+          // Deep wet basalt-slate water troughs contrasting against cool misty-silver aerated cascade crests
+          const crestBoost = foam * (0.88 + cascadeLedge * 4.5);
+          col.setRGB(
+            THREE.MathUtils.lerp(0.28, 0.90, Math.min(1, crestBoost)),
+            THREE.MathUtils.lerp(0.34, 0.93, Math.min(1, crestBoost)),
+            THREE.MathUtils.lerp(0.36, 0.94, Math.min(1, crestBoost)),
+          );
+          colors.push(col.r, col.g, col.b);
+        }
+      }
+
+      for (let i = 0; i < waterfallFrames.length - 1; i++) {
+        for (let j = 0; j < cols - 1; j++) {
+          const a = i * cols + j;
+          const b = (i + 1) * cols + j;
+          const c = (i + 1) * cols + (j + 1);
+          const d = i * cols + (j + 1);
+          indices.push(a, c, b, a, d, c);
+        }
+      }
+
+      geo.setIndex(indices);
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.computeVertexNormals();
+      geo.computeBoundingSphere();
+      return { left: geo, right: mirrorGeometryX(geo) };
+    };
+
+    const riverPair = buildSculptedCanyonPair();
+    const waterPair = buildBraidedWaterPair();
+    const riverWarmTopLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeTopPts), 68, 0.013, 7, false);
+    const riverWarmBotLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeBotPts), 68, 0.013, 7, false);
 
     // 2. Three Crisp Jagged Basalt Cliffs Matching Reference Silhouette & Exact Outward Emerald Backlighting
     // Cliff A: Front-Upper Hanging Cliff (z = -11.9 .. -6.7)
@@ -3030,21 +3197,21 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       1.7,
     );
 
-    // Cliff B: Rear-Upper Hanging Basalt Overhang directly behind the upper river canyon (z = +0.65 .. +14.4, clearly visible in upper-left/right corners!)
+    // Cliff B: Rear-Upper Hanging Basalt Overhang directly behind the wide upper waterfall mouth (z = +1.58 .. +14.4)
     const rearUpperEdge: [number, number][] = [
-      [0.65, wallH + 0.02],
-      [1.25, 9.25],
-      [1.85, 8.65],
-      [2.55, 7.15],
-      [3.35, 6.88],
-      [4.25, 6.05],
-      [5.45, 6.28],
-      [7.85, 5.95],
+      [1.58, wallH + 0.02],
+      [2.05, 9.25],
+      [2.55, 8.65],
+      [3.15, 7.15],
+      [3.85, 6.88],
+      [4.65, 6.05],
+      [5.75, 6.28],
+      [7.95, 5.95],
       [zEnd + 0.04, 6.25],
     ];
     const rearUpperBack: [number, number][] = [
-      [0.65, wallH + 0.02],
-      [6.5, wallH + 0.02],
+      [1.58, wallH + 0.02],
+      [6.8, wallH + 0.02],
       [zEnd + 0.04, wallH + 0.02],
     ];
     const rearUpperCliff = buildDeccanCliffPair(
@@ -3053,11 +3220,11 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       rearUpperBack,
       -1,
       [
-        { cx: 0.44, cy: 9.6, cz: 2.1, rx: 0.38, ry: 1.25, rz: 1.15, rotX: -0.15, seed: 12.1 },
-        { cx: 0.56, cy: 8.8, cz: 4.4, rx: 0.48, ry: 1.55, rz: 1.45, rotZ: -0.18, seed: 14.7 },
+        { cx: 0.44, cy: 9.6, cz: 2.55, rx: 0.38, ry: 1.25, rz: 0.95, rotX: -0.15, seed: 12.1 },
+        { cx: 0.56, cy: 8.8, cz: 4.5, rx: 0.48, ry: 1.55, rz: 1.45, rotZ: -0.18, seed: 14.7 },
         { cx: 0.58, cy: 8.6, cz: 8.2, rx: 0.48, ry: 1.55, rz: 1.65, rotY: 0.22, seed: 16.9 },
       ],
-      { minX: 0.10, maxY: wallH + 0.02, maxZ: zEnd + 0.04 },
+      { minX: 0.10, maxY: wallH + 0.02, minZ: 1.58, maxZ: zEnd + 0.04 },
       9.4,
     );
 
@@ -3122,6 +3289,8 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       revealSpanZ,
       riverLeftGeo: riverPair.left,
       riverRightGeo: riverPair.right,
+      waterLeftGeo: waterPair.left,
+      waterRightGeo: waterPair.right,
       riverWarmTopLeft,
       riverWarmTopRight: mirrorGeometryX(riverWarmTopLeft),
       riverWarmBotLeft,
@@ -3156,6 +3325,8 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       if (!deccanMonsoonWall) return;
       deccanMonsoonWall.riverLeftGeo.dispose();
       deccanMonsoonWall.riverRightGeo.dispose();
+      deccanMonsoonWall.waterLeftGeo.dispose();
+      deccanMonsoonWall.waterRightGeo.dispose();
       deccanMonsoonWall.riverWarmTopLeft.dispose();
       deccanMonsoonWall.riverWarmTopRight.dispose();
       deccanMonsoonWall.riverWarmBotLeft.dispose();
@@ -8277,11 +8448,16 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                     renderOrder={2}
                   />
 
-                  {/* Sweeping Diagonal S-Curve 5-Ridge Sculpted River-Stone Canyon + Subtle Warm Indirect Edge Glow */}
+                  {/* Organic Sculpted Stone Canyon + Nested Braided Flowing Monsoon Waterfall + Subtle Warm Edge Glow */}
                   <mesh
                     geometry={isLeft ? deccanMonsoonWall.riverLeftGeo : deccanMonsoonWall.riverRightGeo}
-                    material={deccanResources.riverStoneMat}
+                    material={deccanResources.canyonStoneMat}
                     castShadow
+                    receiveShadow
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.waterLeftGeo : deccanMonsoonWall.waterRightGeo}
+                    material={deccanResources.waterCascadeMat}
                     receiveShadow
                   />
                   <mesh

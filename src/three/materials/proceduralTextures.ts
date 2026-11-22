@@ -4541,4 +4541,157 @@ export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTexture
   };
 }
 
+export interface DeccanWaterfallTextureSet {
+  canyonStoneMap: THREE.CanvasTexture;
+  waterStreamMap: THREE.CanvasTexture;
+  waterBumpMap: THREE.CanvasTexture;
+  dispose: () => void;
+}
+
+/**
+ * Generates stratified weathered Deccan canyon rock textures and silky braided
+ * flowing water-stream diffuse + bump maps for The Deccan – Monsoon side walls.
+ */
+export function createDeccanWaterfallTextures(): DeccanWaterfallTextureSet {
+  const W = 256;
+  const H = 512;
+
+  // 1. Stratified warm-dark canyon stone texture for sculpted waterfall banks
+  const stoneCanvas = document.createElement('canvas');
+  stoneCanvas.width = W;
+  stoneCanvas.height = H;
+  const stCtx = stoneCanvas.getContext('2d')!;
+
+  stCtx.fillStyle = '#786857';
+  stCtx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < 96; i++) {
+    const x = (i * 29) % W;
+    const w = 4 + (i % 14);
+    stCtx.fillStyle =
+      i % 3 === 0
+        ? 'rgba(182, 162, 138, 0.34)'
+        : i % 3 === 1
+          ? 'rgba(26, 21, 17, 0.44)'
+          : 'rgba(116, 100, 84, 0.28)';
+    stCtx.fillRect(x, 0, w, H);
+  }
+  for (let i = 0; i < 4200; i++) {
+    const px = (i * 71) % W;
+    const py = (i * 137) % H;
+    stCtx.fillStyle = i % 3 === 0 ? 'rgba(205, 186, 162, 0.22)' : 'rgba(12, 10, 8, 0.38)';
+    stCtx.fillRect(px, py, 2, 3);
+  }
+
+  // 2. Silky cascading water stream diffuse & bump textures (flows vertically along V)
+  const waterCanvas = document.createElement('canvas');
+  waterCanvas.width = W;
+  waterCanvas.height = H;
+  const wCtx = waterCanvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  const baseGrad = wCtx.createLinearGradient(0, 0, W, 0);
+  baseGrad.addColorStop(0.0, '#1d2d2a');
+  baseGrad.addColorStop(0.25, '#35534d');
+  baseGrad.addColorStop(0.5, '#476d65');
+  baseGrad.addColorStop(0.75, '#35534d');
+  baseGrad.addColorStop(1.0, '#1d2d2a');
+  wCtx.fillStyle = baseGrad;
+  wCtx.fillRect(0, 0, W, H);
+
+  bCtx.fillStyle = '#707070';
+  bCtx.fillRect(0, 0, W, H);
+
+  // Flowing braided water filaments & misty aerated cascade ribbons
+  for (let i = 0; i < 190; i++) {
+    const cx = ((i * 53 + 17) % (W - 12)) + 6;
+    const cy = (i * 89) % H;
+    const len = 54 + ((i * 37) % 150);
+    const width = 1.8 + (i % 5) * 1.05;
+    const bright = i % 3 === 0;
+
+    const grad = wCtx.createLinearGradient(cx, cy, cx, cy + len);
+    grad.addColorStop(0, 'rgba(218, 245, 240, 0)');
+    grad.addColorStop(0.32, bright ? 'rgba(240, 252, 248, 0.72)' : 'rgba(164, 210, 200, 0.38)');
+    grad.addColorStop(0.7, bright ? 'rgba(235, 242, 232, 0.56)' : 'rgba(130, 178, 168, 0.28)');
+    grad.addColorStop(1, 'rgba(218, 245, 240, 0)');
+
+    wCtx.strokeStyle = grad;
+    wCtx.lineWidth = width;
+    for (const dyWrap of [-H, 0, H]) {
+      wCtx.beginPath();
+      wCtx.moveTo(cx, cy + dyWrap);
+      wCtx.bezierCurveTo(
+        cx + Math.sin(i) * 6,
+        cy + len * 0.33 + dyWrap,
+        cx - Math.cos(i) * 6,
+        cy + len * 0.66 + dyWrap,
+        cx,
+        cy + len + dyWrap,
+      );
+      wCtx.stroke();
+    }
+
+    bCtx.strokeStyle = bright ? 'rgba(245, 245, 245, 0.58)' : 'rgba(38, 38, 38, 0.42)';
+    bCtx.lineWidth = width + 0.9;
+    for (const dyWrap of [-H, 0, H]) {
+      bCtx.beginPath();
+      bCtx.moveTo(cx, cy + dyWrap);
+      bCtx.bezierCurveTo(
+        cx + Math.sin(i) * 6,
+        cy + len * 0.33 + dyWrap,
+        cx - Math.cos(i) * 6,
+        cy + len * 0.66 + dyWrap,
+        cx,
+        cy + len + dyWrap,
+      );
+      bCtx.stroke();
+    }
+  }
+
+  // Crisp aerated whitewater cascade shelf ripples across the waterfall flow
+  for (let y = 0; y < H; y += 28) {
+    wCtx.fillStyle = 'rgba(236, 248, 244, 0.16)';
+    wCtx.fillRect(0, y, W, 3.5);
+    bCtx.fillStyle = 'rgba(225, 225, 225, 0.34)';
+    bCtx.fillRect(0, y, W, 4.5);
+  }
+
+  const canyonStoneMap = new THREE.CanvasTexture(stoneCanvas);
+  canyonStoneMap.colorSpace = THREE.SRGBColorSpace;
+  canyonStoneMap.wrapS = THREE.RepeatWrapping;
+  canyonStoneMap.wrapT = THREE.RepeatWrapping;
+  canyonStoneMap.repeat.set(1, 2);
+  canyonStoneMap.anisotropy = 8;
+
+  const waterStreamMap = new THREE.CanvasTexture(waterCanvas);
+  waterStreamMap.colorSpace = THREE.SRGBColorSpace;
+  waterStreamMap.wrapS = THREE.RepeatWrapping;
+  waterStreamMap.wrapT = THREE.RepeatWrapping;
+  waterStreamMap.repeat.set(1, 3);
+  waterStreamMap.anisotropy = 8;
+
+  const waterBumpMap = new THREE.CanvasTexture(bumpCanvas);
+  waterBumpMap.wrapS = THREE.RepeatWrapping;
+  waterBumpMap.wrapT = THREE.RepeatWrapping;
+  waterBumpMap.repeat.set(1, 3);
+  waterBumpMap.anisotropy = 8;
+
+  return {
+    canyonStoneMap,
+    waterStreamMap,
+    waterBumpMap,
+    dispose: () => {
+      canyonStoneMap.dispose();
+      waterStreamMap.dispose();
+      waterBumpMap.dispose();
+    },
+  };
+}
+
+
 
