@@ -28,14 +28,17 @@ const PreviewOrbitRig: React.FC<{ config: TheaterConfiguration; isSoftwareGl: bo
     gl.domElement.style.touchAction = 'none';
   }, [gl]);
 
+  const isDeccan = config.theaterId === 'dolby_deccan';
+
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
-    const nextFov = computeAdaptiveCinemaFov(config.categoryId, size.width, size.height);
+    const baseFov = computeAdaptiveCinemaFov(config.categoryId, size.width, size.height);
+    const nextFov = isDeccan ? Math.max(baseFov, 66) : baseFov;
     if (Math.abs(persp.fov - nextFov) > 0.05) {
       persp.fov = nextFov;
       persp.updateProjectionMatrix();
     }
-  }, [camera, config.categoryId, size.width, size.height]);
+  }, [camera, config.categoryId, isDeccan, size.width, size.height]);
 
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
 
@@ -79,18 +82,24 @@ const PreviewOrbitRig: React.FC<{ config: TheaterConfiguration; isSoftwareGl: bo
 
   const maxDist = isBeach
     ? 24
-    : Math.max(
-        3.2,
-        Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
-      );
+    : isDeccan
+      ? 24
+      : Math.max(
+          3.2,
+          Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
+        );
 
   return (
     <OrbitControls
-      target={[
-        0,
-        Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
-        -config.auditoriumLength * 0.06,
-      ]}
+      target={
+        isDeccan
+          ? [0, 4.75, -7.5]
+          : [
+              0,
+              Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
+              -config.auditoriumLength * 0.06,
+            ]
+      }
       enablePan={false}
       enableDamping={!isSoftwareGl}
       dampingFactor={0.075}
@@ -117,11 +126,22 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
     );
   }
 
-  const rearY = Math.min(
-    config.auditoriumHeight - 1.1,
-    (config.seatingRows - 1) * config.rowElevationStep + 2.4,
+  const isDeccan = config.theaterId === 'dolby_deccan';
+  const rearY = isDeccan
+    ? 6.05
+    : Math.min(
+        config.auditoriumHeight - 1.1,
+        (config.seatingRows - 1) * config.rowElevationStep + 2.4,
+      );
+  const rearZ = isDeccan
+    ? 13.85
+    : Math.min(config.auditoriumLength / 2 - 0.9, config.auditoriumLength * 0.3);
+  const initialCamX = isDeccan ? 0 : config.auditoriumWidth * 0.22;
+  const baseFov = computeAdaptiveCinemaFov(
+    config.categoryId,
+    typeof window !== 'undefined' ? window.innerWidth : 900,
+    typeof window !== 'undefined' ? window.innerHeight : 600,
   );
-  const rearZ = Math.min(config.auditoriumLength / 2 - 0.9, config.auditoriumLength * 0.3);
 
   return (
     <Canvas
@@ -132,12 +152,8 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
         toneMappingExposure: 1.05,
       }}
       camera={{
-        position: [config.auditoriumWidth * 0.22, rearY, rearZ],
-        fov: computeAdaptiveCinemaFov(
-          config.categoryId,
-          typeof window !== 'undefined' ? window.innerWidth : 900,
-          typeof window !== 'undefined' ? window.innerHeight : 600,
-        ),
+        position: [initialCamX, rearY, rearZ],
+        fov: isDeccan ? Math.max(baseFov, 66) : baseFov,
         near: 0.1,
         far: config.categoryId === 'beach' ? 2400 : 120,
       }}

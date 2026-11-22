@@ -1045,7 +1045,9 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           ? 0.72
           : isScreenX
             ? 0.56
-            : 0.34
+            : isDeccanDolby
+              ? 0.86
+              : 0.34
         : showState === 'SHOW_STARTING'
           ? 0.62
           : showState === 'SHOW_PLAYING'

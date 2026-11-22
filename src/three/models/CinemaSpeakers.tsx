@@ -970,10 +970,10 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     const arr: { x: number; y: number; z: number; side: -1 | 1; bayIdx: number }[] = [];
     if (isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX) return arr;
     if (isDeccanDolby) {
-      // 2 sleek matte-black directional surround speakers per side mounted cleanly on the forest-emerald acoustic panels ahead of the river ribbon
+      // 2 sleek matte-black directional surround speakers per side: one ahead of the river canyon, one in middle green bay below the rising river curve
       const placements = [
-        { z: frontZ + 6.4, y: 3.9 },
-        { z: frontZ + 10.3, y: 4.55 },
+        { z: frontZ + 7.15, y: 3.95 },
+        { z: -2.0, y: 4.15 },
       ];
       placements.forEach((pl, idx) => {
         ([-1, 1] as const).forEach((side) => {

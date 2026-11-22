@@ -2266,7 +2266,7 @@ export function createSeatUpholsteryTextures(
               : styleVariant === 'maroon_gold_leather'
                 ? '#d4af37'
                 : styleVariant === 'forest_emerald_bronze_leather'
-                  ? '#9a7446'
+                  ? 'rgba(116, 92, 58, 0.42)'
                   : '#ef4444';
       [48, 128, 208].forEach((sy) => {
         mCtx.fillStyle = 'rgba(0,0,0,0.26)';
@@ -2645,6 +2645,111 @@ export function createStandbyScreenTexture(
 
   const drawStandbyArtwork = () => {
     ctx.clearRect(0, 0, W, H);
+
+    if (sideLightStyle === 'deccan_basalt_monsoon') {
+      // Frameless moody stormy Deccan monsoon plateau & dark forested hills landscape (zero text, zero borders)
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.56);
+      skyGrad.addColorStop(0, '#2a3338');
+      skyGrad.addColorStop(0.32, '#445158');
+      skyGrad.addColorStop(0.68, '#6e7c82');
+      skyGrad.addColorStop(1, '#414f4e');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, H * 0.58);
+
+      // Billowing dark storm clouds & pale overcast misty break across upper sky
+      for (let i = 0; i < 42; i++) {
+        const clX = ((i * 211 + 83) % (W + 300)) - 150;
+        const clY = 40 + ((i * 97) % Math.floor(H * 0.42));
+        const clR = 160 + ((i * 67) % 240);
+        const isBrightPatch = i % 4 === 1;
+        const clGrad = ctx.createRadialGradient(clX, clY, clR * 0.08, clX, clY, clR);
+        clGrad.addColorStop(
+          0,
+          isBrightPatch ? 'rgba(176, 190, 194, 0.36)' : 'rgba(26, 32, 36, 0.46)',
+        );
+        clGrad.addColorStop(
+          0.55,
+          isBrightPatch ? 'rgba(130, 144, 148, 0.18)' : 'rgba(38, 46, 52, 0.22)',
+        );
+        clGrad.addColorStop(1, 'rgba(28, 34, 38, 0)');
+        ctx.fillStyle = clGrad;
+        ctx.beginPath();
+        ctx.ellipse(clX, clY, clR * 1.45, clR * 0.58, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Distant misty flat-topped Deccan basalt mesas / plateau silhouettes
+      ctx.fillStyle = '#293933';
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.52);
+      ctx.lineTo(W * 0.14, H * 0.46);
+      ctx.lineTo(W * 0.42, H * 0.47);
+      ctx.lineTo(W * 0.56, H * 0.51);
+      ctx.lineTo(W * 0.72, H * 0.48);
+      ctx.lineTo(W * 0.88, H * 0.49);
+      ctx.lineTo(W, H * 0.53);
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Atmospheric monsoon horizon mist band
+      const mistGrad = ctx.createLinearGradient(0, H * 0.42, 0, H * 0.62);
+      mistGrad.addColorStop(0, 'rgba(145, 162, 162, 0)');
+      mistGrad.addColorStop(0.5, 'rgba(135, 152, 150, 0.28)');
+      mistGrad.addColorStop(1, 'rgba(22, 36, 30, 0)');
+      ctx.fillStyle = mistGrad;
+      ctx.fillRect(0, H * 0.42, W, H * 0.22);
+
+      // Midground rolling Deccan plateau escarpment & forest valley
+      const valleyGrad = ctx.createLinearGradient(0, H * 0.5, 0, H);
+      valleyGrad.addColorStop(0, '#203329');
+      valleyGrad.addColorStop(0.38, '#17291f');
+      valleyGrad.addColorStop(1, '#0a140f');
+      ctx.fillStyle = valleyGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.56);
+      ctx.quadraticCurveTo(W * 0.22, H * 0.5, W * 0.48, H * 0.58);
+      ctx.quadraticCurveTo(W * 0.76, H * 0.64, W, H * 0.55);
+      ctx.lineTo(W, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.fill();
+
+      // Dark winding rainwater valley stream & wet rock ridges
+      ctx.strokeStyle = 'rgba(156, 178, 172, 0.28)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.36, H * 0.96);
+      ctx.bezierCurveTo(W * 0.44, H * 0.82, W * 0.34, H * 0.72, W * 0.46, H * 0.61);
+      ctx.stroke();
+
+      // Scattered Deccan forest foliage & dark basalt boulders across lower terrain
+      for (let i = 0; i < 190; i++) {
+        const bx = (i * 173 + 29) % W;
+        const depthT = ((i * 59) % 100) / 100;
+        const by = H * (0.58 + depthT * 0.4);
+        const bw = 22 + depthT * 52 + (i % 19);
+        const bh = 10 + depthT * 26 + (i % 11);
+        ctx.fillStyle =
+          i % 3 === 0
+            ? `rgba(16, 38, 27, ${0.42 + depthT * 0.35})`
+            : i % 3 === 1
+              ? `rgba(28, 56, 40, ${0.34 + depthT * 0.3})`
+              : `rgba(8, 17, 12, ${0.46 + depthT * 0.36})`;
+        ctx.beginPath();
+        ctx.ellipse(bx, by, bw, bh, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Subtle dark edge vignette so screen melts smoothly into pitch-black front wall
+      const vig = ctx.createRadialGradient(cx, cy, W * 0.28, cx, cy, W * 0.66);
+      vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vig.addColorStop(1, 'rgba(2, 4, 5, 0.42)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, W, H);
+      return;
+    }
 
     if (
       sideLightStyle === 'screenx_silver_baffles' ||
@@ -4306,51 +4411,51 @@ export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTexture
   basaltBumpCanvas.height = H;
   const sbCtx = basaltBumpCanvas.getContext('2d')!;
 
-  // Fractured dark charcoal-basalt rock mineral base
+  // Fractured dark charcoal-basalt rock mineral base with crisp weathered slate facets
   const grad = sCtx.createLinearGradient(0, 0, W, H);
-  grad.addColorStop(0, '#181c20');
-  grad.addColorStop(0.5, '#252b31');
-  grad.addColorStop(1, '#14181c');
+  grad.addColorStop(0, '#252d35');
+  grad.addColorStop(0.5, '#343f49');
+  grad.addColorStop(1, '#1b2229');
   sCtx.fillStyle = grad;
   sCtx.fillRect(0, 0, W, H);
 
   sbCtx.fillStyle = '#808080';
   sbCtx.fillRect(0, 0, W, H);
 
-  // Angular volcanic stone cleavage planes & craggy rock grit
-  for (let i = 0; i < 42; i++) {
-    const x0 = ((i * 97 + variant * 53) % W);
-    const y0 = ((i * 149 + variant * 89) % H);
-    const dx = ((i % 2 === 0 ? 1 : -1) * (44 + (i * 17) % 72));
-    const dy = ((i % 3 === 0 ? 1 : -1) * (36 + (i * 23) % 68));
-    sCtx.fillStyle = i % 2 === 0 ? 'rgba(54, 62, 70, 0.34)' : 'rgba(8, 10, 13, 0.42)';
+  // Angular volcanic stone cleavage planes & craggy fractures
+  for (let i = 0; i < 64; i++) {
+    const x0 = (i * 97 + variant * 53) % W;
+    const y0 = (i * 149 + variant * 89) % H;
+    const dx = (i % 2 === 0 ? 1 : -1) * (34 + ((i * 17) % 68));
+    const dy = (i % 3 === 0 ? 1 : -1) * (28 + ((i * 23) % 62));
+    sCtx.fillStyle = i % 3 === 0 ? 'rgba(110, 126, 140, 0.45)' : 'rgba(6, 9, 12, 0.54)';
     sCtx.beginPath();
     sCtx.moveTo(x0, y0);
-    sCtx.lineTo(x0 + dx, y0 + dy * 0.4);
-    sCtx.lineTo(x0 + dx * 0.5, y0 + dy);
+    sCtx.lineTo(x0 + dx, y0 + dy * 0.35);
+    sCtx.lineTo(x0 + dx * 0.45, y0 + dy);
     sCtx.closePath();
     sCtx.fill();
 
-    sbCtx.fillStyle = i % 2 === 0 ? '#a8a8a8' : '#424242';
+    sbCtx.fillStyle = i % 2 === 0 ? '#c4c4c4' : '#282828';
     sbCtx.beginPath();
     sbCtx.moveTo(x0, y0);
-    sbCtx.lineTo(x0 + dx, y0 + dy * 0.4);
-    sbCtx.lineTo(x0 + dx * 0.5, y0 + dy);
+    sbCtx.lineTo(x0 + dx, y0 + dy * 0.35);
+    sbCtx.lineTo(x0 + dx * 0.45, y0 + dy);
     sbCtx.closePath();
     sbCtx.fill();
   }
 
-  for (let i = 0; i < 7200; i++) {
+  for (let i = 0; i < 8400; i++) {
     const px = (i * 89 + variant * 37) % W;
     const py = (i * 157 + variant * 61) % H;
-    const sz = 1.5 + (i % 3);
-    sCtx.fillStyle = i % 3 === 0 ? 'rgba(155, 170, 178, 0.08)' : 'rgba(3, 5, 7, 0.38)';
+    const sz = 1.4 + (i % 3);
+    sCtx.fillStyle = i % 4 === 0 ? 'rgba(178, 196, 206, 0.16)' : 'rgba(3, 5, 7, 0.42)';
     sCtx.fillRect(px, py, sz, sz);
-    sbCtx.fillStyle = i % 2 === 0 ? '#a2a2a2' : '#525252';
+    sbCtx.fillStyle = i % 2 === 0 ? '#aeaeae' : '#404040';
     sbCtx.fillRect(px, py, sz, sz);
   }
 
-  // Deep forest-emerald vertical-seamed acoustic fabric wall panels (like the photo side walls)
+  // Deep forest-emerald vertical-seamed acoustic fabric wall panels (subtle architectural shadow seams, zero wide black stripes)
   const emCanvas = document.createElement('canvas');
   emCanvas.width = 512;
   emCanvas.height = 512;
@@ -4362,9 +4467,9 @@ export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTexture
   const ebCtx = emBumpCanvas.getContext('2d')!;
 
   const emGrad = eCtx.createLinearGradient(0, 0, 0, 512);
-  emGrad.addColorStop(0, '#124234');
-  emGrad.addColorStop(0.5, '#195443');
-  emGrad.addColorStop(1, '#103b2e');
+  emGrad.addColorStop(0, '#124637');
+  emGrad.addColorStop(0.45, '#1b5f4b');
+  emGrad.addColorStop(1, '#103e30');
   eCtx.fillStyle = emGrad;
   eCtx.fillRect(0, 0, 512, 512);
 
@@ -4373,27 +4478,27 @@ export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTexture
 
   // Fine matte acoustic fabric micro-weave
   for (let y = 0; y < 512; y += 4) {
-    eCtx.fillStyle = y % 8 === 0 ? 'rgba(42, 130, 102, 0.09)' : 'rgba(4, 14, 11, 0.14)';
+    eCtx.fillStyle = y % 8 === 0 ? 'rgba(54, 152, 122, 0.08)' : 'rgba(4, 15, 11, 0.12)';
     eCtx.fillRect(0, y, 512, 2);
   }
   for (let y = 4; y < 512; y += 6) {
     for (let x = 4; x < 512; x += 6) {
-      eCtx.fillStyle = 'rgba(2, 10, 8, 0.18)';
+      eCtx.fillStyle = 'rgba(2, 10, 8, 0.16)';
       eCtx.fillRect(x, y, 2, 2);
-      ebCtx.fillStyle = '#606060';
+      ebCtx.fillStyle = '#686868';
       ebCtx.fillRect(x, y, 2, 2);
     }
   }
 
-  // Crisp vertical architectural panel joints (2 panels per 512px tile)
+  // Crisp 2px vertical architectural panel joints (2 panels per 512px tile, repeated cleanly across wall)
   [0, 256].forEach((jx) => {
-    eCtx.fillStyle = '#071b15';
-    eCtx.fillRect(jx, 0, 6, 512);
-    eCtx.fillStyle = 'rgba(65, 168, 136, 0.16)';
-    eCtx.fillRect(jx + 6, 0, 2, 512);
+    eCtx.fillStyle = '#08231b';
+    eCtx.fillRect(jx, 0, 2, 512);
+    eCtx.fillStyle = 'rgba(72, 178, 144, 0.18)';
+    eCtx.fillRect(jx + 2, 0, 1, 512);
 
-    ebCtx.fillStyle = '#202020';
-    ebCtx.fillRect(jx, 0, 6, 512);
+    ebCtx.fillStyle = '#383838';
+    ebCtx.fillRect(jx, 0, 2, 512);
   });
 
   const basaltMap = new THREE.CanvasTexture(basaltCanvas);
@@ -4413,13 +4518,13 @@ export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTexture
   emeraldFabricMap.colorSpace = THREE.SRGBColorSpace;
   emeraldFabricMap.wrapS = THREE.RepeatWrapping;
   emeraldFabricMap.wrapT = THREE.RepeatWrapping;
-  emeraldFabricMap.repeat.set(6, 1);
+  emeraldFabricMap.repeat.set(7, 1);
   emeraldFabricMap.anisotropy = 8;
 
   const emeraldFabricBumpMap = new THREE.CanvasTexture(emBumpCanvas);
   emeraldFabricBumpMap.wrapS = THREE.RepeatWrapping;
   emeraldFabricBumpMap.wrapT = THREE.RepeatWrapping;
-  emeraldFabricBumpMap.repeat.set(6, 1);
+  emeraldFabricBumpMap.repeat.set(7, 1);
   emeraldFabricBumpMap.anisotropy = 8;
 
   return {

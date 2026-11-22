@@ -1939,9 +1939,9 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     const cashmereCognacPillow = new THREE.Color('#9d522b');
     const cashmereOatmealPillow = new THREE.Color('#dfd5c4');
     const dolbyVeilCharcoalHeadrest = new THREE.Color('#21242b');
-    const deccanForestGreenSeat = new THREE.Color('#1c4a37');
-    const deccanMidnightBlackSeat = new THREE.Color('#131619');
-    const deccanMutedBronzeSeat = new THREE.Color('#5c4b31');
+    const deccanForestGreenSeat = new THREE.Color('#10281e');
+    const deccanMidnightBlackSeat = new THREE.Color('#0b0d10');
+    const deccanMutedBronzeSeat = new THREE.Color('#342a1c');
 
     const setSeatPart = (
       sx: number,

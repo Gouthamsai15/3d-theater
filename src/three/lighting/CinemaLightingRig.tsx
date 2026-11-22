@@ -151,8 +151,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillLeftRef.current.intensity = f * 0.46;
         wallFillLeftRef.current.color.set('#ffd59e');
       } else if (isDeccanDolby) {
-        wallFillLeftRef.current.intensity = f * 0.56;
-        wallFillLeftRef.current.color.set('#6ad2ab');
+        wallFillLeftRef.current.intensity = f * 0.62;
+        wallFillLeftRef.current.color.set('#96e2c8');
       } else {
         wallFillLeftRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
@@ -171,8 +171,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillRightRef.current.intensity = f * 0.46;
         wallFillRightRef.current.color.set('#ffd59e');
       } else if (isDeccanDolby) {
-        wallFillRightRef.current.intensity = f * 0.54;
-        wallFillRightRef.current.color.set('#84c8d4');
+        wallFillRightRef.current.intensity = f * 0.62;
+        wallFillRightRef.current.color.set('#aee2ee');
       } else {
         wallFillRightRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;

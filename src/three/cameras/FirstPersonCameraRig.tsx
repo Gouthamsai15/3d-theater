@@ -732,11 +732,14 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
       };
     } else if (viewMode === 'hall') {
       const topTierY = (config.seatingRows - 1) * config.rowElevationStep;
-      targetPos = [
-        config.auditoriumWidth * 0.24,
-        Math.min(config.auditoriumHeight - 1.1, topTierY + 2.4),
-        config.auditoriumLength * 0.3,
-      ];
+      const isDeccan = config.theaterId === 'dolby_deccan';
+      targetPos = isDeccan
+        ? [0, 6.05, 13.85]
+        : [
+            config.auditoriumWidth * 0.24,
+            Math.min(config.auditoriumHeight - 1.1, topTierY + 2.4),
+            config.auditoriumLength * 0.3,
+          ];
       const clampedHall = { x: targetPos[0], y: targetPos[1], z: targetPos[2] };
       clampInsideHall(clampedHall, config);
       targetPos = [clampedHall.x, clampedHall.y, clampedHall.z];
@@ -744,8 +747,8 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
       dummy.position.set(...targetPos);
       dummy.lookAt(
         0,
-        Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
-        -config.auditoriumLength * 0.06,
+        isDeccan ? 4.75 : Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
+        isDeccan ? -7.5 : -config.auditoriumLength * 0.06,
       );
       targetQuat.copy(dummy.quaternion);
     } else if (viewMode === 'screen_full') {
