@@ -10,14 +10,141 @@ import {
   createAmberVioletGradientTexture,
   createCarbonFiberTexture,
   createCrimsonStormGradientTexture,
+  createDeccanBasaltWallTextures,
   createImaxCyanChannelWashTexture,
   createImaxWithLaserSignTexture,
   createJaliLatticeTexture,
   createMossFoliageTextures,
+  createTeluguHeritageWallPanelTextures,
   createVioletChannelGlowTexture,
   createVioletCoveWashTexture,
+  DeccanBasaltTextureSet,
+  TeluguWallPanelTextureSet,
 } from '../materials/proceduralTextures';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getIceTheaterLayout } from './iceLayoutUtils';
+
+export interface DeccanRockLobe {
+  cx: number;
+  cy: number;
+  cz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+  rotX?: number;
+  rotY?: number;
+  rotZ?: number;
+  seed: number;
+}
+
+/**
+ * Generates a faceted 3D fractured black basalt outcrop cluster from displaced
+ * non-indexed icosahedron lobes with planar-projected UVs and crisp rock normals.
+ */
+export function buildDeccanJaggedRockGeo(
+  lobes: DeccanRockLobe[],
+  clamp?: { minX?: number; maxX?: number; minY?: number; maxY?: number; minZ?: number; maxZ?: number },
+): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = [];
+  const euler = new THREE.Euler();
+  const quat = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+
+  for (const lobe of lobes) {
+    const base = new THREE.IcosahedronGeometry(1, 2);
+    const nonIdx = base.toNonIndexed();
+    base.dispose();
+
+    const pos = nonIdx.attributes.position;
+    const uv = nonIdx.attributes.uv;
+    euler.set(lobe.rotX ?? 0, lobe.rotY ?? 0, lobe.rotZ ?? 0);
+    quat.setFromEuler(euler);
+
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
+
+      const n1 =
+        Math.sin(vx * 3.7 + lobe.seed * 1.31) *
+        Math.cos(vy * 4.1 - lobe.seed * 0.87) *
+        Math.sin(vz * 3.3 + lobe.seed * 2.13);
+      const n2 = Math.abs(Math.sin(vx * 7.3 - vz * 5.9 + lobe.seed * 4.17)) * 0.28;
+      const disp = 0.82 + 0.34 * n1 - n2;
+
+      v.set(vx * disp * lobe.rx, vy * disp * lobe.ry, vz * disp * lobe.rz).applyQuaternion(quat);
+      v.x += lobe.cx;
+      v.y += lobe.cy;
+      v.z += lobe.cz;
+
+      if (clamp?.minX !== undefined) v.x = Math.max(clamp.minX, v.x);
+      if (clamp?.maxX !== undefined) v.x = Math.min(clamp.maxX, v.x);
+      if (clamp?.minY !== undefined) v.y = Math.max(clamp.minY, v.y);
+      if (clamp?.maxY !== undefined) v.y = Math.min(clamp.maxY, v.y);
+      if (clamp?.minZ !== undefined) v.z = Math.max(clamp.minZ, v.z);
+      if (clamp?.maxZ !== undefined) v.z = Math.min(clamp.maxZ, v.z);
+
+      pos.setXYZ(i, v.x, v.y, v.z);
+      if (uv) {
+        uv.setXY(i, (v.z + v.x) * 0.28, (v.y + v.x * 0.5) * 0.28);
+      }
+    }
+    pos.needsUpdate = true;
+    if (uv) uv.needsUpdate = true;
+    nonIdx.computeVertexNormals();
+    parts.push(nonIdx);
+  }
+
+  const merged = mergeGeometries(parts, false);
+  parts.forEach((p) => p.dispose());
+  merged.computeBoundingSphere();
+  return merged;
+}
+
+/**
+ * Mirrors a BufferGeometry across X while flipping triangle winding so normals stay outward.
+ */
+function mirrorGeometryX(src: THREE.BufferGeometry): THREE.BufferGeometry {
+  const dst = src.clone();
+  const pos = dst.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setX(i, -pos.getX(i));
+  }
+  pos.needsUpdate = true;
+
+  if (dst.index) {
+    const idx = dst.index;
+    for (let i = 0; i < idx.count; i += 3) {
+      const b = idx.getX(i + 1);
+      const c = idx.getX(i + 2);
+      idx.setX(i + 1, c);
+      idx.setX(i + 2, b);
+    }
+    idx.needsUpdate = true;
+  } else {
+    const uv = dst.attributes.uv;
+    for (let i = 0; i < pos.count; i += 3) {
+      const i1 = i + 1;
+      const i2 = i + 2;
+      const x1 = pos.getX(i1);
+      const y1 = pos.getY(i1);
+      const z1 = pos.getZ(i1);
+      pos.setXYZ(i1, pos.getX(i2), pos.getY(i2), pos.getZ(i2));
+      pos.setXYZ(i2, x1, y1, z1);
+      if (uv) {
+        const u1 = uv.getX(i1);
+        const v1 = uv.getY(i1);
+        uv.setXY(i1, uv.getX(i2), uv.getY(i2));
+        uv.setXY(i2, u1, v1);
+      }
+    }
+    pos.needsUpdate = true;
+    if (uv) uv.needsUpdate = true;
+  }
+
+  dst.computeVertexNormals();
+  return dst;
+}
 
 /**
  * Shared wave elevation profile for Dolby Cobalt Veil 250 sweeping molten-amber
@@ -2225,6 +2352,549 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       mandapJaliWall?.archTrimGeo.dispose();
     };
   }, [mandapJaliWall]);
+
+  // Dolby Kakatiya Heritage: Monolithic dark slate-charcoal stone arches, 10 asymmetric Telugu bas-relief wall slabs & warm-amber perimeter halo lighting
+  const kakatiyaResources = useMemo(() => {
+    if (sideLightStyle !== 'telugu_kakatiya_dolby') return null;
+
+    const artTextureSets: TeluguWallPanelTextureSet[] = Array.from({ length: 10 }, (_, v) =>
+      createTeluguHeritageWallPanelTextures(v),
+    );
+    const artPanelMats = artTextureSets.map((texSet) =>
+      applyScreenBounceToMaterial(
+        new THREE.MeshStandardMaterial({
+          map: texSet.map,
+          bumpMap: texSet.bumpMap,
+          bumpScale: 0.024,
+          roughness: 0.89,
+          metalness: 0.03,
+        }),
+        screenBounceUniforms,
+      ),
+    );
+
+    const charcoalStoneMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#222024',
+        roughness: 0.86,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const pilasterRevealMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#171518',
+        roughness: 0.9,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const obsidianBackingMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#08080a',
+        roughness: 0.96,
+        metalness: 0.0,
+      }),
+      screenBounceUniforms,
+    );
+    const warmAmberBacklightMat = new THREE.MeshStandardMaterial({
+      color: '#ffd494',
+      emissive: '#ffaa42',
+      emissiveIntensity: 1.85,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+
+    return {
+      artTextureSets,
+      artPanelMats,
+      charcoalStoneMat,
+      pilasterRevealMat,
+      obsidianBackingMat,
+      warmAmberBacklightMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      if (!kakatiyaResources) return;
+      kakatiyaResources.artTextureSets.forEach((s) => s.dispose());
+      kakatiyaResources.artPanelMats.forEach((m) => m.dispose());
+      kakatiyaResources.charcoalStoneMat.dispose();
+      kakatiyaResources.pilasterRevealMat.dispose();
+      kakatiyaResources.obsidianBackingMat.dispose();
+      kakatiyaResources.warmAmberBacklightMat.dispose();
+    };
+  }, [kakatiyaResources]);
+
+  if (kakatiyaResources) {
+    kakatiyaResources.warmAmberBacklightMat.emissiveIntensity = 0.16 + lightFactor * 1.95;
+  }
+
+  // Sculpted contemporary Charminar & Kakatiya multi-cusped stone arch bays (5 per side) + warm-amber backlit halo ribbon + stepped temple pilasters
+  const teluguKakatiyaWall = useMemo(() => {
+    if (sideLightStyle !== 'telugu_kakatiya_dolby') return null;
+    const bayCount = 5;
+    const zMin = -L * 0.44;
+    const zMax = L * 0.44;
+    const baySpan = (zMax - zMin) / bayCount;
+    const archWallH = H - 0.34;
+    const archDepthX = 0.28;
+
+    const halfBay = baySpan * 0.5;
+    // Match 11% marginX in createTeluguHeritageWallPanelTextures => inner opening = 78% of baySpan
+    const innerHalf = halfBay * 0.78;
+    const springY = archWallH * 0.58;
+    const crownY = archWallH * 0.92;
+    const hSpan = crownY - springY;
+
+    const archShape = new THREE.Shape();
+    archShape.moveTo(-halfBay, -0.02);
+    archShape.lineTo(halfBay, -0.02);
+    archShape.lineTo(halfBay, archWallH);
+    archShape.lineTo(-halfBay, archWallH);
+    archShape.closePath();
+
+    // Multi-cusped 3-scallop ogee temple arch cutout aligned 1:1 with traceCuspedArchPath
+    const voidHole = new THREE.Path();
+    voidHole.moveTo(-innerHalf, 0.02);
+    voidHole.lineTo(innerHalf, 0.02);
+    voidHole.lineTo(innerHalf, springY);
+    voidHole.quadraticCurveTo(innerHalf * 0.92, springY + hSpan * 0.36, innerHalf * 0.68, springY + hSpan * 0.48);
+    voidHole.quadraticCurveTo(innerHalf * 0.48, springY + hSpan * 0.72, innerHalf * 0.26, crownY - hSpan * 0.18);
+    voidHole.quadraticCurveTo(innerHalf * 0.08, crownY - 0.08, 0, crownY);
+    voidHole.quadraticCurveTo(-innerHalf * 0.08, crownY - 0.08, -innerHalf * 0.26, crownY - hSpan * 0.18);
+    voidHole.quadraticCurveTo(-innerHalf * 0.48, springY + hSpan * 0.72, -innerHalf * 0.68, springY + hSpan * 0.48);
+    voidHole.quadraticCurveTo(-innerHalf * 0.92, springY + hSpan * 0.36, -innerHalf, springY);
+    voidHole.closePath();
+    archShape.holes.push(voidHole);
+
+    const archBayGeo = new THREE.ExtrudeGeometry(archShape, {
+      depth: archDepthX,
+      bevelEnabled: true,
+      bevelThickness: 0.024,
+      bevelSize: 0.02,
+      bevelSegments: 2,
+      curveSegments: 24,
+    });
+    archBayGeo.rotateY(Math.PI / 2);
+    archBayGeo.computeVertexNormals();
+
+    // Recessed warm-amber backlit halo ribbon tucked directly behind the overhanging stone arch inner perimeter
+    const hOut = innerHalf + 0.065;
+    const hIn = innerHalf - 0.012;
+    const crownOut = crownY + 0.065;
+    const crownIn = crownY - 0.012;
+    const haloShape = new THREE.Shape();
+    haloShape.moveTo(-hOut, 0.02);
+    haloShape.lineTo(-hOut, springY);
+    haloShape.quadraticCurveTo(-hOut * 0.92, springY + hSpan * 0.36, -hOut * 0.68, springY + hSpan * 0.48);
+    haloShape.quadraticCurveTo(-hOut * 0.48, springY + hSpan * 0.72, -hOut * 0.26, crownOut - hSpan * 0.18);
+    haloShape.quadraticCurveTo(-hOut * 0.08, crownOut - 0.08, 0, crownOut);
+    haloShape.quadraticCurveTo(hOut * 0.08, crownOut - 0.08, hOut * 0.26, crownOut - hSpan * 0.18);
+    haloShape.quadraticCurveTo(hOut * 0.48, springY + hSpan * 0.72, hOut * 0.68, springY + hSpan * 0.48);
+    haloShape.quadraticCurveTo(hOut * 0.92, springY + hSpan * 0.36, hOut, springY);
+    haloShape.lineTo(hOut, 0.02);
+    haloShape.lineTo(hIn, 0.02);
+    haloShape.lineTo(hIn, springY);
+    haloShape.quadraticCurveTo(hIn * 0.92, springY + hSpan * 0.36, hIn * 0.68, springY + hSpan * 0.48);
+    haloShape.quadraticCurveTo(hIn * 0.48, springY + hSpan * 0.72, hIn * 0.26, crownIn - hSpan * 0.18);
+    haloShape.quadraticCurveTo(hIn * 0.08, crownIn - 0.08, 0, crownIn);
+    haloShape.quadraticCurveTo(-hIn * 0.08, crownIn - 0.08, -hIn * 0.26, crownIn - hSpan * 0.18);
+    haloShape.quadraticCurveTo(-hIn * 0.48, springY + hSpan * 0.72, -hIn * 0.68, springY + hSpan * 0.48);
+    haloShape.quadraticCurveTo(-hIn * 0.92, springY + hSpan * 0.36, -hIn, springY);
+    haloShape.lineTo(-hIn, 0.02);
+    haloShape.closePath();
+
+    const archHaloGeo = new THREE.ExtrudeGeometry(haloShape, {
+      depth: 0.018,
+      bevelEnabled: false,
+      curveSegments: 24,
+    });
+    archHaloGeo.rotateY(Math.PI / 2);
+    archHaloGeo.computeVertexNormals();
+
+    const bays = Array.from({ length: bayCount }, (_, i) => ({
+      zMid: zMin + (i + 0.5) * baySpan,
+      index: i,
+    }));
+
+    const pilasterZs = Array.from({ length: bayCount + 1 }, (_, i) => zMin + i * baySpan);
+
+    const boothY = Math.min(H - 1.4, topTierY + 3.25);
+    const boothWinW = Math.min(4.8, W * 0.42);
+    const boothWinH = Math.min(1.42, H * 0.24);
+    const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
+    const winBot = Math.max(0.25, boothY - boothWinH / 2);
+    const boothClearHalfW = Math.max(boothWinW * 0.5 + 0.35, 2.35);
+
+    return {
+      archBayGeo,
+      archHaloGeo,
+      bays,
+      pilasterZs,
+      baySpan,
+      archWallH,
+      archDepthX,
+      innerHalf,
+      springY,
+      crownY,
+      zMin,
+      zMax,
+      boothClearHalfW,
+      winTop,
+      winBot,
+    };
+  }, [sideLightStyle, W, L, H, topTierY]);
+
+  useEffect(() => {
+    return () => {
+      teluguKakatiyaWall?.archBayGeo.dispose();
+      teluguKakatiyaWall?.archHaloGeo.dispose();
+    };
+  }, [teluguKakatiyaWall]);
+
+  // The Deccan – Monsoon: Deep forest-emerald vertical acoustic walls, jagged 3D basalt rock outcrops with bright emerald rim halos, and sweeping diagonal carved river-stone ribbon
+  const deccanResources = useMemo(() => {
+    if (sideLightStyle !== 'deccan_basalt_monsoon') return null;
+
+    const basaltTexSets: DeccanBasaltTextureSet[] = Array.from({ length: 2 }, (_, v) =>
+      createDeccanBasaltWallTextures(v),
+    );
+    const basaltMats = basaltTexSets.map((set) =>
+      applyScreenBounceToMaterial(
+        new THREE.MeshStandardMaterial({
+          map: set.basaltMap,
+          bumpMap: set.basaltBumpMap,
+          bumpScale: 0.036,
+          roughness: 0.86,
+          metalness: 0.08,
+          flatShading: true,
+        }),
+        screenBounceUniforms,
+      ),
+    );
+    const emeraldFabricMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: basaltTexSets[0].emeraldFabricMap,
+        bumpMap: basaltTexSets[0].emeraldFabricBumpMap,
+        bumpScale: 0.015,
+        roughness: 0.92,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const darkFrontSlateMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0e1317',
+        roughness: 0.94,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const riverStoneMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#73685a',
+        bumpMap: basaltTexSets[0].basaltBumpMap,
+        bumpScale: 0.02,
+        roughness: 0.84,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const riverGrooveMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#342e27',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const emeraldRimHaloMat = new THREE.MeshStandardMaterial({
+      color: '#46ffb8',
+      emissive: '#1fe89c',
+      emissiveIntensity: 2.1,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+    const riverWarmHaloMat = new THREE.MeshStandardMaterial({
+      color: '#ffe6b8',
+      emissive: '#ffd28a',
+      emissiveIntensity: 1.45,
+      toneMapped: false,
+      roughness: 0.24,
+    });
+
+    return {
+      basaltTexSets,
+      basaltMats,
+      emeraldFabricMat,
+      darkFrontSlateMat,
+      riverStoneMat,
+      riverGrooveMat,
+      emeraldRimHaloMat,
+      riverWarmHaloMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      if (!deccanResources) return;
+      deccanResources.basaltTexSets.forEach((s) => s.dispose());
+      deccanResources.basaltMats.forEach((m) => m.dispose());
+      deccanResources.emeraldFabricMat.dispose();
+      deccanResources.darkFrontSlateMat.dispose();
+      deccanResources.riverStoneMat.dispose();
+      deccanResources.riverGrooveMat.dispose();
+      deccanResources.emeraldRimHaloMat.dispose();
+      deccanResources.riverWarmHaloMat.dispose();
+    };
+  }, [deccanResources]);
+
+  if (deccanResources) {
+    deccanResources.emeraldRimHaloMat.emissiveIntensity = 0.08 + lightFactor * 2.05;
+    deccanResources.riverWarmHaloMat.emissiveIntensity = 0.06 + lightFactor * 1.42;
+  }
+
+  const deccanMonsoonWall = useMemo(() => {
+    if (sideLightStyle !== 'deccan_basalt_monsoon') return null;
+
+    const wallH = H - 0.56;
+    const revealSpanZ = 3.55;
+    const zRevealStart = frontZ;
+    const zRevealEnd = frontZ + revealSpanZ;
+    const zStart = zRevealEnd;
+    const zEnd = backZ - 0.35;
+    const spanZ = zEnd - zStart;
+
+    // Helper: builds a 3D contoured stone ribbon in (xInward >= 0, y, zWorld) space for Left Wall, plus right-wall X-mirror
+    const buildSideRibbonPair = (
+      pts: { z: number; yCenter: number; halfWidth: number }[],
+      thickness: number,
+      baseX = 0.045,
+    ) => {
+      const geo = new THREE.BufferGeometry();
+      const positions: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      const n = pts.length;
+      // 4 vertices per cross-section slice: top-front (inward), bot-front (inward), bot-back (wall), top-back (wall)
+      for (let i = 0; i < n; i++) {
+        const { z, yCenter, halfWidth } = pts[i];
+        const u = i / Math.max(1, n - 1);
+        const yTop = yCenter + halfWidth;
+        const yBot = yCenter - halfWidth;
+        const xFront = baseX + thickness;
+        const xBack = baseX;
+
+        positions.push(
+          xFront, yTop, z,
+          xFront, yBot, z,
+          xBack, yBot, z,
+          xBack, yTop, z,
+        );
+        uvs.push(u * 4, 1, u * 4, 0, u * 4, 0, u * 4, 1);
+      }
+
+      for (let i = 0; i < n - 1; i++) {
+        const a = i * 4;
+        const b = (i + 1) * 4;
+        // Front face (+X inward)
+        indices.push(a + 0, a + 1, b + 1, a + 0, b + 1, b + 0);
+        // Top bevel face (+Y)
+        indices.push(a + 3, a + 0, b + 0, a + 3, b + 0, b + 3);
+        // Bottom bevel face (-Y)
+        indices.push(a + 1, a + 2, b + 2, a + 1, b + 2, b + 1);
+      }
+
+      geo.setIndex(indices);
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.computeVertexNormals();
+      return { left: geo, right: mirrorGeometryX(geo) };
+    };
+
+    // 1. Sweeping diagonal S-curved carved river-stone ribbon (from front-bottom near z=-4.2 up to rear-top near z=+12.0)
+    const riverStartZ = frontZ + 10.6;
+    const riverEndZ = backZ - 2.3;
+    const riverPts: { z: number; yCenter: number; halfWidth: number }[] = [];
+    const riverEdgeTopPts: THREE.Vector3[] = [];
+    const riverEdgeBotPts: THREE.Vector3[] = [];
+    const riverGrooveAPts: THREE.Vector3[] = [];
+    const riverGrooveBPts: THREE.Vector3[] = [];
+    const segs = 38;
+
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const z = THREE.MathUtils.lerp(riverStartZ, riverEndZ, t);
+      const sCurve =
+        Math.sin(t * Math.PI * 2.15) * 0.68 -
+        Math.cos(t * Math.PI * 1.15) * 0.28;
+      const yCenter = THREE.MathUtils.lerp(0.32, wallH + 0.08, Math.pow(t, 0.94)) + sCurve;
+      const wVar =
+        0.54 +
+        0.16 * (1 - Math.sin(t * Math.PI)) +
+        0.09 * Math.sin(t * Math.PI * 3.4);
+      riverPts.push({ z, yCenter, halfWidth: wVar });
+
+      riverEdgeTopPts.push(new THREE.Vector3(0.058, yCenter + wVar - 0.03, z));
+      riverEdgeBotPts.push(new THREE.Vector3(0.058, yCenter - wVar + 0.03, z));
+      riverGrooveAPts.push(new THREE.Vector3(0.215, yCenter + wVar * 0.24, z));
+      riverGrooveBPts.push(new THREE.Vector3(0.215, yCenter - wVar * 0.24, z));
+    }
+
+    const riverPair = buildSideRibbonPair(riverPts, 0.165, 0.05);
+    const riverWarmTopLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeTopPts), 46, 0.038, 8, false);
+    const riverWarmBotLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverEdgeBotPts), 46, 0.038, 8, false);
+    const riverGrooveALeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverGrooveAPts), 44, 0.032, 7, false);
+    const riverGrooveBLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(riverGrooveBPts), 44, 0.028, 7, false);
+
+    // 2. Three Jagged 3D Fractured Black Basalt Rock Outcrop Clusters (Left & mirrored Right)
+    // Cluster A: Front-Upper Hanging Cliff (z = frontZ + 3.6 .. frontZ + 11.4, hanging diagonally down to y ~ 5.3)
+    const frontUpperLobes: DeccanRockLobe[] = [
+      { cx: 0.26, cy: wallH - 0.6, cz: zStart + 0.9, rx: 0.48, ry: 1.5, rz: 1.45, rotZ: 0.24, seed: 1.2 },
+      { cx: 0.34, cy: wallH - 1.5, cz: zStart + 2.3, rx: 0.56, ry: 2.1, rz: 1.65, rotZ: 0.32, seed: 2.7 },
+      { cx: 0.42, cy: wallH - 2.35, cz: zStart + 3.8, rx: 0.64, ry: 2.45, rz: 1.75, rotZ: 0.28, seed: 4.1 },
+      { cx: 0.38, cy: wallH - 3.35, cz: zStart + 5.2, rx: 0.58, ry: 2.1, rz: 1.55, rotZ: 0.38, seed: 5.9 },
+      { cx: 0.30, cy: wallH - 4.3, cz: zStart + 6.45, rx: 0.48, ry: 1.45, rz: 1.15, rotZ: 0.42, seed: 7.4 },
+    ];
+    const frontUpperLeftGeo = buildDeccanJaggedRockGeo(frontUpperLobes, { minX: 0.04, maxY: wallH });
+
+    const frontUpperRimPts = [
+      new THREE.Vector3(0.07, wallH - 0.15, zStart + 0.15),
+      new THREE.Vector3(0.07, wallH - 1.75, zStart + 1.4),
+      new THREE.Vector3(0.07, wallH - 3.05, zStart + 2.9),
+      new THREE.Vector3(0.07, wallH - 4.25, zStart + 4.4),
+      new THREE.Vector3(0.07, wallH - 5.15, zStart + 5.85),
+      new THREE.Vector3(0.07, wallH - 5.45, zStart + 6.85),
+      new THREE.Vector3(0.07, wallH - 3.4, zStart + 7.25),
+      new THREE.Vector3(0.07, wallH - 0.35, zStart + 7.35),
+    ];
+    const frontUpperHaloLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(frontUpperRimPts), 36, 0.044, 8, false);
+
+    // Cluster B: Rear-Upper Hanging Cliff (z = backZ - 9.4 .. backZ - 0.4, massive rugged overhang)
+    const rearUpperLobes: DeccanRockLobe[] = [
+      { cx: 0.34, cy: wallH - 0.85, cz: zEnd - 8.4, rx: 0.58, ry: 1.75, rz: 1.55, rotZ: -0.22, seed: 9.1 },
+      { cx: 0.48, cy: wallH - 1.75, cz: zEnd - 6.6, rx: 0.72, ry: 2.35, rz: 1.85, rotZ: -0.18, seed: 11.3 },
+      { cx: 0.56, cy: wallH - 2.35, cz: zEnd - 4.5, rx: 0.82, ry: 2.65, rz: 2.1, rotZ: -0.25, seed: 13.7 },
+      { cx: 0.62, cy: wallH - 2.55, cz: zEnd - 2.4, rx: 0.88, ry: 2.75, rz: 2.15, rotZ: -0.15, seed: 15.2 },
+      { cx: 0.54, cy: wallH - 2.1, cz: zEnd - 0.8, rx: 0.74, ry: 2.45, rz: 1.6, rotZ: -0.2, seed: 17.8 },
+    ];
+    const rearUpperLeftGeo = buildDeccanJaggedRockGeo(rearUpperLobes, { minX: 0.04, maxY: wallH, maxZ: zEnd });
+
+    const rearUpperRimPts = [
+      new THREE.Vector3(0.07, wallH - 0.25, zEnd - 9.15),
+      new THREE.Vector3(0.07, wallH - 2.15, zEnd - 7.8),
+      new THREE.Vector3(0.07, wallH - 3.65, zEnd - 6.0),
+      new THREE.Vector3(0.07, wallH - 4.45, zEnd - 3.9),
+      new THREE.Vector3(0.07, wallH - 4.75, zEnd - 1.8),
+      new THREE.Vector3(0.07, wallH - 4.15, zEnd - 0.25),
+    ];
+    const rearUpperHaloLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rearUpperRimPts), 32, 0.048, 8, false);
+
+    // Cluster C: Rear-Lower Ascending Basalt Cliff (z = backZ - 11.4 .. backZ - 0.4, rising from floor y=0 up to ~5.2m)
+    const rearLowerLobes: DeccanRockLobe[] = [
+      { cx: 0.34, cy: 0.75, cz: zEnd - 10.1, rx: 0.52, ry: 1.05, rz: 1.4, rotZ: 0.26, seed: 21.4 },
+      { cx: 0.44, cy: 1.35, cz: zEnd - 8.2, rx: 0.64, ry: 1.65, rz: 1.75, rotZ: 0.22, seed: 23.8 },
+      { cx: 0.52, cy: 1.95, cz: zEnd - 6.0, rx: 0.72, ry: 2.15, rz: 1.95, rotZ: 0.18, seed: 25.1 },
+      { cx: 0.62, cy: 2.65, cz: zEnd - 3.6, rx: 0.84, ry: 2.65, rz: 2.15, rotZ: 0.25, seed: 27.6 },
+      { cx: 0.66, cy: 3.15, cz: zEnd - 1.3, rx: 0.88, ry: 2.95, rz: 1.8, rotZ: 0.14, seed: 29.9 },
+    ];
+    const rearLowerLeftGeo = buildDeccanJaggedRockGeo(rearLowerLobes, { minX: 0.04, minY: 0, maxZ: zEnd });
+
+    const rearLowerRimPts = [
+      new THREE.Vector3(0.07, 0.25, zEnd - 10.95),
+      new THREE.Vector3(0.07, 1.55, zEnd - 9.2),
+      new THREE.Vector3(0.07, 2.55, zEnd - 7.1),
+      new THREE.Vector3(0.07, 3.65, zEnd - 4.9),
+      new THREE.Vector3(0.07, 4.85, zEnd - 2.6),
+      new THREE.Vector3(0.07, 5.45, zEnd - 0.3),
+    ];
+    const rearLowerHaloLeft = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rearLowerRimPts), 32, 0.048, 8, false);
+
+    // 3. Rear Wall Corner Basalt Outcrops flanking the projection booth & portal
+    const boothY = Math.min(H - 1.4, topTierY + 3.25);
+    const boothWinW = Math.min(4.8, W * 0.42);
+    const boothWinH = Math.min(1.42, H * 0.24);
+    const winTop = Math.min(H - 0.28, boothY + boothWinH / 2);
+    const boothClearHalfW = Math.max(boothWinW * 0.5 + 0.45, 2.55);
+    const wingW = Math.max(1.2, W * 0.5 - 0.32 - boothClearHalfW);
+
+    const rearCornerGeo = buildDeccanJaggedRockGeo(
+      [
+        { cx: -wingW * 0.12, cy: 2.1, cz: -0.22, rx: wingW * 0.36, ry: 2.2, rz: 0.52, seed: 31.4 },
+        { cx: wingW * 0.14, cy: 1.4, cz: -0.18, rx: wingW * 0.32, ry: 1.5, rz: 0.44, seed: 33.8 },
+        { cx: -wingW * 0.16, cy: H - 2.1, cz: -0.24, rx: wingW * 0.38, ry: 2.1, rz: 0.54, seed: 35.2 },
+      ],
+      { minY: 0, maxY: H - 0.3, maxZ: 0 },
+    );
+
+    return {
+      wallH,
+      zRevealStart,
+      zRevealEnd,
+      zStart,
+      zEnd,
+      spanZ,
+      revealSpanZ,
+      riverLeftGeo: riverPair.left,
+      riverRightGeo: riverPair.right,
+      riverWarmTopLeft,
+      riverWarmTopRight: mirrorGeometryX(riverWarmTopLeft),
+      riverWarmBotLeft,
+      riverWarmBotRight: mirrorGeometryX(riverWarmBotLeft),
+      riverGrooveALeft,
+      riverGrooveARight: mirrorGeometryX(riverGrooveALeft),
+      riverGrooveBLeft,
+      riverGrooveBRight: mirrorGeometryX(riverGrooveBLeft),
+      frontUpperLeftGeo,
+      frontUpperRightGeo: mirrorGeometryX(frontUpperLeftGeo),
+      frontUpperHaloLeft,
+      frontUpperHaloRight: mirrorGeometryX(frontUpperHaloLeft),
+      rearUpperLeftGeo,
+      rearUpperRightGeo: mirrorGeometryX(rearUpperLeftGeo),
+      rearUpperHaloLeft,
+      rearUpperHaloRight: mirrorGeometryX(rearUpperHaloLeft),
+      rearLowerLeftGeo,
+      rearLowerRightGeo: mirrorGeometryX(rearLowerLeftGeo),
+      rearLowerHaloLeft,
+      rearLowerHaloRight: mirrorGeometryX(rearLowerHaloLeft),
+      boothClearHalfW,
+      wingW,
+      winTop,
+      rearCornerGeo,
+    };
+  }, [sideLightStyle, W, L, H, frontZ, backZ, topTierY]);
+
+  useEffect(() => {
+    return () => {
+      if (!deccanMonsoonWall) return;
+      deccanMonsoonWall.riverLeftGeo.dispose();
+      deccanMonsoonWall.riverRightGeo.dispose();
+      deccanMonsoonWall.riverWarmTopLeft.dispose();
+      deccanMonsoonWall.riverWarmTopRight.dispose();
+      deccanMonsoonWall.riverWarmBotLeft.dispose();
+      deccanMonsoonWall.riverWarmBotRight.dispose();
+      deccanMonsoonWall.riverGrooveALeft.dispose();
+      deccanMonsoonWall.riverGrooveARight.dispose();
+      deccanMonsoonWall.riverGrooveBLeft.dispose();
+      deccanMonsoonWall.riverGrooveBRight.dispose();
+      deccanMonsoonWall.frontUpperLeftGeo.dispose();
+      deccanMonsoonWall.frontUpperRightGeo.dispose();
+      deccanMonsoonWall.frontUpperHaloLeft.dispose();
+      deccanMonsoonWall.frontUpperHaloRight.dispose();
+      deccanMonsoonWall.rearUpperLeftGeo.dispose();
+      deccanMonsoonWall.rearUpperRightGeo.dispose();
+      deccanMonsoonWall.rearUpperHaloLeft.dispose();
+      deccanMonsoonWall.rearUpperHaloRight.dispose();
+      deccanMonsoonWall.rearLowerLeftGeo.dispose();
+      deccanMonsoonWall.rearLowerRightGeo.dispose();
+      deccanMonsoonWall.rearLowerHaloLeft.dispose();
+      deccanMonsoonWall.rearLowerHaloRight.dispose();
+      deccanMonsoonWall.rearCornerGeo.dispose();
+    };
+  }, [deccanMonsoonWall]);
 
   // Walnut Reserve Salon (Private Luxury): Vertical fluted American walnut acoustic panels alternating with softly curved upholstered bays in warm oatmeal bouclé & rich saddle-cognac suede, precision champagne-brass inlays, concealed warm-amber vertical cove grazers, minimalist alabaster wall sconces, and concealed flush surrounds behind acoustically transparent bays
   const privateVolcanicWall = useMemo(() => {
@@ -4889,6 +5559,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'screenx_panoramic_walls' &&
         sideLightStyle !== 'screenx_silver_baffles' &&
         sideLightStyle !== 'indian_mandap_jali' &&
+        sideLightStyle !== 'telugu_kakatiya_dolby' &&
         sideLightStyle !== 'parametric_obsidian_waves' &&
         sideLightStyle !== 'biophilic_crystalline_moss' &&
         wallBayZs.map((bz, idx) => {
@@ -7050,6 +7721,331 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           );
         })}
 
+      {/* Dolby Kakatiya Heritage: Monolithic Dark Slate-Charcoal Multi-Cusped Temple Arches, Full-Bay Telugu Bas-Relief Acoustic Carvings, Warm-Amber Backlit Arch Halos & Stepped Corbelled Pilasters */}
+      {sideLightStyle === 'telugu_kakatiya_dolby' && teluguKakatiyaWall && kakatiyaResources && (
+        <group>
+          {([-1, 1] as const).map((side) => {
+            const wallX = side * (W / 2 - 0.21);
+            const inDir = -side;
+            const archOffsetX = wallX + inDir * 0.085;
+            const haloOffsetX = wallX + inDir * 0.068;
+            const reliefOffsetX = wallX + inDir * 0.048;
+            const archRotY = side === -1 ? 0 : Math.PI;
+            const { archWallH, archDepthX, springY, baySpan } = teluguKakatiyaWall;
+
+            return (
+              <group key={`kakatiya-side-wall-${side}`}>
+                {/* Deep Matte Obsidian Acoustic Shadow Backing Behind Wall Bays (Conceals Surrounds Seamlessly) */}
+                <mesh position={[wallX + inDir * 0.015, H * 0.5, 0]} material={kakatiyaResources.obsidianBackingMat}>
+                  <boxGeometry args={[0.03, H * 0.98, L * 0.96]} />
+                </mesh>
+
+                {/* Upper Matte Charcoal-Stone Architectural Cornice Soffit */}
+                <mesh
+                  position={[wallX + inDir * (archDepthX * 0.65), H - 0.2, 0]}
+                  material={kakatiyaResources.charcoalStoneMat}
+                  castShadow
+                  receiveShadow
+                >
+                  <boxGeometry args={[archDepthX * 1.4, 0.36, L * 0.94]} />
+                </mesh>
+
+                {/* 5 Monumental Multi-Cusped Stone Arch Bays Filled Edge-to-Edge With Bas-Relief Carvings */}
+                {teluguKakatiyaWall.bays.map((bay, bi) => {
+                  const artVariant = side === -1 ? bi : 5 + bi;
+                  return (
+                    <group key={`kakatiya-bay-${side}-${bi}`} position={[0, 0, bay.zMid]}>
+                      {/* Full-Height Carved Telugu Bas-Relief Stone Acoustic Slab */}
+                      <mesh
+                        position={[reliefOffsetX, archWallH * 0.5, 0]}
+                        rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                        material={kakatiyaResources.artPanelMats[artVariant]}
+                        receiveShadow
+                      >
+                        <planeGeometry args={[baySpan, archWallH]} />
+                      </mesh>
+
+                      {/* Warm-Amber Backlit Halo Ribbon Tucked Behind Overhanging Cusped Stone Arch Lip */}
+                      <mesh
+                        position={[haloOffsetX, 0, 0]}
+                        rotation={[0, archRotY, 0]}
+                        geometry={teluguKakatiyaWall.archHaloGeo}
+                        material={kakatiyaResources.warmAmberBacklightMat}
+                      />
+
+                      {/* Sculpted Dark Charcoal-Stone Multi-Cusped Kakatiya Arch Frame */}
+                      <mesh
+                        position={[archOffsetX, 0, 0]}
+                        rotation={[0, archRotY, 0]}
+                        geometry={teluguKakatiyaWall.archBayGeo}
+                        material={kakatiyaResources.charcoalStoneMat}
+                        castShadow
+                        receiveShadow
+                      />
+                    </group>
+                  );
+                })}
+
+                {/* 6 Sculpted Stepped & Corbelled Dark Charcoal-Stone Kakatiya Temple Pilasters */}
+                {teluguKakatiyaWall.pilasterZs.map((pz, pi) => (
+                  <group
+                    key={`kakatiya-pilaster-${side}-${pi}`}
+                    position={[wallX + inDir * (archDepthX * 0.85), 0, pz]}
+                  >
+                    {/* 2-Tier Stepped Stone Plinth Base */}
+                    <mesh position={[0, 0.16, 0]} material={kakatiyaResources.charcoalStoneMat} receiveShadow>
+                      <boxGeometry args={[archDepthX * 1.56, 0.32, 0.84]} />
+                    </mesh>
+                    <mesh position={[0, 0.4, 0]} material={kakatiyaResources.pilasterRevealMat} receiveShadow>
+                      <boxGeometry args={[archDepthX * 1.44, 0.16, 0.72]} />
+                    </mesh>
+
+                    {/* Monolithic Pilaster Shaft with Recessed Vertical Stone Flute Panel */}
+                    <mesh
+                      position={[0, springY * 0.52, 0]}
+                      material={kakatiyaResources.charcoalStoneMat}
+                      castShadow
+                      receiveShadow
+                    >
+                      <boxGeometry args={[archDepthX * 1.32, springY - 0.32, 0.58]} />
+                    </mesh>
+                    <mesh
+                      position={[inDir * (archDepthX * 0.665), springY * 0.52, 0]}
+                      material={kakatiyaResources.pilasterRevealMat}
+                    >
+                      <boxGeometry args={[0.025, springY - 0.65, 0.3]} />
+                    </mesh>
+
+                    {/* Multi-Tiered Corbelled Stone Temple Capital Flaring at Arch Springing Line */}
+                    <mesh position={[0, springY + 0.04, 0]} material={kakatiyaResources.charcoalStoneMat} castShadow>
+                      <boxGeometry args={[archDepthX * 1.44, 0.12, 0.68]} />
+                    </mesh>
+                    <mesh position={[0, springY + 0.16, 0]} material={kakatiyaResources.pilasterRevealMat} castShadow>
+                      <boxGeometry args={[archDepthX * 1.54, 0.11, 0.78]} />
+                    </mesh>
+                    <mesh position={[0, springY + 0.28, 0]} material={kakatiyaResources.charcoalStoneMat} castShadow>
+                      <boxGeometry args={[archDepthX * 1.66, 0.13, 0.88]} />
+                    </mesh>
+
+                    {/* Upper Pier Extension Above Capital Meeting Cornice */}
+                    <mesh
+                      position={[0, (springY + 0.34 + archWallH) * 0.5, 0]}
+                      material={kakatiyaResources.charcoalStoneMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[archDepthX * 1.36, archWallH - (springY + 0.34), 0.6]} />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            );
+          })}
+
+          {/* Rear Wall: Monolithic Dark Charcoal Stone Architectural Wings & Temple Pilasters Clearing Booth Window & Doors */}
+          <group position={[0, 0, backZ - 0.22]}>
+            {([-1, 1] as const).map((wSide) => {
+              const wingW = Math.max(0.8, W * 0.5 - 0.24 - teluguKakatiyaWall.boothClearHalfW);
+              const wingCx = wSide * (teluguKakatiyaWall.boothClearHalfW + wingW * 0.5);
+              const artW = Math.min(2.1, wingW * 0.54);
+              const artH = Math.min(3.8, H * 0.38);
+              const artY = Math.min(H - artH * 0.5 - 0.7, Math.max(topTierY + 2.1, H * 0.54));
+              return (
+                <group key={`kakatiya-rear-wing-${wSide}`} position={[wingCx, 0, 0]}>
+                  <mesh position={[0, H * 0.5, -0.05]} material={kakatiyaResources.charcoalStoneMat} receiveShadow>
+                    <boxGeometry args={[wingW - 0.06, H * 0.96, 0.12]} />
+                  </mesh>
+                  {[-1, 1].map((pSide) => (
+                    <group key={`rear-kakatiya-pilaster-${pSide}`} position={[pSide * (wingW * 0.44), 0, -0.16]}>
+                      <mesh position={[0, H * 0.48, 0]} material={kakatiyaResources.charcoalStoneMat} castShadow receiveShadow>
+                        <boxGeometry args={[0.42, H * 0.94, 0.26]} />
+                      </mesh>
+                      <mesh position={[0, H * 0.55, -0.135]} material={kakatiyaResources.pilasterRevealMat}>
+                        <boxGeometry args={[0.18, H * 0.72, 0.02]} />
+                      </mesh>
+                    </group>
+                  ))}
+                  {/* Recessed Rear Bas-Relief Stone Panel with Subtle Warm-Amber Indirect Cove Halo */}
+                  <group position={[0, artY, -0.13]}>
+                    <mesh material={kakatiyaResources.pilasterRevealMat} receiveShadow>
+                      <boxGeometry args={[artW + 0.14, artH + 0.14, 0.06]} />
+                    </mesh>
+                    <mesh
+                      position={[0, 0, -0.035]}
+                      rotation={[0, Math.PI, 0]}
+                      material={kakatiyaResources.artPanelMats[wSide === -1 ? 3 : 8]}
+                      receiveShadow
+                    >
+                      <planeGeometry args={[artW, artH]} />
+                    </mesh>
+                    <mesh position={[0, artH * 0.5 + 0.05, -0.015]} material={kakatiyaResources.warmAmberBacklightMat}>
+                      <boxGeometry args={[artW * 0.88, 0.018, 0.018]} />
+                    </mesh>
+                  </group>
+                </group>
+              );
+            })}
+            {/* Clean Charcoal Stone Lintel Beam Above Projection Booth Window */}
+            {H - 0.24 - (teluguKakatiyaWall.winTop + 0.14) > 0.22 && (
+              <mesh
+                position={[
+                  0,
+                  (teluguKakatiyaWall.winTop + 0.14 + (H - 0.24)) * 0.5,
+                  -0.06,
+                ]}
+                material={kakatiyaResources.charcoalStoneMat}
+                receiveShadow
+              >
+                <boxGeometry
+                  args={[
+                    teluguKakatiyaWall.boothClearHalfW * 2,
+                    H - 0.24 - (teluguKakatiyaWall.winTop + 0.14),
+                    0.16,
+                  ]}
+                />
+              </mesh>
+            )}
+          </group>
+        </group>
+      )}
+
+      {/* The Deccan – Monsoon: Deep Forest-Emerald Vertical Acoustic Walls, Jagged 3D Black Basalt Cliffs w/ Emerald Rim Backlight & Diagonal Carved River-Stone Ribbon */}
+      {sideLightStyle === 'deccan_basalt_monsoon' && deccanMonsoonWall && deccanResources && (
+        <group>
+          {([-1, 1] as const).map((side) => {
+            const wallX = side * (W / 2 - 0.19);
+            const inDir = -side;
+            const zMid = (deccanMonsoonWall.zStart + deccanMonsoonWall.zEnd) * 0.5;
+            const zRevealMid = (deccanMonsoonWall.zRevealStart + deccanMonsoonWall.zRevealEnd) * 0.5;
+            const isLeft = side === -1;
+
+            return (
+              <group key={`deccan-side-${side}`}>
+                {/* Dark Matte Slate Front Screen-Reveal Wall Section */}
+                <mesh
+                  position={[wallX + inDir * 0.04, H * 0.5, zRevealMid]}
+                  material={deccanResources.darkFrontSlateMat}
+                  receiveShadow
+                >
+                  <boxGeometry args={[0.06, H, deccanMonsoonWall.revealSpanZ + 0.12]} />
+                </mesh>
+
+                {/* Full-Height Deep Forest-Emerald Vertical-Seamed Acoustic Fabric Wall */}
+                <mesh
+                  position={[wallX + inDir * 0.04, deccanMonsoonWall.wallH * 0.5, zMid]}
+                  material={deccanResources.emeraldFabricMat}
+                  receiveShadow
+                >
+                  <boxGeometry args={[0.055, deccanMonsoonWall.wallH, deccanMonsoonWall.spanZ]} />
+                </mesh>
+
+                {/* Symmetric Front-to-Back 3D Basalt Cliffs, Emerald Rim Halos & Sweeping Diagonal Carved River-Stone Ribbon */}
+                <group position={[wallX, 0, 0]}>
+                  {/* Front-Upper Hanging Basalt Cliff + Emerald Rim Backlight */}
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.frontUpperLeftGeo : deccanMonsoonWall.frontUpperRightGeo}
+                    material={deccanResources.basaltMats[isLeft ? 0 : 1]}
+                    castShadow
+                    receiveShadow
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.frontUpperHaloLeft : deccanMonsoonWall.frontUpperHaloRight}
+                    material={deccanResources.emeraldRimHaloMat}
+                  />
+
+                  {/* Rear-Upper Hanging Basalt Cliff + Emerald Rim Backlight */}
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.rearUpperLeftGeo : deccanMonsoonWall.rearUpperRightGeo}
+                    material={deccanResources.basaltMats[isLeft ? 1 : 0]}
+                    castShadow
+                    receiveShadow
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.rearUpperHaloLeft : deccanMonsoonWall.rearUpperHaloRight}
+                    material={deccanResources.emeraldRimHaloMat}
+                  />
+
+                  {/* Rear-Lower Ascending Basalt Cliff + Emerald Rim Backlight */}
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.rearLowerLeftGeo : deccanMonsoonWall.rearLowerRightGeo}
+                    material={deccanResources.basaltMats[isLeft ? 0 : 1]}
+                    castShadow
+                    receiveShadow
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.rearLowerHaloLeft : deccanMonsoonWall.rearLowerHaloRight}
+                    material={deccanResources.emeraldRimHaloMat}
+                  />
+
+                  {/* Sweeping Diagonal S-Curve Carved River-Stone Ribbon + Inner River Strata Grooves + Soft Warm Rim Glow */}
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.riverLeftGeo : deccanMonsoonWall.riverRightGeo}
+                    material={deccanResources.riverStoneMat}
+                    castShadow
+                    receiveShadow
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.riverGrooveALeft : deccanMonsoonWall.riverGrooveARight}
+                    material={deccanResources.riverGrooveMat}
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.riverGrooveBLeft : deccanMonsoonWall.riverGrooveBRight}
+                    material={deccanResources.riverGrooveMat}
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.riverWarmTopLeft : deccanMonsoonWall.riverWarmTopRight}
+                    material={deccanResources.riverWarmHaloMat}
+                  />
+                  <mesh
+                    geometry={isLeft ? deccanMonsoonWall.riverWarmBotLeft : deccanMonsoonWall.riverWarmBotRight}
+                    material={deccanResources.riverWarmHaloMat}
+                  />
+                </group>
+              </group>
+            );
+          })}
+
+          {/* Rear Wall: Deep Forest-Emerald Acoustic Wings & Fractured Basalt Corner Outcrops */}
+          <group position={[0, 0, backZ - 0.22]}>
+            {([-1, 1] as const).map((wSide) => {
+              const wingCx = wSide * (deccanMonsoonWall.boothClearHalfW + deccanMonsoonWall.wingW * 0.5);
+              return (
+                <group key={`deccan-rear-topo-${wSide}`} position={[wingCx, 0, 0]}>
+                  <mesh position={[0, H * 0.48, -0.02]} material={deccanResources.emeraldFabricMat} receiveShadow>
+                    <boxGeometry args={[deccanMonsoonWall.wingW - 0.04, H * 0.94, 0.06]} />
+                  </mesh>
+                  <mesh
+                    geometry={deccanMonsoonWall.rearCornerGeo}
+                    material={deccanResources.basaltMats[wSide === -1 ? 0 : 1]}
+                    castShadow
+                    receiveShadow
+                  />
+                </group>
+              );
+            })}
+
+            {H - 0.24 - (deccanMonsoonWall.winTop + 0.14) > 0.22 && (
+              <mesh
+                position={[
+                  0,
+                  (deccanMonsoonWall.winTop + 0.14 + (H - 0.24)) * 0.5,
+                  -0.08,
+                ]}
+                material={deccanResources.basaltMats[0]}
+                receiveShadow
+              >
+                <boxGeometry
+                  args={[
+                    deccanMonsoonWall.boothClearHalfW * 2,
+                    H - 0.24 - (deccanMonsoonWall.winTop + 0.14),
+                    0.18,
+                  ]}
+                />
+              </mesh>
+            )}
+          </group>
+        </group>
+      )}
+
       {/* Obsidian Wave 550: Vertical Sculpted S-Wave Acoustic Ribbons in Alternating Slate, Charcoal & Obsidian + Curved Neon-Purple Valley Canyons */}
       {sideLightStyle === 'parametric_obsidian_waves' &&
         parametricObsidianWall &&
@@ -7118,6 +8114,8 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'modern_charcoal_navy_diagonal' &&
         sideLightStyle !== 'volcanic_copper_ribbons' &&
         sideLightStyle !== 'indian_mandap_jali' &&
+        sideLightStyle !== 'telugu_kakatiya_dolby' &&
+        sideLightStyle !== 'deccan_basalt_monsoon' &&
         sideLightStyle !== 'parametric_obsidian_waves' &&
         sideLightStyle !== 'biophilic_crystalline_moss' &&
         sideLightStyle !== 'private_volcanic_copper_ribbons' &&

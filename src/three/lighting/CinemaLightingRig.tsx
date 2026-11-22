@@ -40,6 +40,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
   const { scene, gl } = useThree();
 
   const isCobaltVeil = config.sideLightStyle === 'cobalt_veil_laser_recess';
+  const isKakatiyaDolby = config.sideLightStyle === 'telugu_kakatiya_dolby';
+  const isDeccanDolby = config.sideLightStyle === 'deccan_basalt_monsoon';
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
   const isBioluminescentBeach = config.theaterId === 'beach_bioluminescent';
 
@@ -145,6 +147,12 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isCobaltVeil) {
         wallFillLeftRef.current.intensity = f * 0.44;
         wallFillLeftRef.current.color.set('#ffdcb4');
+      } else if (isKakatiyaDolby) {
+        wallFillLeftRef.current.intensity = f * 0.46;
+        wallFillLeftRef.current.color.set('#ffd59e');
+      } else if (isDeccanDolby) {
+        wallFillLeftRef.current.intensity = f * 0.56;
+        wallFillLeftRef.current.color.set('#6ad2ab');
       } else {
         wallFillLeftRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
@@ -159,6 +167,12 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isCobaltVeil) {
         wallFillRightRef.current.intensity = f * 0.38;
         wallFillRightRef.current.color.set('#cbbcf6');
+      } else if (isKakatiyaDolby) {
+        wallFillRightRef.current.intensity = f * 0.46;
+        wallFillRightRef.current.color.set('#ffd59e');
+      } else if (isDeccanDolby) {
+        wallFillRightRef.current.intensity = f * 0.54;
+        wallFillRightRef.current.color.set('#84c8d4');
       } else {
         wallFillRightRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;
@@ -225,7 +239,11 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       ? '#c2b280'
       : isCobaltVeil
         ? '#544236'
-        : '#3d3746';
+        : isKakatiyaDolby
+          ? '#463529'
+          : isDeccanDolby
+            ? '#22362f'
+            : '#3d3746';
 
   const keyPos: [number, number, number] = isBioluminescentBeach
     ? [-24, 38, -60]

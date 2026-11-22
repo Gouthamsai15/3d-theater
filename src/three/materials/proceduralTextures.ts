@@ -338,6 +338,44 @@ export function createCarpetTexture(
       ctx.fillRect(x, 0, 6, 512);
     }
     ctx.globalAlpha = 1;
+  } else if (sideLightStyle === 'telugu_kakatiya_dolby') {
+    // Rich dark slate-charcoal architectural wool broadloom carpet matching muted cinema terrace floors
+    ctx.fillStyle = '#181619';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 3) {
+      ctx.fillStyle = y % 6 === 0 ? 'rgba(255, 232, 200, 0.024)' : 'rgba(6, 5, 8, 0.24)';
+      ctx.fillRect(0, y, 512, 1.5);
+    }
+    for (let x = 0; x < 512; x += 4) {
+      ctx.fillStyle = x % 8 === 0 ? 'rgba(255, 224, 185, 0.016)' : 'rgba(0, 0, 0, 0.16)';
+      ctx.fillRect(x, 0, 1.5, 512);
+    }
+    for (let i = 0; i < 6500; i++) {
+      const px = (i * 83 + (i % 17) * 11) % 512;
+      const py = (i * 139 + (i % 13) * 19) % 512;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 230, 195, 0.02)' : 'rgba(0, 0, 0, 0.34)';
+      ctx.fillRect(px, py, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  } else if (sideLightStyle === 'deccan_basalt_monsoon') {
+    // Dark charcoal-slate broadloom acoustic carpet matching the matte slate floor apron
+    ctx.fillStyle = '#12171b';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let y = 0; y < 512; y += 3) {
+      ctx.fillStyle = y % 6 === 0 ? 'rgba(30, 52, 46, 0.06)' : 'rgba(5, 7, 9, 0.24)';
+      ctx.fillRect(0, y, 512, 1.5);
+    }
+    for (let x = 0; x < 512; x += 4) {
+      ctx.fillStyle = x % 8 === 0 ? 'rgba(138, 108, 70, 0.025)' : 'rgba(0, 0, 0, 0.18)';
+      ctx.fillRect(x, 0, 1.5, 512);
+    }
+    for (let i = 0; i < 6200; i++) {
+      const px = (i * 79 + (i % 19) * 13) % 512;
+      const py = (i * 131 + (i % 11) * 17) % 512;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(42, 68, 60, 0.045)' : 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(px, py, 2, 2);
+    }
+    ctx.globalAlpha = 1;
   } else if (sideLightStyle === 'diagonal_parabolic_ribs') {
     // Clean dark low-pile acoustic theater carpet with ultra-subtle matte weave
     ctx.globalAlpha = 0.14;
@@ -693,7 +731,9 @@ export function createCarpetBumpTexture(sideLightStyle?: SideLightStyle): THREE.
     sideLightStyle === 'screenx_silver_baffles' ||
     sideLightStyle === 'parametric_obsidian_waves' ||
     sideLightStyle === 'biophilic_crystalline_moss' ||
-    sideLightStyle === 'cobalt_veil_laser_recess'
+    sideLightStyle === 'cobalt_veil_laser_recess' ||
+    sideLightStyle === 'telugu_kakatiya_dolby' ||
+    sideLightStyle === 'deccan_basalt_monsoon'
   ) {
     // Tight woven obsidian acoustic broadloom loop-pile bump
     for (let i = 0; i < 7200; i++) {
@@ -1434,6 +1474,73 @@ export function createAcousticWallTexture(
     return tex;
   }
 
+  if (sideLightStyle === 'telugu_kakatiya_dolby') {
+    // Deep matte wine-red, burnt-maroon & dark charcoal acoustic wool weave
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#16171d');
+    grad.addColorStop(0.35, '#48131d');
+    grad.addColorStop(0.7, '#581a22');
+    grad.addColorStop(1, '#14151b');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    ctx.strokeStyle = 'rgba(212, 175, 55, 0.04)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < 512; y += 6) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(512, y);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 6400; i++) {
+      const px = (i * 79) % 512;
+      const py = (i * 149) % 512;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 224, 185, 0.03)' : 'rgba(0, 0, 0, 0.25)';
+      ctx.fillRect(px, py, 2, 2);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 2);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  if (sideLightStyle === 'deccan_basalt_monsoon') {
+    // Nocturnal black Deccan basalt stone micro-grain with deep emerald acoustic pores
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#0f1215');
+    grad.addColorStop(0.5, '#15191c');
+    grad.addColorStop(1, '#0b0e10');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    ctx.strokeStyle = 'rgba(16, 185, 129, 0.03)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < 512; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.quadraticCurveTo(256, y + Math.sin(y * 0.04) * 6, 512, y);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 6800; i++) {
+      const px = (i * 83) % 512;
+      const py = (i * 151) % 512;
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(160, 195, 185, 0.025)' : 'rgba(0, 0, 0, 0.28)';
+      ctx.fillRect(px, py, 2, 2);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 2);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
   if (sideLightStyle === 'diagonal_parabolic_ribs') {
     // Horizontal charcoal-slate fabric acoustic bands & warm dark walnut-bronze wood slats separated by satin-black trims
     ctx.fillStyle = '#1e222b';
@@ -1936,8 +2043,8 @@ export function createAcousticWallBumpTexture(
     ctx.moveTo(128, 90);
     ctx.lineTo(256, 130);
     ctx.stroke();
-  } else if (sideLightStyle === 'cobalt_veil_laser_recess') {
-    // Acoustically porous charcoal-suede micro-nap bump
+  } else if (sideLightStyle === 'cobalt_veil_laser_recess' || sideLightStyle === 'telugu_kakatiya_dolby' || sideLightStyle === 'deccan_basalt_monsoon') {
+    // Acoustically porous matte wool/suede & volcanic mineral micro-nap bump
     for (let i = 0; i < 4200; i++) {
       const px = (i * 53) % 256;
       const py = (i * 97) % 256;
@@ -2002,7 +2109,7 @@ export function createSeatUpholsteryTextures(
   isLeather: boolean,
   isQuilted = false,
   isRedStitched = false,
-  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' | 'crimson_tech_leather' = 'default',
+  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' | 'crimson_tech_leather' | 'maroon_gold_leather' | 'forest_emerald_bronze_leather' = 'default',
 ): SeatUpholsteryTextureSet {
   const mapCanvas = document.createElement('canvas');
   mapCanvas.width = 256;
@@ -2144,9 +2251,11 @@ export function createSeatUpholsteryTextures(
       styleVariant === 'violet_stitched' ||
       styleVariant === 'orange_stitched' ||
       styleVariant === 'blue_stitched' ||
-      styleVariant === 'crimson_tech_leather'
+      styleVariant === 'crimson_tech_leather' ||
+      styleVariant === 'maroon_gold_leather' ||
+      styleVariant === 'forest_emerald_bronze_leather'
     ) {
-      // Heavy-duty leather bolster seams with crisp red, violet, orange, or blue twin-needle stitching
+      // Heavy-duty leather bolster seams with crisp accent or muted-bronze twin-needle stitching
       const stitchHex =
         styleVariant === 'violet_stitched'
           ? '#a855f7'
@@ -2154,7 +2263,11 @@ export function createSeatUpholsteryTextures(
             ? '#f97316'
             : styleVariant === 'blue_stitched'
               ? '#60a5fa'
-              : '#ef4444';
+              : styleVariant === 'maroon_gold_leather'
+                ? '#d4af37'
+                : styleVariant === 'forest_emerald_bronze_leather'
+                  ? '#9a7446'
+                  : '#ef4444';
       [48, 128, 208].forEach((sy) => {
         mCtx.fillStyle = 'rgba(0,0,0,0.26)';
         mCtx.fillRect(0, sy, 256, 3);
@@ -3698,3 +3811,629 @@ export function createImaxAcousticTileCeilingTexture(): THREE.CanvasTexture {
   tex.anisotropy = 8;
   return tex;
 }
+
+export interface TeluguWallPanelTextureSet {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+  dispose: () => void;
+}
+
+/**
+ * Generates full-height cusped-arch monolithic stone/acoustic bas-relief artwork panels (0..9)
+ * in dark slate-charcoal & warm umber stone tones with dramatic warm-amber perimeter halo
+ * backlighting hugging the exact multi-cusped Kakatiya/Charminar arch contour.
+ */
+export function createTeluguHeritageWallPanelTextures(
+  variant: number,
+): TeluguWallPanelTextureSet {
+  const W = 768;
+  const H = 1536;
+
+  const mapCanvas = document.createElement('canvas');
+  mapCanvas.width = W;
+  mapCanvas.height = H;
+  const ctx = mapCanvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  // Base monolithic dark slate-charcoal stone / acoustic stone surface
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#1e1918');
+  bgGrad.addColorStop(0.45, '#252020');
+  bgGrad.addColorStop(1, '#181517');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  bCtx.fillStyle = '#808080';
+  bCtx.fillRect(0, 0, W, H);
+
+  // Subtle carved stone mineral grain & micro-acoustic porosity
+  for (let i = 0; i < 14000; i++) {
+    const px = (i * 97 + (i % 23) * 13) % W;
+    const py = (i * 179 + (i % 19) * 17) % H;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(255, 232, 204, 0.022)' : 'rgba(0, 0, 0, 0.14)';
+    ctx.fillRect(px, py, 2, 2);
+    bCtx.fillStyle = i % 2 === 0 ? '#8a8a8a' : '#747474';
+    bCtx.fillRect(px, py, 2, 2);
+  }
+
+  // Compute exact multi-cusped Charminar / Kakatiya arch contour inside canvas space
+  // Note: canvas Y=0 is TOP (arch crown), Y=H is BOTTOM (floor)
+  const marginX = W * 0.11;
+  const xL = marginX;
+  const xR = W - marginX;
+  const cx = W * 0.5;
+  const archSpanHalf = cx - xL;
+  const springTopY = H * 0.42; // 58% up from bottom
+  const crownTopY = H * 0.08;  // Peak near top of arch
+
+  const traceCuspedArchPath = (c: CanvasRenderingContext2D) => {
+    c.beginPath();
+    c.moveTo(xL, H);
+    c.lineTo(xL, springTopY);
+    // Scalloped 3-cusp upward curve to sharp ogee temple peak
+    c.quadraticCurveTo(xL + archSpanHalf * 0.08, springTopY - (springTopY - crownTopY) * 0.36, xL + archSpanHalf * 0.32, springTopY - (springTopY - crownTopY) * 0.48);
+    c.quadraticCurveTo(xL + archSpanHalf * 0.52, springTopY - (springTopY - crownTopY) * 0.72, xL + archSpanHalf * 0.74, crownTopY + (springTopY - crownTopY) * 0.18);
+    c.quadraticCurveTo(cx - archSpanHalf * 0.08, crownTopY + 14, cx, crownTopY);
+    c.quadraticCurveTo(cx + archSpanHalf * 0.08, crownTopY + 14, xR - archSpanHalf * 0.74, crownTopY + (springTopY - crownTopY) * 0.18);
+    c.quadraticCurveTo(xR - archSpanHalf * 0.52, springTopY - (springTopY - crownTopY) * 0.72, xR - archSpanHalf * 0.32, springTopY - (springTopY - crownTopY) * 0.48);
+    c.quadraticCurveTo(xR - archSpanHalf * 0.08, springTopY - (springTopY - crownTopY) * 0.36, xR, springTopY);
+    c.lineTo(xR, H);
+    c.closePath();
+  };
+
+  // Clip to inside of arch and apply rich warm-amber indirect perimeter halo glow!
+  ctx.save();
+  traceCuspedArchPath(ctx);
+  ctx.clip();
+
+  // Warm ambient stone wash strongest along the cusped arch perimeter, fading softly toward center
+  traceCuspedArchPath(ctx);
+  ctx.strokeStyle = 'rgba(180, 108, 42, 0.28)';
+  ctx.lineWidth = 175;
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(232, 148, 62, 0.34)';
+  ctx.lineWidth = 96;
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255, 194, 106, 0.52)';
+  ctx.lineWidth = 42;
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(255, 226, 168, 0.72)';
+  ctx.lineWidth = 14;
+  ctx.stroke();
+
+  // Soft overhead crown amber bloom pool right under the cusped peak
+  const crownGlow = ctx.createRadialGradient(cx, crownTopY + 120, 10, cx, crownTopY + 210, 320);
+  crownGlow.addColorStop(0, 'rgba(255, 202, 122, 0.42)');
+  crownGlow.addColorStop(0.55, 'rgba(196, 118, 44, 0.14)');
+  crownGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = crownGlow;
+  ctx.fillRect(0, 0, W, H * 0.55);
+
+  const motifType = ((variant % 10) + 10) % 10;
+
+  // Helpers to carve crisp bas-relief artwork (dark shadow groove + subtle warm stone rim + strong bump relief)
+  const carveStroke = (fn: (c: CanvasRenderingContext2D) => void, lineW: number) => {
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.translate(3, 4);
+    ctx.strokeStyle = 'rgba(8, 6, 7, 0.72)';
+    ctx.lineWidth = lineW + 2;
+    fn(ctx);
+    ctx.restore();
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(235, 192, 142, 0.24)';
+    ctx.lineWidth = Math.max(1.5, lineW * 0.72);
+    fn(ctx);
+    ctx.restore();
+
+    bCtx.save();
+    bCtx.lineCap = 'round';
+    bCtx.lineJoin = 'round';
+    bCtx.strokeStyle = '#c8c8c8';
+    bCtx.lineWidth = lineW + 1.5;
+    fn(bCtx);
+    bCtx.restore();
+  };
+
+  const carveFill = (fn: (c: CanvasRenderingContext2D) => void) => {
+    ctx.save();
+    ctx.translate(3, 4);
+    ctx.fillStyle = 'rgba(7, 5, 6, 0.65)';
+    fn(ctx);
+    ctx.restore();
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(54, 42, 36, 0.55)';
+    fn(ctx);
+    ctx.restore();
+
+    bCtx.save();
+    bCtx.fillStyle = '#484848';
+    fn(bCtx);
+    bCtx.restore();
+  };
+
+  if (motifType === 0 || motifType === 9) {
+    // 0 & 9: Flowing full-height Kalamkari botanical floral vines, stems & lotus petals
+    const flip = motifType === 9 ? -1 : 1;
+    for (let strand = -1; strand <= 1; strand += 2) {
+      carveStroke((c) => {
+        c.beginPath();
+        for (let t = 0; t <= 1; t += 0.02) {
+          const py = H * 0.22 + t * (H * 0.7);
+          const px = cx + flip * (strand * 95 + Math.sin(t * Math.PI * 3.2 + strand) * 78);
+          if (t === 0) c.moveTo(px, py);
+          else c.lineTo(px, py);
+        }
+        c.stroke();
+      }, 6);
+    }
+
+    // Lush curling Kalamkari tendrils & large lotus blossoms
+    const nodes = [0.3, 0.44, 0.58, 0.72, 0.85];
+    nodes.forEach((nt, ni) => {
+      const ny = H * nt;
+      const nx = cx + flip * Math.sin(nt * Math.PI * 3.1) * 95;
+      const rad = 54 + (ni % 2) * 16;
+
+      // Leaf curls branching left and right
+      [-1, 1].forEach((dir) => {
+        carveStroke((c) => {
+          c.beginPath();
+          c.moveTo(nx, ny);
+          c.bezierCurveTo(
+            nx + dir * 110,
+            ny - 45,
+            nx + dir * 165,
+            ny + 35,
+            nx + dir * 120,
+            ny + 95,
+          );
+          c.stroke();
+        }, 4.5);
+      });
+
+      // Multi-petal lotus blossom
+      for (let p = 0; p < 8; p++) {
+        const ang = (p * Math.PI) / 4;
+        carveStroke((c) => {
+          c.save();
+          c.translate(nx, ny);
+          c.rotate(ang);
+          c.beginPath();
+          c.moveTo(0, 12);
+          c.quadraticCurveTo(22, rad * 0.55, 0, rad);
+          c.quadraticCurveTo(-22, rad * 0.55, 0, 12);
+          c.stroke();
+          c.restore();
+        }, 3.5);
+      }
+    });
+  } else if (motifType === 1 || motifType === 4) {
+    // 1 & 4: Kondapalli geometric jali lattice bands + large central carved diamond medallion
+    const drawLatticeBand = (yTop: number, bandH: number) => {
+      const rows = 5;
+      const cols = 10;
+      const dx = (xR - xL - 80) / cols;
+      const dy = bandH / rows;
+      carveStroke((c) => {
+        c.strokeRect(xL + 36, yTop, xR - xL - 72, bandH);
+        for (let r = 0; r < rows; r++) {
+          for (let col = 0; col < cols; col++) {
+            const px = xL + 40 + (col + 0.5) * dx;
+            const py = yTop + (r + 0.5) * dy;
+            c.beginPath();
+            c.moveTo(px, py - dy * 0.42);
+            c.lineTo(px + dx * 0.42, py);
+            c.lineTo(px, py + dy * 0.42);
+            c.lineTo(px - dx * 0.42, py);
+            c.closePath();
+            c.stroke();
+          }
+        }
+      }, 3);
+    };
+
+    drawLatticeBand(H * 0.34, H * 0.14);
+    drawLatticeBand(H * 0.72, H * 0.16);
+
+    // Ornate central faceted diamond mandala
+    const my = H * 0.6;
+    [168, 126, 84, 42].forEach((r, idx) => {
+      carveStroke((c) => {
+        c.beginPath();
+        c.moveTo(cx, my - r);
+        c.lineTo(cx + r, my);
+        c.lineTo(cx, my + r);
+        c.lineTo(cx - r, my);
+        c.closePath();
+        c.stroke();
+        if (idx === 1) {
+          c.beginPath();
+          c.arc(cx, my, r * 0.58, 0, Math.PI * 2);
+          c.stroke();
+        }
+      }, idx === 0 ? 5.5 : 3.5);
+    });
+  } else if (motifType === 2) {
+    // 2: Towering symmetrical Peacock Feather plumage carving
+    const baseOriginY = H * 0.92;
+    const plumes = [
+      { tx: cx, ty: H * 0.35, s: 1.15 },
+      { tx: cx - 108, ty: H * 0.43, s: 0.95 },
+      { tx: cx + 108, ty: H * 0.43, s: 0.95 },
+      { tx: cx - 155, ty: H * 0.58, s: 0.85 },
+      { tx: cx + 155, ty: H * 0.58, s: 0.85 },
+      { tx: cx - 72, ty: H * 0.54, s: 0.9 },
+      { tx: cx + 72, ty: H * 0.54, s: 0.9 },
+      { tx: cx, ty: H * 0.57, s: 1.0 },
+    ];
+    plumes.forEach((p) => {
+      carveStroke((c) => {
+        c.beginPath();
+        c.moveTo(cx, baseOriginY);
+        c.quadraticCurveTo(p.tx * 0.5 + cx * 0.5, (p.ty + baseOriginY) * 0.5, p.tx, p.ty);
+        c.stroke();
+
+        // Fine barbs radiating off stem
+        for (let b = 0.25; b <= 0.9; b += 0.14) {
+          const sx = THREE.MathUtils.lerp(cx, p.tx, b);
+          const sy = THREE.MathUtils.lerp(baseOriginY, p.ty, b);
+          c.beginPath();
+          c.moveTo(sx, sy);
+          c.lineTo(sx - 44 * p.s, sy - 38 * p.s);
+          c.moveTo(sx, sy);
+          c.lineTo(sx + 44 * p.s, sy - 38 * p.s);
+          c.stroke();
+        }
+      }, 3);
+
+      // Concentric peacock eye ocelli
+      [58 * p.s, 36 * p.s, 18 * p.s].forEach((rad, ri) => {
+        carveStroke((c) => {
+          c.beginPath();
+          c.ellipse(p.tx, p.ty, rad * 0.72, rad, 0, 0, Math.PI * 2);
+          c.stroke();
+        }, ri === 0 ? 4.5 : 3);
+      });
+    });
+  } else if (motifType === 3 || motifType === 7) {
+    // 3 & 7: Monumental Kakatiya concentric Mandala Chakra wheel relief
+    const my = H * 0.58;
+    const rings = [225, 185, 142, 96, 48];
+    rings.forEach((r, ri) => {
+      carveStroke((c) => {
+        c.beginPath();
+        c.arc(cx, my, r, 0, Math.PI * 2);
+        c.stroke();
+      }, ri === 0 ? 6 : 3.5);
+    });
+
+    const spokes = motifType === 7 ? 16 : 12;
+    for (let i = 0; i < spokes; i++) {
+      const ang = (i * Math.PI * 2) / spokes;
+      carveStroke((c) => {
+        c.save();
+        c.translate(cx, my);
+        c.rotate(ang);
+        c.beginPath();
+        c.moveTo(0, 48);
+        c.quadraticCurveTo(28, 130, 0, 185);
+        c.quadraticCurveTo(-28, 130, 0, 48);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(0, 185);
+        c.lineTo(0, 225);
+        c.stroke();
+        c.restore();
+      }, 3.2);
+    }
+
+    // Stepped temple frieze band across bottom
+    carveStroke((c) => {
+      c.strokeRect(xL + 44, H * 0.84, xR - xL - 88, 72);
+    }, 4);
+  } else if (motifType === 5) {
+    // 5 (Right foreground): Sculpted Kakatiya Thousand-Pillar Lotus Torana & Stepped Temple Pillar Bas-Relief (no text)
+    const drawStarLotus = (lx: number, ly: number, radius: number, petals: number) => {
+      for (let p = 0; p < petals; p++) {
+        const ang = (p * Math.PI * 2) / petals;
+        carveStroke((c) => {
+          c.save();
+          c.translate(lx, ly);
+          c.rotate(ang);
+          c.beginPath();
+          c.moveTo(0, radius * 0.22);
+          c.quadraticCurveTo(radius * 0.26, radius * 0.65, 0, radius);
+          c.quadraticCurveTo(-radius * 0.26, radius * 0.65, 0, radius * 0.22);
+          c.stroke();
+          c.restore();
+        }, 3.2);
+      }
+      carveStroke((c) => {
+        c.beginPath();
+        c.arc(lx, ly, radius * 0.24, 0, Math.PI * 2);
+        c.stroke();
+        c.beginPath();
+        c.arc(lx, ly, radius * 1.06, 0, Math.PI * 2);
+        c.stroke();
+      }, 4);
+    };
+
+    // Twin vertical temple torana pilasters framing 3 stacked star-lotus medallions
+    [-1, 1].forEach((side) => {
+      const px = cx + side * 172;
+      carveFill((c) => {
+        c.fillRect(px - 16, H * 0.36, 32, H * 0.52);
+      });
+      carveStroke((c) => {
+        c.strokeRect(px - 16, H * 0.36, 32, H * 0.52);
+        c.strokeRect(px - 28, H * 0.34, 56, 26);
+        c.strokeRect(px - 28, H * 0.86, 56, 28);
+      }, 3.5);
+    });
+
+    // Horizontal architectural stone courses & triple stacked carved temple lotus rosettes
+    carveStroke((c) => {
+      [H * 0.34, H * 0.52, H * 0.70, H * 0.88].forEach((jy) => {
+        c.beginPath();
+        c.moveTo(xL, jy);
+        c.lineTo(xR, jy);
+        c.stroke();
+      });
+    }, 3.2);
+
+    drawStarLotus(cx, H * 0.43, 86, 12);
+    drawStarLotus(cx, H * 0.61, 108, 16);
+    drawStarLotus(cx, H * 0.79, 86, 12);
+  } else {
+    // 6 & 8: Carved Kakatiya Thousand-Pillar Shrine Gateway bas-relief
+    const gx = cx;
+    const gBaseY = H * 0.87;
+    const gW = 360;
+    const gH = H * 0.48;
+    const gTopY = gBaseY - gH;
+
+    // Stepped temple plinth base
+    [0, 1, 2].forEach((step) => {
+      const sw = gW + (2 - step) * 44;
+      carveFill((c) => {
+        c.fillRect(gx - sw * 0.5, gBaseY - step * 34 - 30, sw, 30);
+      });
+      carveStroke((c) => {
+        c.strokeRect(gx - sw * 0.5, gBaseY - step * 34 - 30, sw, 30);
+      }, 3.5);
+    });
+
+    // Twin carved sanctum pillars & recessed sanctum shrine doorway
+    const pOffset = gW * 0.36;
+    [-1, 1].forEach((side) => {
+      carveFill((c) => {
+        c.fillRect(gx + side * pOffset - 26, gTopY + 95, 52, gH - 190);
+      });
+      carveStroke((c) => {
+        c.strokeRect(gx + side * pOffset - 26, gTopY + 95, 52, gH - 190);
+        c.strokeRect(gx + side * pOffset - 38, gTopY + 75, 76, 22);
+      }, 3.5);
+    });
+
+    // Tiered ornate Kakatiya stepped lintel & kalash crown
+    [0, 1, 2].forEach((ti) => {
+      const lw = gW * (1.06 - ti * 0.16);
+      const ly = gTopY + (2 - ti) * 32;
+      carveFill((c) => {
+        c.fillRect(gx - lw * 0.5, ly, lw, 28);
+      });
+      carveStroke((c) => {
+        c.strokeRect(gx - lw * 0.5, ly, lw, 28);
+      }, 3.5);
+    });
+
+    // Central carved archway & temple icon silhouette inside shrine
+    carveStroke((c) => {
+      c.beginPath();
+      c.arc(gx, gBaseY - 210, 56, Math.PI, 0);
+      c.lineTo(gx + 56, gBaseY - 98);
+      c.lineTo(gx - 56, gBaseY - 98);
+      c.closePath();
+      c.stroke();
+
+      // Delicate temple deity/lotus silhouette inside doorway
+      c.beginPath();
+      c.arc(gx, gBaseY - 195, 22, 0, Math.PI * 2);
+      c.stroke();
+      c.beginPath();
+      c.moveTo(gx - 30, gBaseY - 102);
+      c.quadraticCurveTo(gx, gBaseY - 185, gx + 30, gBaseY - 102);
+      c.stroke();
+    }, 4);
+  }
+
+  ctx.restore();
+
+  const map = new THREE.CanvasTexture(mapCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+export interface DeccanBasaltTextureSet {
+  basaltMap: THREE.CanvasTexture;
+  basaltBumpMap: THREE.CanvasTexture;
+  emeraldFabricMap: THREE.CanvasTexture;
+  emeraldFabricBumpMap: THREE.CanvasTexture;
+  dispose: () => void;
+}
+
+/**
+ * Generates dark fractured black Deccan basalt mineral strata textures and deep
+ * emerald micro-perforated acoustic fabric maps etched with organic rainwater &
+ * river contour lines (purely natural geological/landscape textures, no bright colors).
+ */
+export function createDeccanBasaltWallTextures(variant = 0): DeccanBasaltTextureSet {
+  const W = 512;
+  const H = 512;
+
+  const basaltCanvas = document.createElement('canvas');
+  basaltCanvas.width = W;
+  basaltCanvas.height = H;
+  const sCtx = basaltCanvas.getContext('2d')!;
+
+  const basaltBumpCanvas = document.createElement('canvas');
+  basaltBumpCanvas.width = W;
+  basaltBumpCanvas.height = H;
+  const sbCtx = basaltBumpCanvas.getContext('2d')!;
+
+  // Fractured dark charcoal-basalt rock mineral base
+  const grad = sCtx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#181c20');
+  grad.addColorStop(0.5, '#252b31');
+  grad.addColorStop(1, '#14181c');
+  sCtx.fillStyle = grad;
+  sCtx.fillRect(0, 0, W, H);
+
+  sbCtx.fillStyle = '#808080';
+  sbCtx.fillRect(0, 0, W, H);
+
+  // Angular volcanic stone cleavage planes & craggy rock grit
+  for (let i = 0; i < 42; i++) {
+    const x0 = ((i * 97 + variant * 53) % W);
+    const y0 = ((i * 149 + variant * 89) % H);
+    const dx = ((i % 2 === 0 ? 1 : -1) * (44 + (i * 17) % 72));
+    const dy = ((i % 3 === 0 ? 1 : -1) * (36 + (i * 23) % 68));
+    sCtx.fillStyle = i % 2 === 0 ? 'rgba(54, 62, 70, 0.34)' : 'rgba(8, 10, 13, 0.42)';
+    sCtx.beginPath();
+    sCtx.moveTo(x0, y0);
+    sCtx.lineTo(x0 + dx, y0 + dy * 0.4);
+    sCtx.lineTo(x0 + dx * 0.5, y0 + dy);
+    sCtx.closePath();
+    sCtx.fill();
+
+    sbCtx.fillStyle = i % 2 === 0 ? '#a8a8a8' : '#424242';
+    sbCtx.beginPath();
+    sbCtx.moveTo(x0, y0);
+    sbCtx.lineTo(x0 + dx, y0 + dy * 0.4);
+    sbCtx.lineTo(x0 + dx * 0.5, y0 + dy);
+    sbCtx.closePath();
+    sbCtx.fill();
+  }
+
+  for (let i = 0; i < 7200; i++) {
+    const px = (i * 89 + variant * 37) % W;
+    const py = (i * 157 + variant * 61) % H;
+    const sz = 1.5 + (i % 3);
+    sCtx.fillStyle = i % 3 === 0 ? 'rgba(155, 170, 178, 0.08)' : 'rgba(3, 5, 7, 0.38)';
+    sCtx.fillRect(px, py, sz, sz);
+    sbCtx.fillStyle = i % 2 === 0 ? '#a2a2a2' : '#525252';
+    sbCtx.fillRect(px, py, sz, sz);
+  }
+
+  // Deep forest-emerald vertical-seamed acoustic fabric wall panels (like the photo side walls)
+  const emCanvas = document.createElement('canvas');
+  emCanvas.width = 512;
+  emCanvas.height = 512;
+  const eCtx = emCanvas.getContext('2d')!;
+
+  const emBumpCanvas = document.createElement('canvas');
+  emBumpCanvas.width = 512;
+  emBumpCanvas.height = 512;
+  const ebCtx = emBumpCanvas.getContext('2d')!;
+
+  const emGrad = eCtx.createLinearGradient(0, 0, 0, 512);
+  emGrad.addColorStop(0, '#124234');
+  emGrad.addColorStop(0.5, '#195443');
+  emGrad.addColorStop(1, '#103b2e');
+  eCtx.fillStyle = emGrad;
+  eCtx.fillRect(0, 0, 512, 512);
+
+  ebCtx.fillStyle = '#848484';
+  ebCtx.fillRect(0, 0, 512, 512);
+
+  // Fine matte acoustic fabric micro-weave
+  for (let y = 0; y < 512; y += 4) {
+    eCtx.fillStyle = y % 8 === 0 ? 'rgba(42, 130, 102, 0.09)' : 'rgba(4, 14, 11, 0.14)';
+    eCtx.fillRect(0, y, 512, 2);
+  }
+  for (let y = 4; y < 512; y += 6) {
+    for (let x = 4; x < 512; x += 6) {
+      eCtx.fillStyle = 'rgba(2, 10, 8, 0.18)';
+      eCtx.fillRect(x, y, 2, 2);
+      ebCtx.fillStyle = '#606060';
+      ebCtx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  // Crisp vertical architectural panel joints (2 panels per 512px tile)
+  [0, 256].forEach((jx) => {
+    eCtx.fillStyle = '#071b15';
+    eCtx.fillRect(jx, 0, 6, 512);
+    eCtx.fillStyle = 'rgba(65, 168, 136, 0.16)';
+    eCtx.fillRect(jx + 6, 0, 2, 512);
+
+    ebCtx.fillStyle = '#202020';
+    ebCtx.fillRect(jx, 0, 6, 512);
+  });
+
+  const basaltMap = new THREE.CanvasTexture(basaltCanvas);
+  basaltMap.colorSpace = THREE.SRGBColorSpace;
+  basaltMap.wrapS = THREE.RepeatWrapping;
+  basaltMap.wrapT = THREE.RepeatWrapping;
+  basaltMap.repeat.set(2, 2);
+  basaltMap.anisotropy = 8;
+
+  const basaltBumpMap = new THREE.CanvasTexture(basaltBumpCanvas);
+  basaltBumpMap.wrapS = THREE.RepeatWrapping;
+  basaltBumpMap.wrapT = THREE.RepeatWrapping;
+  basaltBumpMap.repeat.set(2, 2);
+  basaltBumpMap.anisotropy = 8;
+
+  const emeraldFabricMap = new THREE.CanvasTexture(emCanvas);
+  emeraldFabricMap.colorSpace = THREE.SRGBColorSpace;
+  emeraldFabricMap.wrapS = THREE.RepeatWrapping;
+  emeraldFabricMap.wrapT = THREE.RepeatWrapping;
+  emeraldFabricMap.repeat.set(6, 1);
+  emeraldFabricMap.anisotropy = 8;
+
+  const emeraldFabricBumpMap = new THREE.CanvasTexture(emBumpCanvas);
+  emeraldFabricBumpMap.wrapS = THREE.RepeatWrapping;
+  emeraldFabricBumpMap.wrapT = THREE.RepeatWrapping;
+  emeraldFabricBumpMap.repeat.set(6, 1);
+  emeraldFabricBumpMap.anisotropy = 8;
+
+  return {
+    basaltMap,
+    basaltBumpMap,
+    emeraldFabricMap,
+    emeraldFabricBumpMap,
+    dispose: () => {
+      basaltMap.dispose();
+      basaltBumpMap.dispose();
+      emeraldFabricMap.dispose();
+      emeraldFabricBumpMap.dispose();
+    },
+  };
+}
+
+

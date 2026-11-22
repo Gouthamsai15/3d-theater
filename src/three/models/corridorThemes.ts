@@ -570,6 +570,56 @@ export function getCorridorThemeConfig(config: TheaterConfiguration): CorridorTh
         gateTrimColor: '#ff981a',
       };
 
+    case 'telugu_kakatiya_dolby':
+      return {
+        ...base,
+        corridorWidth: 3.85,
+        corridorHeight: 4.05,
+        wallPattern: 'mandap_jali',
+        primaryWallColor: '#48131d',
+        secondaryWallColor: '#17191f',
+        trimColor: '#c89d4c',
+        metalColor: '#d4af37',
+        accentColor: '#f5a638',
+        secondaryAccentColor: '#ffd480',
+        ceilingColor: '#07080b',
+        runnerColor: '#4a121c',
+        runnerBorderColor: '#d4af37',
+        doorPrimaryColor: '#191b22',
+        doorSecondaryColor: '#5c1c23',
+        doorHandleColor: '#d4af37',
+        ticketBgPrimary: '#1a0a0e',
+        ticketBgSecondary: '#541520',
+        ticketAccent: '#d4af37',
+        gateBodyColor: '#14151b',
+        gateTrimColor: '#c89d4c',
+      };
+
+    case 'deccan_basalt_monsoon':
+      return {
+        ...base,
+        corridorWidth: 3.85,
+        corridorHeight: 4.05,
+        wallPattern: 'dolby_scales',
+        primaryWallColor: '#131618',
+        secondaryWallColor: '#0e2820',
+        trimColor: '#8d6b43',
+        metalColor: '#9b7748',
+        accentColor: '#10b981',
+        secondaryAccentColor: '#7399c4',
+        ceilingColor: '#07090b',
+        runnerColor: '#0f221b',
+        runnerBorderColor: '#9b7748',
+        doorPrimaryColor: '#14171a',
+        doorSecondaryColor: '#0f2d23',
+        doorHandleColor: '#9b7748',
+        ticketBgPrimary: '#0b0e0e',
+        ticketBgSecondary: '#112e24',
+        ticketAccent: '#c4965a',
+        gateBodyColor: '#111417',
+        gateTrimColor: '#8d6b43',
+      };
+
     case 'ice_faceted_cyan':
       return {
         ...base,

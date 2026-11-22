@@ -244,10 +244,14 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
   const isExoskeleton4dx = sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
+  const isKakatiyaDolby = sideLightStyle === 'telugu_kakatiya_dolby';
+  const isDeccanDolby = sideLightStyle === 'deccan_basalt_monsoon';
   const isDolbyFloating =
     sideLightStyle === 'obsidian_slat_grazers' ||
     sideLightStyle === 'diagonal_parabolic_ribs' ||
-    isDolbyVeil;
+    isDolbyVeil ||
+    isKakatiyaDolby ||
+    isDeccanDolby;
   const isVolcanicCopper2d = sideLightStyle === 'volcanic_copper_ribbons';
   const isPrivateVolcanic = sideLightStyle === 'private_volcanic_copper_ribbons';
   const isPrivateChampagne = sideLightStyle === 'champagne_fluted_oak_alcoves';
@@ -1556,7 +1560,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         )}
 
         {/* Deep Light-Absorbing Satin-Black / Matte-Espresso / Charcoal Velvet Border Masking */}
-        {!isBeach && !isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && !isDolbyVeil && !isExoskeleton4dx && (
+        {!isBeach && !isScreenX && !isMandap2d && !isParametricObsidian && !isBiophilicMoss && !isDolbyVeil && !isKakatiyaDolby && !isDeccanDolby && !isExoskeleton4dx && (
           <mesh geometry={velvetMaskGeo} position={[0, 0, -0.01]}>
             <meshStandardMaterial
               color={

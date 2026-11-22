@@ -418,7 +418,6 @@ const BeachSpeakers: React.FC<CinemaSpeakersProps> = ({
   });
 
   if (isBioluminescent) {
-    const subXs = [-3.6, -1.3, 1.3, 3.6];
     const lineArrayTopY = config.screenPosition[1] + config.screenHeight * 0.5 + 0.35;
 
     return (
@@ -464,48 +463,7 @@ const BeachSpeakers: React.FC<CinemaSpeakersProps> = ({
           );
         })}
 
-        {/* 4 Central Dual-18" Subwoofers on Dark Slate Plinths with FFT Audio-Reactive 8-Segment LED Meters */}
-        {subXs.map((sx, sIdx) => {
-          const sy = beachHeightAt(sx, -9.6, 'bioluminescent');
-          return (
-            <group key={`bio-sub-${sIdx}`} position={[sx, sy, -9.6]}>
-              {/* Dark Slate Plinth */}
-              <mesh position={[0, 0.05, 0]} geometry={geos.subPlinthGeo} material={mats.slatePlinthMat} receiveShadow castShadow />
-              {/* Dual-18" Subwoofer Cabinet */}
-              <group position={[0, 0.54, 0]}>
-                <mesh geometry={geos.subCabGeo} material={mats.cabinetMat} castShadow />
-                <mesh position={[0, 0, 0.41]} geometry={geos.subBaffleGeo} material={mats.baffleMat} />
-                {[-0.25, 0.25].map((wx, wi) => (
-                  <group key={`bio-sub-drv-${wi}`} position={[wx, 0.04, 0.425]}>
-                    <mesh geometry={geos.subRimGeo} material={mats.darkSteelMat} />
-                    <mesh position={[0, 0, -0.045]} geometry={geos.subConeGeo} material={mats.coneMat} />
-                    <mesh position={[0, 0, -0.024]} rotation={[Math.PI / 2, 0, 0]} geometry={geos.subDustGeo} material={mats.rubberMat} />
-                  </group>
-                ))}
-                {/* Bottom Laminar Port */}
-                <mesh position={[0, -0.34, 0.415]} geometry={geos.subPortGeo} material={mats.portMat} />
-
-                {/* Vertical 8-Segment FFT Audio-Reactive LED Level Meter */}
-                <group position={[0.45, 0.06, 0.42]}>
-                  <mesh position={[0, 0, -0.008]} material={mats.darkSteelMat}>
-                    <boxGeometry args={[0.085, 0.34, 0.016]} />
-                  </mesh>
-                  {LED_METER_COLORS.map((_, segIdx) => (
-                    <mesh
-                      key={`led-${sIdx}-${segIdx}`}
-                      ref={(el) => {
-                        ledMeshRefs.current[sIdx][segIdx] = el;
-                      }}
-                      position={[0, -0.135 + segIdx * 0.038, 0.004]}
-                      geometry={geos.ledSegGeo}
-                      material={mats.subLedMats[sIdx][segIdx]}
-                    />
-                  ))}
-                </group>
-              </group>
-            </group>
-          );
-        })}
+        {/* Left & Right Suspended 7-Cabinet J-Curved Line-Array Towers on Truss Fly-Arms (zero speakers below screen) */}
       </group>
     );
   }
@@ -614,10 +572,19 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
   const isArctic4dx = config.sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = config.sideLightStyle === 'thunder_emerald_waves';
   const isExoskeleton4dx = config.sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
+  const isAny4dx =
+    config.categoryId === '4dx' ||
+    Boolean(config.supports4dxEffects) ||
+    isCrimson4dx ||
+    isArctic4dx ||
+    isThunder4dx ||
+    isExoskeleton4dx;
   const isDolbyMediumLuxury =
     config.sideLightStyle === 'obsidian_slat_grazers' ||
     config.sideLightStyle === 'diagonal_parabolic_ribs';
   const isCobaltVeilDolby = config.sideLightStyle === 'cobalt_veil_laser_recess';
+  const isKakatiyaDolby = config.sideLightStyle === 'telugu_kakatiya_dolby';
+  const isDeccanDolby = config.sideLightStyle === 'deccan_basalt_monsoon';
   const isWarmBrass =
     environmentProfile.architectureStyle === 'private' ||
     config.sideLightStyle === 'brass_torchieres' ||
@@ -998,10 +965,56 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
   });
 
-  // Compute safe side-wall surround bay coordinates (concealed in ICE side wall modules, ScreenX panoramic walls & Walnut/Champagne private salons)
+  // Compute safe side-wall surround bay coordinates (concealed in ICE side wall modules, ScreenX panoramic walls, The Deccan basalt/emerald bays & Walnut/Champagne private salons)
   const sideSpeakerPositions = useMemo(() => {
     const arr: { x: number; y: number; z: number; side: -1 | 1; bayIdx: number }[] = [];
     if (isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX) return arr;
+    if (isDeccanDolby) {
+      // 2 sleek matte-black directional surround speakers per side mounted cleanly on the forest-emerald acoustic panels ahead of the river ribbon
+      const placements = [
+        { z: frontZ + 6.4, y: 3.9 },
+        { z: frontZ + 10.3, y: 4.55 },
+      ];
+      placements.forEach((pl, idx) => {
+        ([-1, 1] as const).forEach((side) => {
+          arr.push({
+            x: side * (W / 2 - 0.25),
+            y: pl.y,
+            z: pl.z,
+            side,
+            bayIdx: idx,
+          });
+        });
+      });
+      return arr;
+    }
+    if (isKakatiyaDolby) {
+      // 5 sleek matte-black Dolby surround speakers mounted cleanly on the charcoal-stone temple pilasters ascending with the seating rake
+      const bayCount = 5;
+      const zMin = -L * 0.44;
+      const zMax = L * 0.44;
+      const baySpan = (zMax - zMin) / bayCount;
+      const springY = (H - 0.34) * 0.58;
+      for (let i = 1; i <= bayCount; i++) {
+        const spkZ = zMin + i * baySpan;
+        const rowFrac = THREE.MathUtils.clamp(
+          (spkZ - config.firstRowZ) / Math.max(0.5, config.rowSpacing),
+          0,
+          Math.max(0, config.seatingRows - 1),
+        );
+        const spkY = Math.min(springY - 0.65, Math.max(3.15, rowFrac * config.rowElevationStep + 2.35));
+        ([-1, 1] as const).forEach((side) => {
+          arr.push({
+            x: side * (W / 2 - 0.63),
+            y: spkY,
+            z: spkZ,
+            side,
+            bayIdx: i - 1,
+          });
+        });
+      }
+      return arr;
+    }
     if (isCobaltVeilDolby) {
       // 6 symmetrical matte-black directional surround speakers mounted cleanly along the molten-amber wave ridge
       const countPerSide = 6;
@@ -1284,11 +1297,11 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return arr;
-  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
+  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
 
-  // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on private residential rear walls & ScreenX 3-wall halls)
+  // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on concealed Deccan rear topography, private salons & ScreenX 3-wall halls)
   const rearSpeakerPositions = useMemo(() => {
-    if (isPrivateVolcanic || isPrivateChampagne || isScreenX) return [];
+    if (isPrivateVolcanic || isPrivateChampagne || isScreenX || isDeccanDolby) return [];
     if (isExoskeleton4dx) {
       const { rearSpeakers } = getExoskeletonSpeakerPositions(config, topTierY);
       return rearSpeakers.map((rsp) => ({
@@ -1311,9 +1324,11 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       ? backZ - 0.46
       : isParametricObsidian
         ? backZ - 0.68
-        : isBiophilicMoss
-          ? backZ - 0.26
-          : backZ - 0.21;
+        : isKakatiyaDolby
+          ? backZ - 0.27
+          : isBiophilicMoss
+            ? backZ - 0.26
+            : backZ - 0.21;
 
     const list: { x: number; y: number; z: number; yaw: number; pitch: number }[] = [];
 
@@ -1360,7 +1375,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
 
     return list;
-  }, [isPrivateVolcanic, isPrivateChampagne, isIce, isScreenX, isCobaltVeilDolby, isParametricObsidian, isBiophilicMoss, isExoskeleton4dx, config, W, H, topTierY, backZ]);
+  }, [isPrivateVolcanic, isPrivateChampagne, isIce, isScreenX, isKakatiyaDolby, isDeccanDolby, isCobaltVeilDolby, isParametricObsidian, isBiophilicMoss, isExoskeleton4dx, config, W, H, topTierY, backZ]);
 
   // Overhead height speaker coordinates (ICE, ScreenX, Modern Multiplex, Dolby Atmos, IMAX 12-Channel, Private Salons & bespoke 4DX ceilings)
   const atmosSpeakerPositions = useMemo(() => {
@@ -1383,6 +1398,46 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           });
         });
       }
+      return pts;
+    }
+    if (isKakatiyaDolby) {
+      // Inner channel (5 compact Atmos pods/side) & outer channel (3 Atmos pods/side), framing the central starlight tray
+      [-W * 0.22, W * 0.22].forEach((x, xi) => {
+        [-L * 0.34, -L * 0.18, -L * 0.02, L * 0.14, L * 0.3].forEach((z) => {
+          pts.push({
+            x,
+            y: H - 0.28,
+            z,
+            side: xi === 0 ? -1 : 1,
+          });
+        });
+      });
+      [-W * 0.365, W * 0.365].forEach((x, xi) => {
+        [-L * 0.25, 0.01 * L, L * 0.27].forEach((z) => {
+          pts.push({
+            x,
+            y: H - 0.26,
+            z,
+            side: xi === 0 ? -1 : 1,
+          });
+        });
+      });
+      return pts;
+    }
+    if (isDeccanDolby) {
+      // 16 concealed perforated flush Dolby Atmos ceiling grilles integrated cleanly into monsoon acoustic canopy bays
+      const xs = [-W * 0.27, -W * 0.095, W * 0.095, W * 0.27];
+      const zs = [-L * 0.28, -L * 0.095, L * 0.095, L * 0.28];
+      xs.forEach((x, xi) => {
+        zs.forEach((z) => {
+          pts.push({
+            x,
+            y: H - 0.16,
+            z,
+            side: xi < 2 ? -1 : 1,
+          });
+        });
+      });
       return pts;
     }
     if (isCobaltVeilDolby) {
@@ -1569,13 +1624,13 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return pts;
-  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
+  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
 
-  // Front Proscenium Dual-18" Subwoofer + 3-Way Line-Array Towers (omitted on floating frameless Dolby & flush seamless ScreenX 270 front walls; behind-screen for ICE, Modern Multiplex, IMAX, Private Salons, bespoke 4DX, volcanic-copper 2D, Mandap 2D, Obsidian Wave 550 & Sylva Moss 250 halls)
+  // Front Proscenium / Behind-Screen Dual-18" Cinema Subwoofers + 3-Way Line-Array Towers (all visible bottom-of-screen speakers omitted across every theater)
   const frontTowerPositions = useMemo(() => {
-    if (isDolbyMediumLuxury || isCobaltVeilDolby || isScreenX) return [];
-    if (isIce || isModernMultiplex || isVolcanicCopper2d || isMandap2d || isParametricObsidian || isBiophilicMoss || isPrivateVolcanic || isPrivateChampagne || isImaxLaser || isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx) {
-      // Recessed Left, Center, Right behind-screen speakers & subwoofers behind acoustically transparent screen
+    if (isDolbyMediumLuxury || isCobaltVeilDolby || isKakatiyaDolby || isDeccanDolby || isScreenX || isAny4dx) return [];
+    if (isIce || isModernMultiplex || isVolcanicCopper2d || isMandap2d || isParametricObsidian || isBiophilicMoss || isPrivateVolcanic || isPrivateChampagne || isImaxLaser) {
+      // Recessed Left, Center, Right behind-screen speakers & subwoofers strictly behind acoustically transparent screen
       const behindZ = Math.max(frontZ + 0.38, screenPosition[2] - 0.55);
       return [-screenWidth * 0.34, 0, screenWidth * 0.34].map((tx, idx) => ({
         x: tx,
@@ -1584,16 +1639,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
         side: idx === 0 ? (-1 as const) : idx === 2 ? (1 as const) : (0 as const),
       }));
     }
-    const safeMinX = Math.min(W / 2 - 0.45, screenWidth / 2 + 0.36);
-    const towerX = Math.max(safeMinX, W / 2 - 0.56);
-    const towerZ = Math.max(frontZ + 0.65, screenPosition[2] + 0.56);
-    return ([-1, 1] as const).map((side) => ({
-      x: side * towerX,
-      y: 0.5,
-      z: towerZ,
-      side,
-    }));
-  }, [isScreenX, isDolbyMediumLuxury, isCobaltVeilDolby, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isPrivateVolcanic, isPrivateChampagne, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, W, screenWidth, frontZ, screenPosition]);
+    return [];
+  }, [isScreenX, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isAny4dx, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isPrivateVolcanic, isPrivateChampagne, isImaxLaser, screenWidth, frontZ, screenPosition]);
 
   const renderSurroundUnit = (key: string, recessedFlush = false) => (
     <group key={key} scale={speakerScale}>
@@ -1681,8 +1728,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           />
         ))}
 
-        {/* Subtle Cinema Power Status Badge LED (omitted on Sylva Moss 250, Dolby Cobalt Veil 250, IMAX Cobalt Horizon, 4DX Exo-Skeleton 550 & 4DX Arctic Storm so surrounds remain sleek matte black) */}
-        {!isBiophilicMoss && !isCobaltVeilDolby && !isCobaltHorizonImax && !isExoskeleton4dx && !isArctic4dx && (
+        {/* Subtle Cinema Power Status Badge LED (omitted on Sylva Moss 250, Dolby Cobalt Veil 250, Dolby Kakatiya Heritage, The Deccan – Monsoon, IMAX Cobalt Horizon, 4DX Exo-Skeleton 550 & 4DX Arctic Storm so surrounds remain sleek matte black) */}
+        {!isBiophilicMoss && !isCobaltVeilDolby && !isKakatiyaDolby && !isDeccanDolby && !isCobaltHorizonImax && !isExoskeleton4dx && !isArctic4dx && (
           <mesh position={[0, -0.285, 0.186]} material={materials.statusLedMat}>
             <boxGeometry args={[0.045, 0.012, 0.008]} />
           </mesh>
@@ -1717,7 +1764,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
 
       {/* Overhead Dolby Atmos Ceiling Gimbal Speaker Pods / Concealed Flush Architectural Ceiling Speakers */}
       {atmosSpeakerPositions.map((ap, i) =>
-        isCobaltVeilDolby ? (
+        isCobaltVeilDolby || isDeccanDolby ? (
           <group
             key={`atmos-cobalt-flush-${i}`}
             position={[ap.x, ap.y, ap.z]}
@@ -1827,7 +1874,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
                 geometry={geometries.atmosTweeterPodGeo}
                 material={materials.hornThroatMat}
               />
-              {!isParametricObsidian && !isBiophilicMoss && !isExoskeleton4dx && (
+              {!isParametricObsidian && !isBiophilicMoss && !isExoskeleton4dx && !isKakatiyaDolby && (
                 <mesh position={[0, -0.145, 0.21]} material={materials.statusLedMat}>
                   <boxGeometry args={[0.05, 0.01, 0.01]} />
                 </mesh>
@@ -1995,63 +2042,6 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
         </group>
       ))}
 
-      {/* Visible Front-Stage LFE Reference Accent Modules for Behind-Screen & Floating-Wall Auditoriums */}
-      {(frontTowerPositions.length === 0 ||
-        frontTowerPositions[0].z < screenPosition[2] - 0.1) &&
-        [-1, 1].map((side, sIdx) => {
-          const stageEdgeZ =
-            isDolbyMediumLuxury || isCobaltVeilDolby || isScreenX || isImaxLaser
-              ? frontZ + 0.56
-              : isPrivateVolcanic || isPrivateChampagne
-                ? screenPosition[2] + 1.22
-                : isIce
-                  ? screenPosition[2] + 1.62
-                  : isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx
-                    ? screenPosition[2] + 2.02
-                    : screenPosition[2] + 1.96;
-          const xPos = side * Math.min(W * 0.37, screenWidth * 0.41);
-          return (
-            <group
-              key={`stage-lfe-badge-${side}`}
-              position={[xPos, 0.12, stageEdgeZ]}
-              rotation={[0, -side * 0.12, 0]}
-              scale={Math.min(1.05, speakerScale)}
-            >
-              <mesh geometry={geometries.stageLfeBodyGeo} material={materials.cabinetMat} castShadow receiveShadow />
-              <mesh position={[0, 0, 0.162]} material={materials.baffleMat}>
-                <planeGeometry args={[0.48, 0.18]} />
-              </mesh>
-              {/* Embossed Metallic Brand Badge */}
-              <group position={[-0.06, 0.04, 0.168]}>
-                <mesh geometry={geometries.brandBadgePlateGeo} material={materials.metalTrimMat} />
-                <mesh
-                  position={[0, 0, 0.008]}
-                  geometry={geometries.brandBadgeFaceGeo}
-                  material={materials.brandBadgeFaceMat}
-                />
-              </group>
-              {/* Compact Horizontal 8-Segment Bass Reactive LED Strip */}
-              <group position={[0.17, -0.02, 0.168]}>
-                <mesh material={materials.darkSteelMat}>
-                  <boxGeometry args={[0.048, 0.18, 0.012]} />
-                </mesh>
-                {LED_METER_COLORS.map((_, segIdx) => (
-                  <mesh
-                    key={`lfe-led-${sIdx}-${segIdx}`}
-                    position={[0, -0.068 + segIdx * 0.0195, 0.008]}
-                    material={materials.subLedMats[sIdx][segIdx]}
-                  >
-                    <boxGeometry args={[0.032, 0.013, 0.01]} />
-                  </mesh>
-                ))}
-              </group>
-              {/* Acoustic Port Trim */}
-              <mesh position={[-0.06, -0.055, 0.166]} material={materials.portVoidMat}>
-                <boxGeometry args={[0.32, 0.032, 0.01]} />
-              </mesh>
-            </group>
-          );
-        })}
     </group>
   );
 };

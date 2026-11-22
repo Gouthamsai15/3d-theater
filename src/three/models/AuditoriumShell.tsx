@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { TheaterConfiguration } from '../../types/cinema';
 import { getAisleWorldXs } from '../../config/seating/seatGenerator';
 import {
   createAuditoriumTextures,
   createCarbonFiberTexture,
+  createDeccanBasaltWallTextures,
   createEspressoAcousticTileCeilingTexture,
   createImaxAcousticTileCeilingTexture,
   createRowMarkerTexture,
@@ -15,7 +16,7 @@ import {
   ScreenBounceUniforms,
 } from '../lighting/screenBounceShader';
 import { CinemaSpeakers } from './CinemaSpeakers';
-import { SideWallLighting } from './SideWallLighting';
+import { buildDeccanJaggedRockGeo, DeccanRockLobe, SideWallLighting } from './SideWallLighting';
 import { BeachEnvironment } from './BeachEnvironment';
 import { ScreenBounceSample } from './CinemaScreen';
 import { getPortalLayoutMetrics } from './corridorThemes';
@@ -29,6 +30,7 @@ interface AuditoriumShellProps {
 }
 
 const ROW_LABELS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const _starDummy = new THREE.Object3D();
 
 /**
  * Generates a realistic 3D pleated velvet curtain geometry with undulating vertical folds.
@@ -101,7 +103,9 @@ function getAcousticPlaqueDetails(config: TheaterConfiguration): {
     config.environmentProfile.architectureStyle === 'private' ||
     config.sideLightStyle === 'art_deco_navy_sunburst' ||
     config.sideLightStyle === 'art_deco_stepped_fins' ||
-    config.sideLightStyle === 'indian_mandap_jali';
+    config.sideLightStyle === 'indian_mandap_jali' ||
+    config.sideLightStyle === 'telugu_kakatiya_dolby' ||
+    config.sideLightStyle === 'deccan_basalt_monsoon';
 
   if (config.categoryId === 'dolby') {
     return {
@@ -389,6 +393,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     screenPosition,
     screenWidth,
     screenHeight,
+    screenCurvature,
     environmentProfile,
     lightingProfile,
     sideLightStyle,
@@ -418,7 +423,9 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const isDolbyObsidian = sideLightStyle === 'obsidian_slat_grazers';
   const isDolbyCobalt = sideLightStyle === 'diagonal_parabolic_ribs';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
-  const isDolbyFloating = isDolbyObsidian || isDolbyCobalt || isDolbyVeil;
+  const isKakatiyaDolby = sideLightStyle === 'telugu_kakatiya_dolby';
+  const isDeccanDolby = sideLightStyle === 'deccan_basalt_monsoon';
+  const isDolbyFloating = isDolbyObsidian || isDolbyCobalt || isDolbyVeil || isKakatiyaDolby || isDeccanDolby;
   const isPrivateVolcanic = sideLightStyle === 'private_volcanic_copper_ribbons';
   const isPrivateChampagne = sideLightStyle === 'champagne_fluted_oak_alcoves';
   const isScreenX =
@@ -611,15 +618,23 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
               ? '#030406'
               : ceilingLightStyle === 'espresso_tray_atmos'
                 ? '#140e0a'
-                : environmentProfile.ceilingColor,
+                : ceilingLightStyle === 'kakatiya_starlight_gold'
+                  ? '#050608'
+                  : ceilingLightStyle === 'deccan_monsoon_canopy'
+                    ? '#06090b'
+                    : environmentProfile.ceilingColor,
         roughness:
           ceilingLightStyle === 'monolithic_acoustic_plaster'
             ? 0.99
-            : ceilingLightStyle === 'espresso_tray_atmos'
-              ? 0.94
-              : 0.9,
+            : ceilingLightStyle === 'kakatiya_starlight_gold' || ceilingLightStyle === 'deccan_monsoon_canopy'
+              ? 0.96
+              : ceilingLightStyle === 'espresso_tray_atmos'
+                ? 0.94
+                : 0.9,
         metalness:
-          ceilingLightStyle === 'monolithic_acoustic_plaster'
+          ceilingLightStyle === 'monolithic_acoustic_plaster' ||
+          ceilingLightStyle === 'kakatiya_starlight_gold' ||
+          ceilingLightStyle === 'deccan_monsoon_canopy'
             ? 0.0
             : ceilingLightStyle === 'espresso_tray_atmos'
               ? 0.02
@@ -1122,6 +1137,397 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     return pts;
   }, [W, L]);
 
+  const kakatiyaStarRef = useRef<THREE.InstancedMesh>(null);
+  const kakatiyaStarData = useMemo(() => {
+    if (ceilingLightStyle !== 'kakatiya_starlight_gold') return [];
+    const pts: { x: number; z: number; scale: number }[] = [];
+    const cols = 12;
+    const rows = 20;
+    const spanX = W * 0.25; // Confined cleanly inside the central recessed starlight bay
+    const zStart = frontZ + 2.1;
+    const zEnd = backZ - 2.1;
+    for (let ix = 0; ix < cols; ix++) {
+      for (let iz = 0; iz < rows; iz++) {
+        const u = (ix + 0.5) / cols - 0.5;
+        const v = (iz + 0.5) / rows;
+        const h1 = Math.sin(ix * 12.9898 + iz * 78.233) * 43758.5453;
+        const h2 = Math.sin(ix * 39.346 + iz * 11.135) * 24634.6345;
+        const r1 = h1 - Math.floor(h1);
+        const r2 = h2 - Math.floor(h2);
+        const sx = u * spanX + (r1 - 0.5) * 0.42;
+        const sz = THREE.MathUtils.lerp(zStart, zEnd, v) + (r2 - 0.5) * 0.72;
+        const scale = 0.42 + ((ix * 7 + iz * 3) % 5) * 0.19;
+        pts.push({ x: sx, z: sz, scale });
+      }
+    }
+    return pts;
+  }, [ceilingLightStyle, W, frontZ, backZ]);
+
+  const kakatiyaStarMat = useMemo(() => {
+    if (ceilingLightStyle !== 'kakatiya_starlight_gold') return null;
+    return new THREE.MeshStandardMaterial({
+      color: '#fff4dc',
+      emissive: '#ffe7b3',
+      emissiveIntensity: 1.35,
+      roughness: 0.2,
+      toneMapped: false,
+    });
+  }, [ceilingLightStyle]);
+
+  const kakatiyaStagePlinthGeos = useMemo(() => {
+    if (!isKakatiyaDolby) return null;
+    const arcAngle = Math.max(0.08, screenCurvature || 0.16);
+    const spanW = Math.min(W - 0.8, screenWidth + 0.6);
+    const radius = spanW / arcAngle;
+    const makeTierGeo = (reachZ: number, height: number) => {
+      const shape = new THREE.Shape();
+      const hw = spanW * 0.5;
+      shape.moveTo(-hw, -0.45);
+      shape.lineTo(hw, -0.45);
+      const segs = 32;
+      for (let i = segs; i >= 0; i--) {
+        const u = i / segs;
+        const theta = (u - 0.5) * arcAngle;
+        const px = Math.sin(theta) * radius;
+        const pz = reachZ + (radius - Math.cos(theta) * radius);
+        shape.lineTo(px, pz);
+      }
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: height,
+        bevelEnabled: true,
+        bevelThickness: 0.015,
+        bevelSize: 0.015,
+        bevelSegments: 2,
+      });
+      geo.rotateX(Math.PI / 2);
+      geo.computeVertexNormals();
+      return geo;
+    };
+    return {
+      lowerTierGeo: makeTierGeo(1.18, 0.14),
+      upperTierGeo: makeTierGeo(0.76, 0.26),
+    };
+  }, [isKakatiyaDolby, W, screenWidth, screenCurvature]);
+
+  useEffect(() => {
+    return () => {
+      kakatiyaStarMat?.dispose();
+      kakatiyaStagePlinthGeos?.lowerTierGeo.dispose();
+      kakatiyaStagePlinthGeos?.upperTierGeo.dispose();
+    };
+  }, [kakatiyaStarMat, kakatiyaStagePlinthGeos]);
+
+  useEffect(() => {
+    const mesh = kakatiyaStarRef.current;
+    if (!mesh || kakatiyaStarData.length === 0) return;
+    kakatiyaStarData.forEach((star, idx) => {
+      _starDummy.position.set(star.x, H - 0.145, star.z);
+      _starDummy.rotation.set(Math.PI / 2, 0, 0);
+      _starDummy.scale.setScalar(star.scale);
+      _starDummy.updateMatrix();
+      mesh.setMatrixAt(idx, _starDummy.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [kakatiyaStarData, H]);
+
+  if (kakatiyaStarMat) {
+    kakatiyaStarMat.emissiveIntensity = 0.22 + lightFactor * 1.65;
+  }
+
+  // The Deccan – Monsoon Ceiling: Sweeping Undulating Slate-Tile Wave Canopies, Cool Moonlight-Cyan Indirect Coves, Outer Matte-Black Soffits w/ Warm Pinlights & Suspended 3D Fractured Basalt Rock Clusters
+  const deccanCanopyGeos = useMemo(() => {
+    if (ceilingLightStyle !== 'deccan_monsoon_canopy') return null;
+
+    const spanW = W * 0.85;
+    const makeWavyCeilingPanelGeo = (
+      spanX: number,
+      spanZ: number,
+      archDrop: number,
+      waveAmp: number,
+      phase: number,
+      thickness = 0.14,
+    ) => {
+      const nx = 44;
+      const nz = 10;
+      const positions: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      const evalSurfY = (u: number, v: number) => {
+        const edgeFade = 1 - Math.pow((u - 0.5) * 2, 4) * 0.35;
+        return (
+          -archDrop * (1 - Math.pow((u - 0.5) * 2, 2) * 0.32) +
+          (Math.sin(u * Math.PI * 3.1 + phase + v * 0.45) * waveAmp +
+            Math.cos(u * Math.PI * 5.2 - phase) * (waveAmp * 0.32)) *
+            edgeFade -
+          (1 - v) * 0.16
+        );
+      };
+
+      const cols = nx + 1;
+      const rows = nz + 1;
+      // Bottom visible ceiling face (vertices 0 .. cols*rows - 1)
+      for (let iz = 0; iz <= nz; iz++) {
+        const v = iz / nz;
+        const z = THREE.MathUtils.lerp(-spanZ * 0.5, spanZ * 0.5, v);
+        for (let ix = 0; ix <= nx; ix++) {
+          const u = ix / nx;
+          const x = THREE.MathUtils.lerp(-spanX * 0.5, spanX * 0.5, u);
+          const y = evalSurfY(u, v);
+          positions.push(x, y, z);
+          uvs.push(x * 0.28, z * 0.28);
+        }
+      }
+
+      // Top face (vertices cols*rows .. 2*cols*rows - 1)
+      const topOffset = cols * rows;
+      for (let iz = 0; iz <= nz; iz++) {
+        const v = iz / nz;
+        const z = THREE.MathUtils.lerp(-spanZ * 0.5, spanZ * 0.5, v);
+        for (let ix = 0; ix <= nx; ix++) {
+          const u = ix / nx;
+          const x = THREE.MathUtils.lerp(-spanX * 0.5, spanX * 0.5, u);
+          const y = evalSurfY(u, v) + thickness;
+          positions.push(x, y, z);
+          uvs.push(x * 0.28, z * 0.28);
+        }
+      }
+
+      // Bottom triangles (normal pointing -Y into room)
+      for (let iz = 0; iz < nz; iz++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const a = iz * cols + ix;
+          const b = a + 1;
+          const c = a + cols;
+          const d = c + 1;
+          indices.push(a, b, d, a, d, c);
+        }
+      }
+
+      // Top triangles (normal pointing +Y)
+      for (let iz = 0; iz < nz; iz++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const a = topOffset + iz * cols + ix;
+          const b = a + 1;
+          const c = a + cols;
+          const d = c + 1;
+          indices.push(a, d, b, a, c, d);
+        }
+      }
+
+      // Front edge skirt (iz = 0, facing -Z) & Rear edge skirt (iz = nz, facing +Z facing camera!)
+      for (let ix = 0; ix < nx; ix++) {
+        // Front edge (-Z)
+        const fb0 = ix;
+        const fb1 = ix + 1;
+        const ft0 = topOffset + ix;
+        const ft1 = topOffset + ix + 1;
+        indices.push(fb0, ft0, ft1, fb0, ft1, fb1);
+
+        // Rear edge (+Z facing camera)
+        const rb0 = nz * cols + ix;
+        const rb1 = rb0 + 1;
+        const rt0 = topOffset + rb0;
+        const rt1 = topOffset + rb1;
+        indices.push(rb0, rb1, rt1, rb0, rt1, rt0);
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setIndex(indices);
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.computeVertexNormals();
+      geo.computeBoundingSphere();
+      return geo;
+    };
+
+    const makeWaveCoveTubeGeo = (spanX: number, archDrop: number, waveAmp: number, phase: number, zOff: number) => {
+      const pts: THREE.Vector3[] = [];
+      const segs = 40;
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        const x = THREE.MathUtils.lerp(-spanX * 0.48, spanX * 0.48, u);
+        const edgeFade = 1 - Math.pow((u - 0.5) * 2, 4) * 0.35;
+        const y =
+          -archDrop * (1 - Math.pow((u - 0.5) * 2, 2) * 0.32) +
+          (Math.sin(u * Math.PI * 3.1 + phase + 0.45) * waveAmp +
+            Math.cos(u * Math.PI * 5.2 - phase) * (waveAmp * 0.32)) *
+            edgeFade +
+          0.16;
+        pts.push(new THREE.Vector3(x, y, zOff));
+      }
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 44, 0.036, 8, false);
+    };
+
+    const waveSpecs = [
+      { z: -L * 0.31, spanZ: 4.5, drop: 0.44, amp: 0.16, phase: 0.25 },
+      { z: -L * 0.14, spanZ: 4.7, drop: 0.52, amp: 0.19, phase: 1.55 },
+      { z: L * 0.05, spanZ: 4.9, drop: 0.46, amp: 0.21, phase: 0.75 },
+      { z: L * 0.23, spanZ: 5.0, drop: 0.54, amp: 0.22, phase: 2.15 },
+    ];
+
+    const waveMeshes = waveSpecs.map((ws) => ({
+      z: ws.z,
+      panelGeo: makeWavyCeilingPanelGeo(spanW, ws.spanZ, ws.drop, ws.amp, ws.phase),
+      coveTubeGeo: makeWaveCoveTubeGeo(spanW, ws.drop, ws.amp, ws.phase, ws.spanZ * 0.46),
+    }));
+
+    // Jagged 3D Fractured Black Basalt Rock Ceiling Clusters (strictly above screenTop 10.5m)
+    const rearBasaltLobes: DeccanRockLobe[] = [
+      { cx: -W * 0.28, cy: -0.22, cz: L * 0.35, rx: 3.1, ry: 0.68, rz: 2.3, rotX: 0.12, seed: 41.2 },
+      { cx: -W * 0.08, cy: -0.26, cz: L * 0.38, rx: 3.4, ry: 0.72, rz: 2.4, rotY: 0.25, seed: 43.7 },
+      { cx: W * 0.14, cy: -0.24, cz: L * 0.36, rx: 3.2, ry: 0.66, rz: 2.2, rotX: -0.1, seed: 46.1 },
+      { cx: W * 0.31, cy: -0.20, cz: L * 0.34, rx: 2.8, ry: 0.64, rz: 2.1, rotY: -0.2, seed: 48.5 },
+    ];
+    const rearCeilingBasaltGeo = buildDeccanJaggedRockGeo(rearBasaltLobes, { maxY: 0, minY: -0.88 });
+
+    const midBasaltLobes: DeccanRockLobe[] = [
+      { cx: -W * 0.22, cy: -0.16, cz: -L * 0.12, rx: 2.4, ry: 0.52, rz: 1.35, rotY: 0.15, seed: 52.3 },
+      { cx: 0.0, cy: -0.20, cz: -L * 0.10, rx: 2.8, ry: 0.56, rz: 1.45, rotX: 0.08, seed: 54.9 },
+      { cx: W * 0.22, cy: -0.16, cz: -L * 0.12, rx: 2.4, ry: 0.50, rz: 1.35, rotY: -0.18, seed: 57.4 },
+    ];
+    const midCeilingBasaltGeo = buildDeccanJaggedRockGeo(midBasaltLobes, { maxY: 0, minY: -0.76 });
+
+    const pinlightZs = [-L * 0.32, -L * 0.10, L * 0.12, L * 0.34];
+
+    return {
+      waveMeshes,
+      rearCeilingBasaltGeo,
+      midCeilingBasaltGeo,
+      pinlightZs,
+    };
+  }, [ceilingLightStyle, W, L]);
+
+  const deccanCanopyMats = useMemo(() => {
+    if (ceilingLightStyle !== 'deccan_monsoon_canopy') return null;
+
+    // Dark slate-grey acoustic ceiling panel tile grid texture (like the undulating canopy panels in the photo)
+    const tileCanvas = document.createElement('canvas');
+    tileCanvas.width = 512;
+    tileCanvas.height = 512;
+    const tCtx = tileCanvas.getContext('2d')!;
+    tCtx.fillStyle = '#202830';
+    tCtx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 4500; i++) {
+      const px = (i * 73) % 512;
+      const py = (i * 139) % 512;
+      tCtx.fillStyle = i % 2 === 0 ? 'rgba(180, 210, 225, 0.04)' : 'rgba(6, 10, 14, 0.22)';
+      tCtx.fillRect(px, py, 2, 2);
+    }
+    tCtx.strokeStyle = '#0c1116';
+    tCtx.lineWidth = 4;
+    for (let x = 0; x <= 512; x += 128) {
+      tCtx.beginPath();
+      tCtx.moveTo(x, 0);
+      tCtx.lineTo(x, 512);
+      tCtx.stroke();
+    }
+    for (let y = 0; y <= 512; y += 256) {
+      tCtx.beginPath();
+      tCtx.moveTo(0, y);
+      tCtx.lineTo(512, y);
+      tCtx.stroke();
+    }
+    const slateTileMap = new THREE.CanvasTexture(tileCanvas);
+    slateTileMap.colorSpace = THREE.SRGBColorSpace;
+    slateTileMap.wrapS = THREE.RepeatWrapping;
+    slateTileMap.wrapT = THREE.RepeatWrapping;
+    slateTileMap.anisotropy = 8;
+
+    const basaltTexSet = createDeccanBasaltWallTextures(0);
+
+    const waveCanopyMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: slateTileMap,
+        roughness: 0.88,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const deckSlateMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#141b21',
+        roughness: 0.94,
+        metalness: 0.02,
+      }),
+      screenBounceUniforms,
+    );
+    const soffitBlackMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0c0f13',
+        roughness: 0.92,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const basaltRockMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: basaltTexSet.basaltMap,
+        bumpMap: basaltTexSet.basaltBumpMap,
+        bumpScale: 0.036,
+        roughness: 0.86,
+        metalness: 0.08,
+        flatShading: true,
+      }),
+      screenBounceUniforms,
+    );
+    const moonlightCoveMat = new THREE.MeshStandardMaterial({
+      color: '#cbeff5',
+      emissive: '#8ad4e3',
+      emissiveIntensity: 1.55,
+      toneMapped: false,
+      roughness: 0.22,
+    });
+    const soffitPinlightMat = new THREE.MeshStandardMaterial({
+      color: '#fff1d6',
+      emissive: '#ffe0a8',
+      emissiveIntensity: 1.45,
+      toneMapped: false,
+      roughness: 0.2,
+    });
+
+    return {
+      slateTileMap,
+      basaltTexSet,
+      waveCanopyMat,
+      deckSlateMat,
+      soffitBlackMat,
+      basaltRockMat,
+      moonlightCoveMat,
+      soffitPinlightMat,
+    };
+  }, [ceilingLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      if (deccanCanopyGeos) {
+        deccanCanopyGeos.waveMeshes.forEach((wm) => {
+          wm.panelGeo.dispose();
+          wm.coveTubeGeo.dispose();
+        });
+        deccanCanopyGeos.rearCeilingBasaltGeo.dispose();
+        deccanCanopyGeos.midCeilingBasaltGeo.dispose();
+      }
+      if (deccanCanopyMats) {
+        deccanCanopyMats.slateTileMap.dispose();
+        deccanCanopyMats.basaltTexSet.dispose();
+        deccanCanopyMats.waveCanopyMat.dispose();
+        deccanCanopyMats.deckSlateMat.dispose();
+        deccanCanopyMats.soffitBlackMat.dispose();
+        deccanCanopyMats.basaltRockMat.dispose();
+        deccanCanopyMats.moonlightCoveMat.dispose();
+        deccanCanopyMats.soffitPinlightMat.dispose();
+      }
+    };
+  }, [deccanCanopyGeos, deccanCanopyMats]);
+
+  if (deccanCanopyMats) {
+    deccanCanopyMats.moonlightCoveMat.emissiveIntensity = 0.06 + lightFactor * 1.55;
+    deccanCanopyMats.soffitPinlightMat.emissiveIntensity = 0.04 + lightFactor * 1.45;
+  }
+
   // Real 3D Recessed Projection Room Dimensions (aligned to boothY)
   const boothY = isIce
     ? Math.min(H - 1.65, Math.max(10.35, topTierY + 5.6))
@@ -1195,18 +1601,18 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
               );
             })}
 
-          {/* Continuous Linear LED Safety Strip Along Every Tiered Step Edge (Neon-Blue on Multiplex ScreenX, Golden-Yellow on Mandap Heritage 2D, Neon-Purple on Obsidian Wave 550, Warm-Gold on Sylva Moss 250, Vibrant Crimson on 4DX Exo-Skeleton 550) */}
-          {(isMultiplexScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isExoskeleton4dx) && (
+          {/* Continuous Linear LED Safety Strip Along Every Tiered Step Edge (Omitted on The Deccan so only the wide central staircase glows) */}
+          {(isMultiplexScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isExoskeleton4dx || isKakatiyaDolby) && (
             <group position={[0, tier.y + 0.014, tier.z - tier.depth / 2 + 0.026]}>
-              <mesh position={[0, -0.008, 0]} material={isBiophilicMoss ? materials.espressoTrimMat : materials.nosingMat}>
-                <boxGeometry args={[W - 0.56, 0.018, 0.048]} />
+              <mesh position={[0, -0.008, 0]} material={isBiophilicMoss ? materials.espressoTrimMat : isKakatiyaDolby ? materials.darkBronzeTrimMat : materials.nosingMat}>
+                <boxGeometry args={[isKakatiyaDolby ? W - 1.32 : W - 0.56, 0.018, 0.048]} />
               </mesh>
               <mesh position={[0, 0.003, -0.004]}>
-                <boxGeometry args={[W - 0.64, 0.016, 0.024]} />
+                <boxGeometry args={[isKakatiyaDolby ? W - 1.38 : W - 0.64, isKakatiyaDolby ? 0.011 : 0.016, isKakatiyaDolby ? 0.014 : 0.024]} />
                 <meshStandardMaterial
-                  color={isExoskeleton4dx ? '#dc2626' : isMandap2d ? '#ca8a04' : isBiophilicMoss ? '#d97706' : isParametricObsidian ? '#9333ea' : '#1d4ed8'}
+                  color={isExoskeleton4dx ? '#dc2626' : isMandap2d ? '#ca8a04' : isBiophilicMoss || isKakatiyaDolby ? '#d4a366' : isParametricObsidian ? '#9333ea' : '#1d4ed8'}
                   emissive={lightingProfile.stepLightColor}
-                  emissiveIntensity={stepEmissiveIntensity * 1.2}
+                  emissiveIntensity={stepEmissiveIntensity * (isKakatiyaDolby ? 1.45 : 1.2)}
                   toneMapped={false}
                   roughness={0.18}
                 />
@@ -1216,40 +1622,46 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
 
           {aisleXs.map((ax, aIdx) => (
             <React.Fragment key={`step-${tier.row}-${aIdx}`}>
-              <mesh
-                position={[ax, tier.y + 0.005, tier.z - tier.depth / 2 + 0.03]}
-                material={
-                  isPrivateChampagne || isPrivateVolcanic
-                    ? materials.walnutCofferMat
-                    : isDolbyVeil
-                      ? materials.espressoTrimMat
-                      : isScreenX || isParametricObsidian
-                        ? materials.matteTitaniumMat
-                        : isMandap2d || isBiophilicMoss
-                          ? materials.darkBronzeTrimMat
-                          : materials.nosingMat
-                }
-              >
-                <boxGeometry args={[isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
-              </mesh>
+              {!isKakatiyaDolby && (
+                <>
+                  <mesh
+                    position={[ax, tier.y + 0.005, tier.z - tier.depth / 2 + 0.03]}
+                    material={
+                      isPrivateChampagne || isPrivateVolcanic
+                        ? materials.walnutCofferMat
+                        : isDolbyVeil
+                          ? materials.espressoTrimMat
+                          : isDeccanDolby
+                            ? materials.darkBronzeTrimMat
+                            : isScreenX || isParametricObsidian
+                              ? materials.matteTitaniumMat
+                              : isMandap2d || isBiophilicMoss
+                                ? materials.darkBronzeTrimMat
+                                : materials.nosingMat
+                    }
+                  >
+                    <boxGeometry args={[isDeccanDolby ? 2.26 : isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
+                  </mesh>
 
-              {/* Always-on recessed safety step LED line */}
-              <mesh
-                position={[
-                  ax,
-                  isPrivateChampagne || isPrivateVolcanic ? tier.y - 0.004 : tier.y + 0.017,
-                  tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : 0.026),
-                ]}
-              >
-                <boxGeometry args={[isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil ? 0.008 : 0.014, isDolbyVeil ? 0.011 : 0.024]} />
-                <meshStandardMaterial
-                  color={lightingProfile.stepLightColor}
-                  emissive={lightingProfile.stepLightColor}
-                  emissiveIntensity={isDolbyVeil ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
-                  toneMapped={false}
-                  roughness={0.22}
-                />
-              </mesh>
+                  {/* Always-on recessed safety step LED line */}
+                  <mesh
+                    position={[
+                      ax,
+                      isPrivateChampagne || isPrivateVolcanic ? tier.y - 0.004 : tier.y + 0.017,
+                      tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : 0.026),
+                    ]}
+                  >
+                    <boxGeometry args={[isDeccanDolby ? 2.14 : isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil || isDeccanDolby ? 0.012 : 0.014, isDolbyVeil ? 0.011 : 0.026]} />
+                    <meshStandardMaterial
+                      color={lightingProfile.stepLightColor}
+                      emissive={lightingProfile.stepLightColor}
+                      emissiveIntensity={isDolbyVeil || isDeccanDolby ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
+                      toneMapped={false}
+                      roughness={0.22}
+                    />
+                  </mesh>
+                </>
+              )}
               {(isPrivateChampagne || isPrivateVolcanic) && tier.row === 1 && (
                 /* Mid-riser recessed step-light bar along wide aisle step face */
                 <group position={[ax, tier.y - rowElevationStep * 0.5, tier.z - tier.depth / 2 - 0.01]}>
@@ -1269,8 +1681,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 </group>
               )}
 
-              {/* End-of-Row Light Totems Showing Row Letter on Pillar Housing & Floor */}
-              {rowMarkerTextures[tier.row] && totemFloorTextures[tier.row] && (() => {
+              {/* End-of-Row Light Totems Showing Row Letter on Pillar Housing & Floor (Omitted on Dolby Kakatiya Heritage & The Deccan – Monsoon for clean architectural step-grid floor lines) */}
+              {!isKakatiyaDolby && !isDeccanDolby && rowMarkerTextures[tier.row] && totemFloorTextures[tier.row] && (() => {
                 const totemSide =
                   config.aisleAfterSeats.length === 0
                     ? ax < 0
@@ -1286,7 +1698,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 const floorLetterX = ax + totemSide * 0.23;
                 const faceYaw = totemSide < 0 ? Math.PI / 2 : -Math.PI / 2;
                 const pillarMat =
-                  isPrivateChampagne || isPrivateVolcanic || isArtDecoSunburst || isMandap2d
+                  isPrivateChampagne || isPrivateVolcanic || isArtDecoSunburst || isMandap2d || isKakatiyaDolby
                     ? materials.darkBronzeTrimMat
                     : isThunder4dx || isIce
                       ? materials.brushedAluminumMat
@@ -1409,20 +1821,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isScreenX ||
                 isMandap2d ||
                 isParametricObsidian ||
-                isDolbyVeil) &&
+                isDolbyVeil ||
+                isKakatiyaDolby) &&
                 [
-                  isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : -0.46,
-                  isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : 0.46,
+                  isKakatiyaDolby ? -0.78 : isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : -0.46,
+                  isKakatiyaDolby ? 0.78 : isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : 0.46,
                 ].map((ex, ei) => (
                   <mesh
                     key={`aisle-edge-${tier.row}-${aIdx}-${ei}`}
                     position={[ax + ex, tier.y + 0.015, tier.z]}
                   >
-                    <boxGeometry args={[isDolbyVeil ? 0.011 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil ? 0.008 : 0.014, Math.max(0.4, tier.depth - 0.02)]} />
+                    <boxGeometry args={[isDolbyVeil || isKakatiyaDolby || isDeccanDolby ? 0.012 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil || isKakatiyaDolby || isDeccanDolby ? 0.008 : 0.014, Math.max(0.4, tier.depth - 0.02)]} />
                     <meshStandardMaterial
                       color={lightingProfile.stepLightColor}
                       emissive={lightingProfile.stepLightColor}
-                      emissiveIntensity={stepEmissiveIntensity * (isDolbyVeil ? 1.45 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
+                      emissiveIntensity={stepEmissiveIntensity * (isDeccanDolby ? 1.05 : isDolbyVeil || isKakatiyaDolby ? 1.45 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
                       toneMapped={false}
                       roughness={0.22}
                     />
@@ -1704,11 +2117,6 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             >
               <boxGeometry args={[W - 0.8, 0.03, 0.06]} />
             </mesh>
-            {[-W * 0.28, 0, W * 0.28].map((gx, gi) => (
-              <mesh key={`stage-vent-${gi}`} position={[gx, -0.02, 0.96]} material={materials.speakerMat}>
-                <planeGeometry args={[2.2, 0.28]} />
-              </mesh>
-            ))}
             {[-1, 1].map((side) => (
               <group key={`stage-step-${side}`} position={[side * (W / 2 - 1.15), -0.1, 1.3]}>
                 <mesh material={materials.stageMat} position={[0, 0.08, -0.18]}>
@@ -1861,14 +2269,35 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* Completely Unblemished Matte-Black Stage & Deep Shadow Backing Under Floating Curved Dolby Vision Screen (Dolby Cobalt Veil 250) */}
-      {isDolbyVeil && (
+      {/* Completely Unblemished Matte-Black Stage & Deep Shadow Backing Under Floating Dolby Vision Screen (Dolby Cobalt Veil & The Deccan) */}
+      {(isDolbyVeil || isDeccanDolby) && (
         <group>
           <mesh position={[0, 0.2, frontZ + 1.45]} receiveShadow material={materials.stageMat}>
             <boxGeometry args={[W - 0.36, 0.4, 2.9]} />
           </mesh>
           <mesh position={[0, H * 0.5, screenPosition[2] - 0.24]} material={materials.stageMat}>
             <boxGeometry args={[W - 0.18, H, 0.28]} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Dolby Kakatiya Heritage: Subtle Two-Tier Curved Matte-Charcoal Stage Plinth Hugging Curved Screen + Pure Black Backing */}
+      {isKakatiyaDolby && kakatiyaStagePlinthGeos && (
+        <group>
+          <mesh
+            position={[0, 0.14, screenPosition[2]]}
+            geometry={kakatiyaStagePlinthGeos.lowerTierGeo}
+            material={materials.stageMat}
+            receiveShadow
+          />
+          <mesh
+            position={[0, 0.26, screenPosition[2]]}
+            geometry={kakatiyaStagePlinthGeos.upperTierGeo}
+            material={materials.stageMat}
+            receiveShadow
+          />
+          <mesh position={[0, H * 0.5, screenPosition[2] - 0.28]} material={materials.stageMat}>
+            <boxGeometry args={[W - 0.16, H, 0.32]} />
           </mesh>
         </group>
       )}
@@ -2044,8 +2473,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* Recessed Stage Footlights Along Front Stage / Proscenium Apron Edge */}
-      {(() => {
+      {/* Recessed Stage Footlights Along Front Stage / Proscenium Apron Edge (omitted on distraction-free Kakatiya Dolby front wall) */}
+      {!isKakatiyaDolby && (() => {
         const footZ =
           isZeroStageImax || isDolbyFloating || isScreenX || isModernMultiplex || isMandap2d || isParametricObsidian
             ? frontZ + 0.62
@@ -2663,9 +3092,11 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         <boxGeometry args={[sideBackWallW, actualWinH, 0.4]} />
       </mesh>
 
-      {/* Architectural Floor Skirting & Ceiling Crown Cornice Moldings (omitted on seamless ScreenX & Dolby Cobalt Veil continuous fabric veil walls) */}
+      {/* Architectural Floor Skirting & Ceiling Crown Cornice Moldings */}
       {!isScreenX &&
         !isDolbyVeil &&
+        !isKakatiyaDolby &&
+        !isDeccanDolby &&
         [-1, 1].map((side) => (
           <group key={`wall-molding-${side}`}>
             <mesh position={[side * (W / 2 - 0.22), 0.12, 0]} material={materials.nosingMat}>
@@ -2676,19 +3107,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             </mesh>
           </group>
         ))}
-      {!isScreenX && !isDolbyVeil && (
+      {!isScreenX && !isDolbyVeil && !isKakatiyaDolby && !isDeccanDolby && (
         <mesh position={[0, H - 0.22, backZ - 0.22]} material={materials.trimMetalMat}>
           <boxGeometry args={[W - 0.4, 0.12, 0.14]} />
         </mesh>
       )}
 
-      {/* Symmetrical Vertical Acoustic Diffuser Slats on Rear Wall Flanking Booth & Doors (omitted in private luxury residential suites, ScreenX, Obsidian Wave 550, Sylva Moss 250, Dolby Cobalt Veil, 4DX Exo-Skeleton 550 & 4DX Arctic Storm) */}
+      {/* Symmetrical Vertical Acoustic Diffuser Slats on Rear Wall Flanking Booth & Doors */}
       {!isPrivateVolcanic &&
         !isPrivateChampagne &&
         !isScreenX &&
         !isParametricObsidian &&
         !isBiophilicMoss &&
         !isDolbyVeil &&
+        !isKakatiyaDolby &&
+        !isDeccanDolby &&
         !isExoskeleton4dx &&
         !isArctic4dx &&
         [-1, 1].map((side) =>
@@ -2739,6 +3172,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             !isParametricObsidian &&
             !isBiophilicMoss &&
             !isDolbyVeil &&
+            !isKakatiyaDolby &&
+            !isDeccanDolby &&
             !isExoskeleton4dx &&
             !isArctic4dx &&
             [-1, 1].map((pside) => {
@@ -3360,6 +3795,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isIce &&
         !isScreenX &&
         !isDolbyVeil &&
+        !isKakatiyaDolby &&
         !isParametricObsidian &&
         !isBiophilicMoss &&
         !isCobaltHorizonImax &&
@@ -3383,11 +3819,12 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         screenBounceUniforms={screenBounceUniforms}
       />
 
-      {/* Emergency Exit Doors near Front Left & Right + Dim EXIT Sign + Red Fire Extinguisher (omitted on private luxury residences, ScreenX, Dolby Cobalt Veil & IMAX Cobalt Horizon clean corners) */}
+      {/* Emergency Exit Doors near Front Left & Right + Dim EXIT Sign + Red Fire Extinguisher (omitted on private luxury residences, ScreenX, Dolby Cobalt Veil, Dolby Kakatiya & IMAX Cobalt Horizon clean corners) */}
       {!isPrivateVolcanic &&
         !isPrivateChampagne &&
         !isScreenX &&
         !isDolbyVeil &&
+        !isKakatiyaDolby &&
         !isCobaltHorizonImax &&
         [-1, 1].map((side) => (
           <group
@@ -5657,6 +6094,159 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
               roughness={0.22}
             />
           </mesh>
+        </group>
+      )}
+
+      {/* Dolby Kakatiya Heritage Ceiling: 3 Nested Longitudinal Stepped Matte-Black Trays, Warm-Amber Linear Cove Frames, Recessed Pinpoint Downlights & Center Starlight Bay */}
+      {ceilingLightStyle === 'kakatiya_starlight_gold' && (
+        <group>
+          {/* 3 Nested Longitudinal Ceiling Cove Frames (Inner Center Starlight, Middle Atmos Channel, Outer Flanking Wing) */}
+          {[
+            { halfW: W * 0.145, z0: frontZ + 1.65, z1: backZ - 1.75, dropY: 0.18, intensity: 0.15 + lightFactor * 1.55 },
+            { halfW: W * 0.295, z0: frontZ + 1.2, z1: backZ - 1.3, dropY: 0.21, intensity: 0.13 + lightFactor * 1.42 },
+            { halfW: W * 0.435, z0: frontZ + 0.85, z1: backZ - 0.9, dropY: 0.24, intensity: 0.11 + lightFactor * 1.28 },
+          ].map((tray, ti) => {
+            const zMid = (tray.z0 + tray.z1) * 0.5;
+            const trayLen = Math.max(4, tray.z1 - tray.z0);
+            const trayY = H - tray.dropY;
+            return (
+              <group key={`kakatiya-tray-${ti}`}>
+                {/* Left & Right Longitudinal Tray Fascia + Crisp Warm-Amber Recessed Cove Strip */}
+                {([-1, 1] as const).map((s) => (
+                  <group key={`kakatiya-tray-rail-${ti}-${s}`} position={[s * tray.halfW, trayY, zMid]}>
+                    <mesh material={materials.stageMat}>
+                      <boxGeometry args={[0.28, 0.12, trayLen]} />
+                    </mesh>
+                    <mesh position={[-s * 0.145, 0.032, 0]}>
+                      <boxGeometry args={[0.022, 0.018, trayLen - 0.04]} />
+                      <meshStandardMaterial
+                        color="#ffd69a"
+                        emissive="#ffaa44"
+                        emissiveIntensity={tray.intensity}
+                        toneMapped={false}
+                        roughness={0.2}
+                      />
+                    </mesh>
+                  </group>
+                ))}
+
+                {/* Front & Rear Closing Tray Fascia + Warm-Amber Cross Return Strip (Zero Crossbeams Inside Starfield) */}
+                {[tray.z0, tray.z1].map((cz, czi) => (
+                  <group key={`kakatiya-tray-end-${ti}-${czi}`} position={[0, trayY, cz]}>
+                    <mesh material={materials.stageMat}>
+                      <boxGeometry args={[tray.halfW * 2 + 0.28, 0.12, 0.24]} />
+                    </mesh>
+                    <mesh position={[0, 0.032, czi === 0 ? 0.125 : -0.125]}>
+                      <boxGeometry args={[tray.halfW * 2 - 0.04, 0.018, 0.022]} />
+                      <meshStandardMaterial
+                        color="#ffd69a"
+                        emissive="#ffaa44"
+                        emissiveIntensity={tray.intensity * 0.92}
+                        toneMapped={false}
+                        roughness={0.2}
+                      />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            );
+          })}
+
+          {/* Subtle Pinpoint Recessed Warm Downlights Inside Middle Flanking Channels (Strictly Outside Central Starlight Panel) */}
+          {([-1, 1] as const).map((side) =>
+            [-0.32, -0.16, 0.0, 0.16, 0.32].map((zFrac, di) => (
+              <mesh
+                key={`kakatiya-pinlight-${side}-${di}`}
+                position={[side * (W * 0.265), H - 0.138, L * zFrac]}
+                rotation={[Math.PI / 2, 0, 0]}
+              >
+                <circleGeometry args={[0.042, 12]} />
+                <meshStandardMaterial
+                  color="#fff1d6"
+                  emissive="#ffc270"
+                  emissiveIntensity={0.22 + lightFactor * 1.45}
+                  toneMapped={false}
+                />
+              </mesh>
+            )),
+          )}
+
+          {/* Dense Warm-White / Pale-Gold Pinpoint Starlight Field Restricted to Central Recessed Bay */}
+          {kakatiyaStarMat && kakatiyaStarData.length > 0 && (
+            <instancedMesh
+              ref={kakatiyaStarRef}
+              args={[undefined, undefined, kakatiyaStarData.length]}
+              material={kakatiyaStarMat}
+            >
+              <circleGeometry args={[0.02, 8]} />
+            </instancedMesh>
+          )}
+        </group>
+      )}
+
+      {/* The Deccan – Monsoon Ceiling: Dark-Slate Undulating Wave Canopies w/ Cool Moonlight-Cyan Coves, Outer Black Soffits w/ Warm Pinlights & Fractured Basalt Clusters */}
+      {ceilingLightStyle === 'deccan_monsoon_canopy' && deccanCanopyGeos && deccanCanopyMats && (
+        <group>
+          {/* Upper Dark Slate Acoustic Ceiling Deck */}
+          <mesh
+            position={[0, H - 0.14, 0]}
+            rotation={[Math.PI / 2, 0, 0]}
+            material={deccanCanopyMats.deckSlateMat}
+            receiveShadow
+          >
+            <planeGeometry args={[W * 0.86, L * 0.94]} />
+          </mesh>
+
+          {/* Left & Right Longitudinal Matte-Black Ceiling Soffit Beams + Warm Recessed Pinlights */}
+          {([-1, 1] as const).map((side) => (
+            <group key={`deccan-soffit-${side}`} position={[side * (W * 0.45), H - 0.34, 0]}>
+              <mesh material={deccanCanopyMats.soffitBlackMat} castShadow receiveShadow>
+                <boxGeometry args={[2.25, 0.56, L * 0.96]} />
+              </mesh>
+              {deccanCanopyGeos.pinlightZs.map((pz, pi) => (
+                <mesh
+                  key={`deccan-pin-${side}-${pi}`}
+                  position={[side * -0.18, -0.285, pz]}
+                  rotation={[Math.PI / 2, 0, 0]}
+                  material={deccanCanopyMats.soffitPinlightMat}
+                >
+                  <circleGeometry args={[0.075, 16]} />
+                </mesh>
+              ))}
+            </group>
+          ))}
+
+          {/* 4 Sweeping Transverse Undulating Dark-Slate Acoustic Monsoon Wave Canopies w/ Moonlight-Cyan Coves */}
+          {deccanCanopyGeos.waveMeshes.map((wm, wi) => (
+            <group key={`deccan-wave-canopy-${wi}`} position={[0, H - 0.16, wm.z]}>
+              <mesh
+                geometry={wm.panelGeo}
+                material={deccanCanopyMats.waveCanopyMat}
+                castShadow
+                receiveShadow
+              />
+              <mesh
+                geometry={wm.coveTubeGeo}
+                material={deccanCanopyMats.moonlightCoveMat}
+              />
+            </group>
+          ))}
+
+          {/* Rear-Foreground & Mid-Front Jagged 3D Fractured Black Basalt Rock Ceiling Clusters */}
+          <mesh
+            position={[0, H - 0.12, 0]}
+            geometry={deccanCanopyGeos.rearCeilingBasaltGeo}
+            material={deccanCanopyMats.basaltRockMat}
+            castShadow
+            receiveShadow
+          />
+          <mesh
+            position={[0, H - 0.12, 0]}
+            geometry={deccanCanopyGeos.midCeilingBasaltGeo}
+            material={deccanCanopyMats.basaltRockMat}
+            castShadow
+            receiveShadow
+          />
         </group>
       )}
     </group>
