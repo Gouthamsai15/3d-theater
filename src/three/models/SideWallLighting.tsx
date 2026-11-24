@@ -2446,10 +2446,10 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     kakatiyaResources.warmAmberBacklightMat.emissiveIntensity = 0.16 + lightFactor * 1.95;
   }
 
-  // Sculpted contemporary Charminar & Kakatiya multi-cusped stone arch bays (5 per side) + warm-amber backlit halo ribbon + stepped temple pilasters
+  // Sculpted contemporary Charminar & Kakatiya multi-cusped stone arch bays + warm-amber backlit halo ribbon + stepped temple pilasters
   const teluguKakatiyaWall = useMemo(() => {
     if (sideLightStyle !== 'telugu_kakatiya_dolby') return null;
-    const bayCount = 5;
+    const bayCount = Math.max(5, config.wallBayCount);
     const zMin = -L * 0.44;
     const zMax = L * 0.44;
     const baySpan = (zMax - zMin) / bayCount;
@@ -2560,7 +2560,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       winTop,
       winBot,
     };
-  }, [sideLightStyle, W, L, H, topTierY]);
+  }, [sideLightStyle, W, L, H, topTierY, config.wallBayCount]);
 
   useEffect(() => {
     return () => {
@@ -8207,9 +8207,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                   <boxGeometry args={[archDepthX * 1.4, 0.36, L * 0.94]} />
                 </mesh>
 
-                {/* 5 Monumental Multi-Cusped Stone Arch Bays Filled Edge-to-Edge With Bas-Relief Carvings */}
+                {/* Monumental Multi-Cusped Stone Arch Bays Filled Edge-to-Edge With Bas-Relief Carvings */}
                 {teluguKakatiyaWall.bays.map((bay, bi) => {
-                  const artVariant = side === -1 ? bi : 5 + bi;
+                  const artVariant = (side === -1 ? bi : 5 + bi) % kakatiyaResources.artPanelMats.length;
                   return (
                     <group key={`kakatiya-bay-${side}-${bi}`} position={[0, 0, bay.zMid]}>
                       {/* Full-Height Carved Telugu Bas-Relief Stone Acoustic Slab */}
@@ -8243,7 +8243,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                   );
                 })}
 
-                {/* 6 Sculpted Stepped & Corbelled Dark Charcoal-Stone Kakatiya Temple Pilasters */}
+                {/* Sculpted Stepped & Corbelled Dark Charcoal-Stone Kakatiya Temple Pilasters */}
                 {teluguKakatiyaWall.pilasterZs.map((pz, pi) => (
                   <group
                     key={`kakatiya-pilaster-${side}-${pi}`}

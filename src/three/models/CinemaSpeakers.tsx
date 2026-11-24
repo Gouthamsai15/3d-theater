@@ -989,8 +989,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return arr;
     }
     if (isKakatiyaDolby) {
-      // 5 sleek matte-black Dolby surround speakers mounted cleanly on the charcoal-stone temple pilasters ascending with the seating rake
-      const bayCount = 5;
+      // Sleek matte-black Dolby surround speakers mounted cleanly on the charcoal-stone temple pilasters ascending with the seating rake
+      const bayCount = Math.max(5, config.wallBayCount);
       const zMin = -L * 0.44;
       const zMax = L * 0.44;
       const baySpan = (zMax - zMin) / bayCount;
@@ -1626,21 +1626,10 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     return pts;
   }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
 
-  // Front Proscenium / Behind-Screen Dual-18" Cinema Subwoofers + 3-Way Line-Array Towers (all visible bottom-of-screen speakers omitted across every theater)
+  // Front Proscenium / Behind-Screen Dual-18" Cinema Subwoofers + 3-Way Line-Array Towers (all bottom/front-of-screen speakers omitted across every theater to prevent clipping through floating or wall-to-wall screens)
   const frontTowerPositions = useMemo(() => {
-    if (isDolbyMediumLuxury || isCobaltVeilDolby || isKakatiyaDolby || isDeccanDolby || isScreenX || isAny4dx) return [];
-    if (isIce || isModernMultiplex || isVolcanicCopper2d || isMandap2d || isParametricObsidian || isBiophilicMoss || isPrivateVolcanic || isPrivateChampagne || isImaxLaser) {
-      // Recessed Left, Center, Right behind-screen speakers & subwoofers strictly behind acoustically transparent screen
-      const behindZ = Math.max(frontZ + 0.38, screenPosition[2] - 0.55);
-      return [-screenWidth * 0.34, 0, screenWidth * 0.34].map((tx, idx) => ({
-        x: tx,
-        y: 0.4,
-        z: behindZ,
-        side: idx === 0 ? (-1 as const) : idx === 2 ? (1 as const) : (0 as const),
-      }));
-    }
-    return [];
-  }, [isScreenX, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isAny4dx, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isPrivateVolcanic, isPrivateChampagne, isImaxLaser, screenWidth, frontZ, screenPosition]);
+    return [] as { x: number; y: number; z: number; side: -1 | 0 | 1 }[];
+  }, []);
 
   const renderSurroundUnit = (key: string, recessedFlush = false) => (
     <group key={key} scale={speakerScale}>

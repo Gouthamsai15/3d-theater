@@ -519,26 +519,22 @@ export function createCarpetTexture(
     }
     ctx.globalAlpha = 1;
   } else if (sideLightStyle === 'indian_mandap_jali') {
-    // Rich dark espresso & charcoal heritage woven carpet with subtle royal crimson & antiqued-gold Mughal rosette medallions
-    ctx.fillStyle = '#150d0c';
+    // Deep crimson-espresso royal woven carpet with muted antiqued-gold diamond rosettes
+    ctx.fillStyle = '#12080a';
     ctx.fillRect(0, 0, 512, 512);
-    ctx.strokeStyle = 'rgba(138, 58, 38, 0.28)';
+    ctx.strokeStyle = 'rgba(148, 116, 59, 0.18)';
     ctx.lineWidth = 2;
     for (let y = 0; y < 512; y += 64) {
       for (let x = 0; x < 512; x += 64) {
         ctx.beginPath();
-        ctx.moveTo(x + 32, y + 6);
-        ctx.lineTo(x + 58, y + 32);
-        ctx.lineTo(x + 32, y + 58);
-        ctx.lineTo(x + 6, y + 32);
+        ctx.moveTo(x + 32, y + 8);
+        ctx.lineTo(x + 56, y + 32);
+        ctx.lineTo(x + 32, y + 56);
+        ctx.lineTo(x + 8, y + 32);
         ctx.closePath();
         ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(164, 128, 66, 0.2)';
-        ctx.strokeRect(x + 20, y + 20, 24, 24);
-        ctx.strokeStyle = 'rgba(138, 58, 38, 0.28)';
-
-        ctx.fillStyle = 'rgba(102, 18, 28, 0.42)';
+        ctx.fillStyle = 'rgba(99, 17, 28, 0.4)';
         ctx.beginPath();
         ctx.arc(x + 32, y + 32, 6, 0, Math.PI * 2);
         ctx.fill();
@@ -2629,9 +2625,13 @@ export function createMarbleTrayTexture(): THREE.CanvasTexture {
 }
 
 export function createStandbyScreenTexture(
-  _theaterName: string,
+  theaterName: string,
   architectureStyle?: EnvironmentProfile['architectureStyle'],
   sideLightStyle?: SideLightStyle,
+  _theaterId?: string,
+  categoryLabel?: string,
+  wallColor?: string,
+  accentColor?: string,
 ): THREE.CanvasTexture {
   const W = 2048;
   const H = 1024;
@@ -2643,11 +2643,92 @@ export function createStandbyScreenTexture(
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
+  const drawTitleBlock = (
+    eyebrow: string,
+    title: string,
+    subtitle: string,
+    primaryHex: string,
+    accentHex: string,
+    glowRgba: string,
+    serifTitle = false,
+  ) => {
+    // Safe horizontal span ~1320px so wide names never clip on mobile or desktop
+    const safeW = 1320;
+
+    if (eyebrow) {
+      ctx.font = '600 28px "Montserrat", "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = 'rgba(236, 240, 248, 0.78)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+      ctx.shadowBlur = 12;
+      const ew = drawTrackedText(ctx, eyebrow.toUpperCase(), cx, cy - 118, 12);
+      ctx.shadowBlur = 0;
+
+      const span = 88;
+      const gap = 24;
+      ctx.strokeStyle = accentHex;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx - ew / 2 - gap - span, cy - 118);
+      ctx.lineTo(cx - ew / 2 - gap, cy - 118);
+      ctx.moveTo(cx + ew / 2 + gap, cy - 118);
+      ctx.lineTo(cx + ew / 2 + gap + span, cy - 118);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    let fontSize = serifTitle ? 110 : 104;
+    const tracking = serifTitle ? 14 : 16;
+    while (fontSize > 46) {
+      ctx.font = serifTitle
+        ? `800 ${fontSize}px "Cinzel", Georgia, serif`
+        : `800 ${fontSize}px "Montserrat", "Plus Jakarta Sans", sans-serif`;
+      const chars = Array.from(title.toUpperCase());
+      const estW =
+        chars.reduce((acc, ch) => acc + ctx.measureText(ch).width, 0) +
+        (chars.length - 1) * tracking;
+      if (estW <= safeW) break;
+      fontSize -= 4;
+    }
+
+    ctx.fillStyle = primaryHex;
+    ctx.shadowColor = glowRgba;
+    ctx.shadowBlur = 32;
+    drawTrackedText(ctx, title.toUpperCase(), cx, cy - 4, tracking);
+    ctx.shadowBlur = 0;
+
+    // Tapered ornamental divider
+    const divY = cy + 84;
+    const divGrad = ctx.createLinearGradient(cx - 280, divY, cx + 280, divY);
+    divGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    divGrad.addColorStop(0.5, accentHex);
+    divGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.strokeStyle = divGrad;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 280, divY);
+    ctx.lineTo(cx + 280, divY);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.translate(cx, divY);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(-5, -5, 10, 10);
+    ctx.restore();
+
+    if (subtitle) {
+      ctx.fillStyle = accentHex;
+      ctx.font = '600 28px "Montserrat", "Plus Jakarta Sans", sans-serif';
+      drawTrackedText(ctx, subtitle.toUpperCase(), cx, cy + 136, 11);
+    }
+  };
+
   const drawStandbyArtwork = () => {
     ctx.clearRect(0, 0, W, H);
 
+    // 1. The Deccan – Monsoon: Frameless stormy Deccan monsoon plateau & dark forested hills landscape
     if (sideLightStyle === 'deccan_basalt_monsoon') {
-      // Frameless moody stormy Deccan monsoon plateau & dark forested hills landscape (zero text, zero borders)
       const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.56);
       skyGrad.addColorStop(0, '#2a3338');
       skyGrad.addColorStop(0.32, '#445158');
@@ -2656,7 +2737,6 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, W, H * 0.58);
 
-      // Billowing dark storm clouds & pale overcast misty break across upper sky
       for (let i = 0; i < 42; i++) {
         const clX = ((i * 211 + 83) % (W + 300)) - 150;
         const clY = 40 + ((i * 97) % Math.floor(H * 0.42));
@@ -2678,7 +2758,6 @@ export function createStandbyScreenTexture(
         ctx.fill();
       }
 
-      // Distant misty flat-topped Deccan basalt mesas / plateau silhouettes
       ctx.fillStyle = '#293933';
       ctx.beginPath();
       ctx.moveTo(0, H * 0.52);
@@ -2693,7 +2772,6 @@ export function createStandbyScreenTexture(
       ctx.closePath();
       ctx.fill();
 
-      // Atmospheric monsoon horizon mist band
       const mistGrad = ctx.createLinearGradient(0, H * 0.42, 0, H * 0.62);
       mistGrad.addColorStop(0, 'rgba(145, 162, 162, 0)');
       mistGrad.addColorStop(0.5, 'rgba(135, 152, 150, 0.28)');
@@ -2701,7 +2779,6 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = mistGrad;
       ctx.fillRect(0, H * 0.42, W, H * 0.22);
 
-      // Midground rolling Deccan plateau escarpment & forest valley
       const valleyGrad = ctx.createLinearGradient(0, H * 0.5, 0, H);
       valleyGrad.addColorStop(0, '#203329');
       valleyGrad.addColorStop(0.38, '#17291f');
@@ -2716,7 +2793,6 @@ export function createStandbyScreenTexture(
       ctx.closePath();
       ctx.fill();
 
-      // Dark winding rainwater valley stream & wet rock ridges
       ctx.strokeStyle = 'rgba(156, 178, 172, 0.28)';
       ctx.lineWidth = 8;
       ctx.beginPath();
@@ -2724,7 +2800,6 @@ export function createStandbyScreenTexture(
       ctx.bezierCurveTo(W * 0.44, H * 0.82, W * 0.34, H * 0.72, W * 0.46, H * 0.61);
       ctx.stroke();
 
-      // Scattered Deccan forest foliage & dark basalt boulders across lower terrain
       for (let i = 0; i < 190; i++) {
         const bx = (i * 173 + 29) % W;
         const depthT = ((i * 59) % 100) / 100;
@@ -2742,7 +2817,6 @@ export function createStandbyScreenTexture(
         ctx.fill();
       }
 
-      // Subtle dark edge vignette so screen melts smoothly into pitch-black front wall
       const vig = ctx.createRadialGradient(cx, cy, W * 0.28, cx, cy, W * 0.66);
       vig.addColorStop(0, 'rgba(0, 0, 0, 0)');
       vig.addColorStop(1, 'rgba(2, 4, 5, 0.42)');
@@ -2751,39 +2825,86 @@ export function createStandbyScreenTexture(
       return;
     }
 
-    if (
-      sideLightStyle === 'screenx_silver_baffles' ||
-      sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
-    ) {
-      // Clean floating matte-white acoustically transparent primary canvas (no ornate gold frames or logos)
-      const whiteGrad = ctx.createRadialGradient(cx, cy, 80, cx, cy, 1280);
-      whiteGrad.addColorStop(0, '#eef1f6');
-      whiteGrad.addColorStop(0.65, '#e2e6ee');
-      whiteGrad.addColorStop(1, '#cfd5e0');
-      ctx.fillStyle = whiteGrad;
+    // 2. Surya Mandap Royal Heritage: Deep royal crimson & terracotta Indian Mandap arch crest with antiqued-gold Jali filigree
+    if (sideLightStyle === 'indian_mandap_jali') {
+      const bgGrad = ctx.createRadialGradient(cx, cy, 40, cx, cy, 1180);
+      bgGrad.addColorStop(0, '#5a1621');
+      bgGrad.addColorStop(0.45, '#2b0b11');
+      bgGrad.addColorStop(0.8, '#130609');
+      bgGrad.addColorStop(1, '#070305');
+      ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.045)';
-      for (let y = 0; y < H; y += 8) {
-        for (let x = 0; x < W; x += 8) {
-          ctx.fillRect(x, y, 2, 2);
+      // Subtle warm antiqued-gold Jali lattice watermark behind central crest
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.08)';
+      ctx.lineWidth = 1.5;
+      for (let gx = 128; gx < W; gx += 128) {
+        for (let gy = 128; gy < H; gy += 128) {
+          ctx.beginPath();
+          ctx.moveTo(gx, gy - 44);
+          ctx.lineTo(gx + 44, gy);
+          ctx.lineTo(gx, gy + 44);
+          ctx.lineTo(gx - 44, gy);
+          ctx.closePath();
+          ctx.stroke();
         }
       }
+
+      // Warm golden aura framing royal Mandap arch
+      const sunHalo = ctx.createRadialGradient(cx, cy - 20, 20, cx, cy - 20, 520);
+      sunHalo.addColorStop(0, 'rgba(245, 176, 65, 0.28)');
+      sunHalo.addColorStop(0.5, 'rgba(212, 175, 55, 0.1)');
+      sunHalo.addColorStop(1, 'rgba(212, 175, 55, 0)');
+      ctx.fillStyle = sunHalo;
+      ctx.fillRect(cx - 540, cy - 480, 1080, 960);
+
+      // Ornamental Mughal scalloped Mandap arch silhouette
+      ctx.strokeStyle = 'rgba(245, 176, 65, 0.42)';
+      ctx.lineWidth = 3.2;
+      const aw = 470;
+      ctx.beginPath();
+      ctx.moveTo(cx - aw, H - 96);
+      ctx.lineTo(cx - aw, cy + 120);
+      ctx.quadraticCurveTo(cx - aw * 0.88, cy - 210, cx - aw * 0.34, cy - 265);
+      ctx.quadraticCurveTo(cx, cy - 355, cx + aw * 0.34, cy - 265);
+      ctx.quadraticCurveTo(cx + aw * 0.88, cy - 210, cx + aw, cy + 120);
+      ctx.lineTo(cx + aw, H - 96);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(72, 64, W - 144, H - 128);
+
+      drawTitleBlock(
+        'GRAND HERITAGE AUDITORIUM',
+        'SURYA MANDAP',
+        'ROYAL TERRACOTTA · CRIMSON · ANTIQUED GOLD',
+        '#FFF3D6',
+        '#F5B041',
+        'rgba(245, 176, 65, 0.56)',
+        true,
+      );
       return;
     }
 
-    if (architectureStyle === 'screenx') {
-      // Rich luminous obsidian-slate 270-degree ScreenX canvas calibrated for pre-show brightness (0.34x)
+    // 3. ScreenX 270° Obsidian Panorama & ScreenX Multiplex 400
+    if (architectureStyle === 'screenx' || sideLightStyle === 'screenx_silver_baffles') {
+      const isSilver = sideLightStyle === 'screenx_silver_baffles';
       const slateGrad = ctx.createLinearGradient(0, 0, W, 0);
-      slateGrad.addColorStop(0, '#1e2c40');
-      slateGrad.addColorStop(0.22, '#253750');
-      slateGrad.addColorStop(0.5, '#2d4360');
-      slateGrad.addColorStop(0.78, '#253750');
-      slateGrad.addColorStop(1, '#1e2c40');
+      if (isSilver) {
+        slateGrad.addColorStop(0, '#18202c');
+        slateGrad.addColorStop(0.5, '#273549');
+        slateGrad.addColorStop(1, '#18202c');
+      } else {
+        slateGrad.addColorStop(0, '#1e2c40');
+        slateGrad.addColorStop(0.22, '#253750');
+        slateGrad.addColorStop(0.5, '#2d4360');
+        slateGrad.addColorStop(0.78, '#253750');
+        slateGrad.addColorStop(1, '#1e2c40');
+      }
       ctx.fillStyle = slateGrad;
       ctx.fillRect(0, 0, W, H);
 
-      // Vertical studio vignette keeping center & horizon bright while grounding top/bottom borders
       const vGrad = ctx.createLinearGradient(0, 0, 0, H);
       vGrad.addColorStop(0, 'rgba(6, 10, 18, 0.72)');
       vGrad.addColorStop(0.22, 'rgba(8, 14, 24, 0.14)');
@@ -2793,34 +2914,24 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = vGrad;
       ctx.fillRect(0, 0, W, H);
 
-      // Subtle futuristic cyberpunk architectural silhouettes along lower horizon (fading gracefully toward outer edges)
-      const horizonY = cy + 68;
-      const towerCount = 26;
-      for (let i = 0; i < towerCount; i++) {
-        const tx = (i / towerCount) * W;
-        const tw = 34 + ((i * 29) % 44);
-        const th = 90 + ((i * 67) % 195);
-        const distFromCenter = Math.abs(tx + tw * 0.5 - cx) / cx;
-        const edgeFade = 1 - Math.pow(distFromCenter, 1.8) * 0.65;
-        ctx.fillStyle = `rgba(11, 18, 30, ${0.42 * edgeFade})`;
-        ctx.fillRect(tx, horizonY - th * 0.45, tw, th + 260);
-
-        // Subtle cyan vertical architectural trim & window clusters
-        if (i % 2 === 0) {
-          ctx.fillStyle = `rgba(34, 211, 238, ${0.22 * edgeFade})`;
-          ctx.fillRect(tx + tw - 3, horizonY - th * 0.42, 2, th * 0.7);
-        }
-        ctx.fillStyle = `rgba(165, 243, 252, ${0.18 * edgeFade})`;
-        for (let wy = horizonY - th * 0.36; wy < horizonY + 120; wy += 16) {
-          for (let wx = tx + 6; wx < tx + tw - 8; wx += 11) {
-            if (((wx + wy + i) % 5) < 2) {
-              ctx.fillRect(wx, wy, 4, 5);
-            }
+      if (!isSilver) {
+        const horizonY = cy + 68;
+        const towerCount = 26;
+        for (let i = 0; i < towerCount; i++) {
+          const tx = (i / towerCount) * W;
+          const tw = 34 + ((i * 29) % 44);
+          const th = 90 + ((i * 67) % 195);
+          const distFromCenter = Math.abs(tx + tw * 0.5 - cx) / cx;
+          const edgeFade = 1 - Math.pow(distFromCenter, 1.8) * 0.65;
+          ctx.fillStyle = `rgba(11, 18, 30, ${0.42 * edgeFade})`;
+          ctx.fillRect(tx, horizonY - th * 0.45, tw, th + 260);
+          if (i % 2 === 0) {
+            ctx.fillStyle = `rgba(34, 211, 238, ${0.22 * edgeFade})`;
+            ctx.fillRect(tx + tw - 3, horizonY - th * 0.42, 2, th * 0.7);
           }
         }
       }
 
-      // Fine micro-perforated acoustic screen weave
       ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
       for (let y = 0; y < H; y += 8) {
         for (let x = 0; x < W; x += 8) {
@@ -2828,7 +2939,6 @@ export function createStandbyScreenTexture(
         }
       }
 
-      // Continuous panoramic cyan horizon atmospheric glow reaching full strength to left & right corners
       const horizonGlow = ctx.createLinearGradient(0, cy - 175, 0, cy + 175);
       horizonGlow.addColorStop(0, 'rgba(6, 182, 212, 0)');
       horizonGlow.addColorStop(0.4, 'rgba(6, 182, 212, 0.24)');
@@ -2838,7 +2948,6 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = horizonGlow;
       ctx.fillRect(0, cy - 175, W, 350);
 
-      // Crisp cyan optical horizon laser beam extending seamlessly edge-to-edge into side screens
       const beamGrad = ctx.createLinearGradient(0, cy - 4, 0, cy + 4);
       beamGrad.addColorStop(0, 'rgba(103, 232, 249, 0)');
       beamGrad.addColorStop(0.5, 'rgba(165, 243, 252, 0.85)');
@@ -2846,7 +2955,6 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = beamGrad;
       ctx.fillRect(0, cy - 4, W, 8);
 
-      // Continuous outer architectural framing laser hairlines
       ctx.strokeStyle = 'rgba(56, 224, 248, 0.34)';
       ctx.lineWidth = 2.5;
       ctx.beginPath();
@@ -2863,7 +2971,6 @@ export function createStandbyScreenTexture(
       ctx.fillStyle = coreGlow;
       ctx.fillRect(cx - 640, cy - 320, 1280, 640);
 
-      // Minimalist ScreenX 270° panoramic typography
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '600 32px "Montserrat", "Plus Jakarta Sans", sans-serif';
       drawTrackedText(ctx, '270° MULTI-PROJECTION', cx, cy - 92, 16);
@@ -2877,160 +2984,335 @@ export function createStandbyScreenTexture(
 
       ctx.fillStyle = '#67e8f9';
       ctx.font = '600 28px "Montserrat", "Plus Jakarta Sans", sans-serif';
-      drawTrackedText(ctx, 'OBSIDIAN PANORAMA', cx, cy + 98, 14);
+      drawTrackedText(
+        ctx,
+        isSilver ? 'MULTIPLEX 400 PANORAMA' : 'OBSIDIAN PANORAMA',
+        cx,
+        cy + 98,
+        14,
+      );
       return;
     }
 
-    // Deep obsidian-cinema radial stage vignette with warm golden atmospheric center bloom
-    const bgGrad = ctx.createRadialGradient(cx, cy - 10, 30, cx, cy, 1080);
-    bgGrad.addColorStop(0, '#2a2013');
-    bgGrad.addColorStop(0.28, '#141114');
-    bgGrad.addColorStop(0.62, '#090a0e');
-    bgGrad.addColorStop(1, '#020204');
+    // 4. Dolby Kakatiya Heritage: Dark temple stone field + glowing warm-amber cusped Kakatiya arch silhouette
+    if (sideLightStyle === 'telugu_kakatiya_dolby') {
+      const bgGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, 1150);
+      bgGrad.addColorStop(0, '#2a1a0d');
+      bgGrad.addColorStop(0.35, '#120d0c');
+      bgGrad.addColorStop(0.75, '#070607');
+      bgGrad.addColorStop(1, '#020203');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Concentric sacred Kakatiya lotus mandala + cusped temple arch silhouette
+      const glow = ctx.createRadialGradient(cx, cy - 10, 18, cx, cy - 10, 440);
+      glow.addColorStop(0, 'rgba(245, 166, 56, 0.24)');
+      glow.addColorStop(0.55, 'rgba(212, 154, 69, 0.08)');
+      glow.addColorStop(1, 'rgba(212, 154, 69, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - 460, cy - 460, 920, 920);
+
+      // Glowing multi-cusped arch outline motif behind title
+      ctx.strokeStyle = 'rgba(245, 166, 56, 0.34)';
+      ctx.lineWidth = 3;
+      const aw = 410;
+      ctx.beginPath();
+      ctx.moveTo(cx - aw, H - 90);
+      ctx.lineTo(cx - aw, cy + 120);
+      ctx.quadraticCurveTo(cx - aw * 0.9, cy - 130, cx - aw * 0.42, cy - 230);
+      ctx.quadraticCurveTo(cx - aw * 0.14, cy - 340, cx, cy - 385);
+      ctx.quadraticCurveTo(cx + aw * 0.14, cy - 340, cx + aw * 0.42, cy - 230);
+      ctx.quadraticCurveTo(cx + aw * 0.9, cy - 130, cx + aw, cy + 120);
+      ctx.lineTo(cx + aw, H - 90);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 10, 290, 0, Math.PI * 2);
+      ctx.stroke();
+
+      drawTitleBlock(
+        'DOLBY VISION · DOLBY ATMOS',
+        'DOLBY KAKATIYA',
+        'TELUGU HERITAGE REFERENCE HALL',
+        '#FFF5DC',
+        '#F5A638',
+        'rgba(245, 166, 56, 0.52)',
+        true,
+      );
+      return;
+    }
+
+    // 5. Dolby Veil 250 (Cobalt Veil / Eclipse Scales): Molten-amber to celestial-violet eclipse corona
+    if (sideLightStyle === 'cobalt_veil_laser_recess') {
+      const bgGrad = ctx.createRadialGradient(cx, cy, 40, cx, cy, 1120);
+      bgGrad.addColorStop(0, '#191326');
+      bgGrad.addColorStop(0.42, '#0d0c14');
+      bgGrad.addColorStop(1, '#030305');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      const corona = ctx.createLinearGradient(cx - 380, cy, cx + 380, cy);
+      corona.addColorStop(0, 'rgba(245, 158, 11, 0.72)');
+      corona.addColorStop(0.5, 'rgba(232, 121, 249, 0.55)');
+      corona.addColorStop(1, 'rgba(139, 92, 246, 0.78)');
+      ctx.strokeStyle = corona;
+      ctx.lineWidth = 10;
+      ctx.shadowColor = 'rgba(168, 85, 247, 0.55)';
+      ctx.shadowBlur = 42;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 315, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      drawTitleBlock(
+        'DOLBY CINEMA · CARBON ACOUSTICS',
+        theaterName || 'DOLBY VEIL 250',
+        'ECLIPSE REFERENCE AUDITORIUM',
+        '#F8FAFC',
+        '#E0B06A',
+        'rgba(168, 85, 247, 0.55)',
+        false,
+      );
+      return;
+    }
+
+    // 6. All Remaining IMAX Halls
+    if (architectureStyle === 'imax') {
+      const isAurora = sideLightStyle === 'aurora_ribbon_waves';
+      const isAmber = sideLightStyle === 'horizon_tier_strips';
+      const primaryGlow = isAurora ? '#34d399' : isAmber ? '#f59e0b' : '#38bdf8';
+      const secondaryGlow = isAurora ? '#38bdf8' : isAmber ? '#fbbf24' : '#60a5fa';
+
+      const bgGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, 1180);
+      bgGrad.addColorStop(0, isAurora ? '#0b2626' : isAmber ? '#241608' : '#081a38');
+      bgGrad.addColorStop(0.45, '#060912');
+      bgGrad.addColorStop(1, '#020205');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Sweeping IMAX curved horizon arc
+      ctx.strokeStyle = primaryGlow;
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.ellipse(cx, H * 1.15, W * 0.62, H * 0.72, 0, Math.PI * 1.12, Math.PI * 1.88);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      drawTitleBlock(
+        'IMAX WITH LASER · LARGE FORMAT',
+        theaterName || 'IMAX CINEMA',
+        categoryLabel || 'PANORAMIC STADIUM EXPERIENCE',
+        '#FFFFFF',
+        secondaryGlow,
+        isAurora
+          ? 'rgba(52, 211, 153, 0.55)'
+          : isAmber
+            ? 'rgba(245, 158, 11, 0.55)'
+            : 'rgba(56, 189, 248, 0.58)',
+        false,
+      );
+      return;
+    }
+
+    // 7. All 4DX Motion Halls
+    if (architectureStyle === '4dx') {
+      const isArctic = sideLightStyle === 'arctic_parametric_fins' || sideLightStyle === 'glacier_hex_matrix';
+      const isThunder = sideLightStyle === 'thunder_emerald_waves';
+      const accentHex = isArctic ? '#22d3ee' : isThunder ? '#10b981' : '#ef4444';
+
+      const bgGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, 1150);
+      bgGrad.addColorStop(0, isArctic ? '#0c2536' : isThunder ? '#0a261c' : '#2a090c');
+      bgGrad.addColorStop(0.48, '#080a10');
+      bgGrad.addColorStop(1, '#020204');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Dynamic kinetic speed streaks matching 4DX fins/exoskeleton
+      ctx.strokeStyle = accentHex;
+      ctx.globalAlpha = 0.24;
+      ctx.lineWidth = 4;
+      for (let i = -4; i <= 4; i++) {
+        const yOff = i * 54;
+        ctx.beginPath();
+        ctx.moveTo(120, cy + yOff + i * 18);
+        ctx.lineTo(420, cy + yOff);
+        ctx.moveTo(W - 120, cy + yOff - i * 18);
+        ctx.lineTo(W - 420, cy + yOff);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+
+      drawTitleBlock(
+        '4DX MULTI-SENSORY MOTION ARENA',
+        theaterName || '4DX CINEMA',
+        'WIND · FOG · MOTION · ATMOS',
+        '#F8FAFC',
+        accentHex,
+        isArctic
+          ? 'rgba(34, 211, 238, 0.56)'
+          : isThunder
+            ? 'rgba(16, 185, 129, 0.56)'
+            : 'rgba(239, 68, 68, 0.58)',
+        false,
+      );
+      return;
+    }
+
+    // 8. All ICE Immersive Halls
+    if (architectureStyle === 'ice') {
+      const isAmber = sideLightStyle === 'ice_faceted_amber';
+      const isCobalt = sideLightStyle === 'ice_faceted_cobalt';
+      const accentHex = isAmber ? '#f59e0b' : isCobalt ? '#60a5fa' : '#22d3ee';
+
+      const bgGrad = ctx.createRadialGradient(cx, cy, 40, cx, cy, 1150);
+      bgGrad.addColorStop(0, isAmber ? '#24180c' : '#0b182c');
+      bgGrad.addColorStop(0.5, '#07090f');
+      bgGrad.addColorStop(1, '#020305');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle faceted prism geometric polygon outlines echoing ICE peripheral panels
+      ctx.strokeStyle = accentHex;
+      ctx.globalAlpha = 0.22;
+      ctx.lineWidth = 2.5;
+      [-1, 1].forEach((side) => {
+        const bx = cx + side * 680;
+        ctx.beginPath();
+        ctx.moveTo(bx, 130);
+        ctx.lineTo(bx + side * 140, cy);
+        ctx.lineTo(bx, H - 130);
+        ctx.lineTo(bx - side * 90, cy);
+        ctx.closePath();
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+
+      drawTitleBlock(
+        'ICE · IMMERSIVE CINEMA EXPERIENCE',
+        theaterName || 'ICE THEATER',
+        'PERIPHERAL LIGHT ARCHITECTURE',
+        '#FFFFFF',
+        accentHex,
+        'rgba(56, 189, 248, 0.48)',
+        false,
+      );
+      return;
+    }
+
+    // 9. Beach Coastal Open-Air Cinemas
+    if (architectureStyle === 'beach') {
+      const isBio = sideLightStyle === 'beach_neon_palm_bollards';
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+      if (isBio) {
+        skyGrad.addColorStop(0, '#020617');
+        skyGrad.addColorStop(0.58, '#082f49');
+        skyGrad.addColorStop(1, '#042f2e');
+      } else {
+        skyGrad.addColorStop(0, '#13162b');
+        skyGrad.addColorStop(0.52, '#5c2d38');
+        skyGrad.addColorStop(0.75, '#c26d3a');
+        skyGrad.addColorStop(1, '#101828');
+      }
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      drawTitleBlock(
+        'OPEN-AIR COASTAL AMPHITHEATER',
+        theaterName || 'BEACH CINEMA',
+        isBio ? 'BIOLUMINESCENT SURF & STARLIGHT' : 'TWILIGHT OCEAN COVE',
+        '#FFFBEB',
+        isBio ? '#22d3ee' : '#fbbf24',
+        isBio ? 'rgba(34, 211, 238, 0.55)' : 'rgba(251, 191, 36, 0.55)',
+        true,
+      );
+      return;
+    }
+
+    // 10. All Other Standard 2D, Dolby & Private Luxury Halls (tailored using interior colors & motif)
+    const wallHex = wallColor || '#d4af37';
+    const accHex = accentColor || '#f5c451';
+    const isPrivate = architectureStyle === 'private';
+    const isDolby = architectureStyle === 'dolby';
+    const isBiophilic = sideLightStyle === 'biophilic_crystalline_moss';
+    const isParametric = sideLightStyle === 'parametric_obsidian_waves';
+    const isArtDeco = sideLightStyle === 'art_deco_navy_sunburst';
+
+    const bgGrad = ctx.createRadialGradient(cx, cy - 10, 30, cx, cy, 1120);
+    if (isBiophilic) {
+      bgGrad.addColorStop(0, '#1b2b1e');
+      bgGrad.addColorStop(0.42, '#0f1612');
+      bgGrad.addColorStop(1, '#040605');
+    } else if (isParametric) {
+      bgGrad.addColorStop(0, '#221436');
+      bgGrad.addColorStop(0.42, '#0e0f16');
+      bgGrad.addColorStop(1, '#030306');
+    } else if (isArtDeco) {
+      bgGrad.addColorStop(0, '#152544');
+      bgGrad.addColorStop(0.45, '#091122');
+      bgGrad.addColorStop(1, '#02040a');
+    } else if (isDolby) {
+      bgGrad.addColorStop(0, '#1a1520');
+      bgGrad.addColorStop(0.4, '#0a0b10');
+      bgGrad.addColorStop(1, '#020204');
+    } else if (isPrivate) {
+      bgGrad.addColorStop(0, '#281d15');
+      bgGrad.addColorStop(0.44, '#120e0b');
+      bgGrad.addColorStop(1, '#040303');
+    } else {
+      bgGrad.addColorStop(0, '#291614');
+      bgGrad.addColorStop(0.44, '#100c0f');
+      bgGrad.addColorStop(1, '#030305');
+    }
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
-    // Subtle horizontal anamorphic spotlight flare behind GSR centerpiece
-    const flareGrad = ctx.createRadialGradient(cx, cy - 12, 8, cx, cy - 12, 460);
-    flareGrad.addColorStop(0, 'rgba(245, 200, 92, 0.22)');
-    flareGrad.addColorStop(0.45, 'rgba(212, 175, 55, 0.08)');
-    flareGrad.addColorStop(1, 'rgba(212, 175, 55, 0)');
-    ctx.fillStyle = flareGrad;
-    ctx.fillRect(cx - 500, cy - 280, 1000, 560);
-
-    const streakGrad = ctx.createLinearGradient(cx - 520, cy - 12, cx + 520, cy - 12);
-    streakGrad.addColorStop(0, 'rgba(255, 224, 140, 0)');
-    streakGrad.addColorStop(0.32, 'rgba(245, 205, 110, 0.09)');
-    streakGrad.addColorStop(0.5, 'rgba(255, 240, 190, 0.24)');
-    streakGrad.addColorStop(0.68, 'rgba(245, 205, 110, 0.09)');
-    streakGrad.addColorStop(1, 'rgba(255, 224, 140, 0)');
-    ctx.fillStyle = streakGrad;
-    ctx.fillRect(cx - 520, cy - 16, 1040, 8);
-
-    // Theatrical gold double proscenium border
-    ctx.strokeStyle = 'rgba(212, 175, 55, 0.42)';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(72, 72, W - 144, H - 144);
-    ctx.strokeStyle = 'rgba(212, 175, 55, 0.16)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(92, 92, W - 184, H - 184);
-
-    // Safe horizontal span ~880px centered so mobile portrait & desktop widescreen both see 100% of text
-    const safeMaxWidth = 880;
-
-    // 1. Top Line: "TIN FACTORY" in wide-tracked geometric cinema sans
-    const eyebrowText = 'TIN FACTORY';
-    ctx.font = '600 38px "Montserrat", "Plus Jakarta Sans", sans-serif';
-    ctx.fillStyle = '#E6DEC8';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-    ctx.shadowBlur = 12;
-    const eyebrowW = drawTrackedText(ctx, eyebrowText, cx, cy - 162, 18);
-    ctx.shadowBlur = 0;
-
-    // Subtle flanking hairlines beside eyebrow
-    const ruleSpan = 104;
-    const gapFromText = 28;
-    const leftRuleEnd = cx - eyebrowW / 2 - gapFromText;
-    const rightRuleStart = cx + eyebrowW / 2 + gapFromText;
-    const leftRuleGrad = ctx.createLinearGradient(leftRuleEnd - ruleSpan, cy - 162, leftRuleEnd, cy - 162);
-    leftRuleGrad.addColorStop(0, 'rgba(212, 175, 55, 0)');
-    leftRuleGrad.addColorStop(1, 'rgba(212, 175, 55, 0.65)');
-    ctx.strokeStyle = leftRuleGrad;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(leftRuleEnd - ruleSpan, cy - 162);
-    ctx.lineTo(leftRuleEnd, cy - 162);
-    ctx.stroke();
-
-    const rightRuleGrad = ctx.createLinearGradient(rightRuleStart, cy - 162, rightRuleStart + ruleSpan, cy - 162);
-    rightRuleGrad.addColorStop(0, 'rgba(212, 175, 55, 0.65)');
-    rightRuleGrad.addColorStop(1, 'rgba(212, 175, 55, 0)');
-    ctx.strokeStyle = rightRuleGrad;
-    ctx.beginPath();
-    ctx.moveTo(rightRuleStart, cy - 162);
-    ctx.lineTo(rightRuleStart + ruleSpan, cy - 162);
-    ctx.stroke();
-
-    // 2. Hero Centerpiece Highlight: "GSR" in monumental Cinzel Black sculpted gold
-    const heroText = 'GSR';
-    ctx.font = '900 188px "Cinzel", Georgia, serif';
-    const heroTracking = 32;
-
-    // Deep shadow underlayer
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.9)';
-    ctx.shadowColor = 'rgba(245, 196, 81, 0.56)';
-    ctx.shadowBlur = 36;
-    ctx.shadowOffsetY = 6;
-    drawTrackedText(ctx, heroText, cx, cy - 12, heroTracking);
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Multi-stop vertical metallic gold gradient fill
-    const goldGrad = ctx.createLinearGradient(0, cy - 104, 0, cy + 76);
-    goldGrad.addColorStop(0, '#FFF8DF');
-    goldGrad.addColorStop(0.28, '#F6D26C');
-    goldGrad.addColorStop(0.54, '#D4AF37');
-    goldGrad.addColorStop(0.78, '#9E731A');
-    goldGrad.addColorStop(1, '#F8DB82');
-    ctx.fillStyle = goldGrad;
-    drawTrackedText(ctx, heroText, cx, cy - 12, heroTracking);
-
-    // Subtle bright rim stroke around GSR glyphs
-    ctx.strokeStyle = 'rgba(255, 244, 200, 0.52)';
-    ctx.lineWidth = 2.2;
-    const gsrChars = Array.from(heroText);
-    const gsrWidths = gsrChars.map((ch) => ctx.measureText(ch).width);
-    const gsrTotalW =
-      gsrWidths.reduce((a, b) => a + b, 0) + (gsrChars.length - 1) * heroTracking;
-    let gx = cx - gsrTotalW / 2;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    gsrChars.forEach((ch, idx) => {
-      ctx.strokeText(ch, gx, cy - 12);
-      gx += gsrWidths[idx] + heroTracking;
-    });
-
-    // 3. Ornamental tapered gold divider + central diamond below GSR
-    const divY = cy + 106;
-    const divGrad = ctx.createLinearGradient(cx - 320, divY, cx + 320, divY);
-    divGrad.addColorStop(0, 'rgba(212, 175, 55, 0)');
-    divGrad.addColorStop(0.35, 'rgba(212, 175, 55, 0.55)');
-    divGrad.addColorStop(0.5, 'rgba(255, 236, 170, 0.92)');
-    divGrad.addColorStop(0.65, 'rgba(212, 175, 55, 0.55)');
-    divGrad.addColorStop(1, 'rgba(212, 175, 55, 0)');
-    ctx.strokeStyle = divGrad;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(cx - 320, divY);
-    ctx.lineTo(cx + 320, divY);
-    ctx.stroke();
-
-    ctx.save();
-    ctx.translate(cx, divY);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = '#F7D97E';
-    ctx.fillRect(-5.5, -5.5, 11, 11);
-    ctx.restore();
-
-    // 4. Bottom Subtitle: "ra neeee akkkkkkkkkaaaaa" in wide-tracked Cinzel / Montserrat
-    const subText = 'ra neeee akkkkkkkkkaaaaa';
-    let subSize = 40;
-    const subTracking = 6;
-    while (subSize > 22) {
-      ctx.font = `600 ${subSize}px "Cinzel", "Montserrat", serif`;
-      const subChars = Array.from(subText);
-      const estW =
-        subChars.reduce((acc, ch) => acc + ctx.measureText(ch).width, 0) +
-        (subChars.length - 1) * subTracking;
-      if (estW <= safeMaxWidth) break;
-      subSize -= 2;
+    // Subtle interior-matched geometric motif
+    ctx.strokeStyle = wallHex;
+    ctx.globalAlpha = 0.24;
+    ctx.lineWidth = 2.5;
+    if (isArtDeco) {
+      for (let i = -5; i <= 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx, H);
+        ctx.lineTo(cx + i * 240, 0);
+        ctx.stroke();
+      }
+    } else if (isParametric) {
+      for (let i = 0; i < 6; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, cy - 190 + i * 76);
+        ctx.bezierCurveTo(W * 0.32, cy - 260 + i * 76, W * 0.68, cy - 110 + i * 76, W, cy - 190 + i * 76);
+        ctx.stroke();
+      }
+    } else {
+      ctx.strokeRect(86, 86, W - 172, H - 172);
+      ctx.globalAlpha = 0.12;
+      ctx.strokeRect(108, 108, W - 216, H - 216);
     }
+    ctx.globalAlpha = 1;
 
-    ctx.fillStyle = '#F3ECD8';
-    ctx.shadowColor = 'rgba(212, 175, 55, 0.3)';
-    ctx.shadowBlur = 14;
-    drawTrackedText(ctx, subText, cx, cy + 172, subTracking);
-    ctx.shadowBlur = 0;
+    const eyebrow = isDolby
+      ? 'DOLBY VISION · DOLBY ATMOS'
+      : isPrivate
+        ? 'PRIVATE SCREENING SALON'
+        : isBiophilic
+          ? 'BIOPHILIC ACOUSTIC AUDITORIUM'
+          : isParametric
+            ? 'PARAMETRIC GRAND AUDITORIUM'
+            : 'SIGNATURE CINEMA AUDITORIUM';
+
+    drawTitleBlock(
+      eyebrow,
+      theaterName || 'AURELIA CINEMA',
+      categoryLabel || 'REFERENCE SOUND & PROJECTION',
+      '#FAF6EC',
+      accHex,
+      'rgba(212, 175, 55, 0.42)',
+      isPrivate || architectureStyle === 'classic',
+    );
   };
 
   drawStandbyArtwork();
@@ -3436,27 +3718,27 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
   alphaCanvas.height = size;
   const aCtx = alphaCanvas.getContext('2d')!;
 
-  // Matte antiqued sandstone-gold tone (non-reflective)
+  // Matte antiqued-gold carved Jali lattice tone
   const goldGrad = cCtx.createLinearGradient(0, 0, size, size);
-  goldGrad.addColorStop(0, '#9a783d');
-  goldGrad.addColorStop(0.5, '#866631');
-  goldGrad.addColorStop(1, '#96743a');
+  goldGrad.addColorStop(0, '#9e7c3f');
+  goldGrad.addColorStop(0.5, '#8a692f');
+  goldGrad.addColorStop(1, '#9a773a');
   cCtx.fillStyle = goldGrad;
   cCtx.fillRect(0, 0, size, size);
 
-  // Subtle carved stone-gold micro-grain
-  for (let i = 0; i < 4200; i++) {
+  // Subtle carved sandstone micro-grain
+  for (let i = 0; i < 4800; i++) {
     const px = (i * 79) % size;
     const py = (i * 137) % size;
-    cCtx.fillStyle = i % 2 === 0 ? 'rgba(255, 232, 185, 0.06)' : 'rgba(28, 18, 8, 0.08)';
+    cCtx.fillStyle = i % 2 === 0 ? 'rgba(255, 232, 200, 0.06)' : 'rgba(28, 18, 8, 0.08)';
     cCtx.fillRect(px, py, 2, 2);
   }
 
-  // Opaque lattice background (white = solid stone/gold rib, black = pierced cutout)
+  // Opaque lattice background (white = solid antiqued-gold rib, black = pierced cutout)
   aCtx.fillStyle = '#ffffff';
   aCtx.fillRect(0, 0, size, size);
 
-  const cell = 128;
+  const cell = 64;
   const drawOctaStarCutout = (cx: number, cy: number, rOuter: number, rInner: number) => {
     aCtx.fillStyle = '#000000';
     aCtx.beginPath();
@@ -3475,17 +3757,17 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
     // Inner stone filigree ring preserved inside each star medallion
     aCtx.fillStyle = '#ffffff';
     aCtx.beginPath();
-    aCtx.arc(cx, cy, rInner * 0.42, 0, Math.PI * 2);
+    aCtx.arc(cx, cy, rInner * 0.44, 0, Math.PI * 2);
     aCtx.fill();
 
     aCtx.fillStyle = '#000000';
     aCtx.beginPath();
-    aCtx.arc(cx, cy, rInner * 0.21, 0, Math.PI * 2);
+    aCtx.arc(cx, cy, rInner * 0.2, 0, Math.PI * 2);
     aCtx.fill();
 
-    // Subtle carved edge shadow on the color canvas around cutouts
-    cCtx.strokeStyle = 'rgba(42, 28, 14, 0.45)';
-    cCtx.lineWidth = 3;
+    // Subtle carved edge shadow on color canvas around cutouts
+    cCtx.strokeStyle = 'rgba(42, 26, 12, 0.5)';
+    cCtx.lineWidth = 2.2;
     cCtx.beginPath();
     for (let i = 0; i < pts; i++) {
       const a = (i * Math.PI * 2) / pts;
@@ -3501,7 +3783,7 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
 
   for (let y = cell * 0.5; y < size; y += cell) {
     for (let x = cell * 0.5; x < size; x += cell) {
-      drawOctaStarCutout(x, y, 44, 28);
+      drawOctaStarCutout(x, y, 22, 14);
     }
   }
   // Corner/edge diamond-petal cutouts bridging adjacent tiles
@@ -3509,10 +3791,10 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
     for (let x = 0; x <= size; x += cell) {
       aCtx.fillStyle = '#000000';
       aCtx.beginPath();
-      aCtx.moveTo(x, y - 22);
-      aCtx.lineTo(x + 22, y);
-      aCtx.lineTo(x, y + 22);
-      aCtx.lineTo(x - 22, y);
+      aCtx.moveTo(x, y - 11);
+      aCtx.lineTo(x + 11, y);
+      aCtx.lineTo(x, y + 11);
+      aCtx.lineTo(x - 11, y);
       aCtx.closePath();
       aCtx.fill();
     }
@@ -3520,8 +3802,8 @@ export function createJaliLatticeTexture(): JaliLatticeTextureSet {
 
   // Outer carved molding frame lines
   cCtx.strokeStyle = '#6c5124';
-  cCtx.lineWidth = 6;
-  cCtx.strokeRect(3, 3, size - 6, size - 6);
+  cCtx.lineWidth = 5;
+  cCtx.strokeRect(2.5, 2.5, size - 5, size - 5);
 
   const map = new THREE.CanvasTexture(colorCanvas);
   map.colorSpace = THREE.SRGBColorSpace;

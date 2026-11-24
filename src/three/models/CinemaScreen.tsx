@@ -338,8 +338,20 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         theaterName,
         config.environmentProfile.architectureStyle,
         sideLightStyle,
+        config.theaterId,
+        config.category,
+        config.lightingProfile.wallColor,
+        config.lightingProfile.accentColor,
       ),
-    [theaterName, config.environmentProfile.architectureStyle, sideLightStyle],
+    [
+      theaterName,
+      config.environmentProfile.architectureStyle,
+      sideLightStyle,
+      config.theaterId,
+      config.category,
+      config.lightingProfile.wallColor,
+      config.lightingProfile.accentColor,
+    ],
   );
   const activeTexRef = useRef<THREE.Texture>(standbyTexture);
   const uvRepeatRef = useRef({ x: 1, y: 1 });
@@ -1047,7 +1059,9 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
             ? 0.56
             : isDeccanDolby
               ? 0.86
-              : 0.34
+              : isMandap2d
+                ? 0.58
+                : 0.42
         : showState === 'SHOW_STARTING'
           ? 0.62
           : showState === 'SHOW_PLAYING'

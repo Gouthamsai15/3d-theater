@@ -1300,8 +1300,10 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
               ? '#14161a'
               : isScreenXPit
                 ? '#0e1014'
-                : isMultiplexScreenXRocker || isMandapSeat
+                : isMultiplexScreenXRocker
                   ? '#1e222b'
+                  : isMandapSeat
+                    ? '#171920'
                   : isParametricPurpleSeat
                     ? '#171920'
                     : isBiophilicMossSeat
@@ -1410,9 +1412,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                   ? '#282c32'
                   : isMultiplexScreenXRocker || isParametricPurpleSeat
                     ? '#1b1e26'
-                    : isBiophilicMossSeat
-                      ? '#272c30'
-                      : '#272a31',
+                    : isMandapSeat
+                      ? '#1b1e26'
+                      : isBiophilicMossSeat
+                        ? '#272c30'
+                        : '#272a31',
         roughness: isDolbyVeilSeat ? 0.36 : isDolbyKakatiyaSeat || isDolbyDeccanSeat ? 0.38 : isIceObsidianRecliner || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.88 : isIceRecliner || isIceCobaltArmchair ? 0.46 : 0.8,
         metalness: isDolbyVeilSeat || isDolbyKakatiyaSeat || isDolbyDeccanSeat ? 0.04 : 0.02,
       }),
@@ -2024,7 +2028,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                             ? jetBlackColor
                             : isScreenXPit && !isSelected && !isHovered && !isUnavailable
                               ? jetBlackColor
-                              : (isMultiplexScreenXRocker || isMandapSeat || isBiophilicMossSeat) && !isSelected && !isHovered && !isUnavailable
+                              : (isMultiplexScreenXRocker || isBiophilicMossSeat || isMandapSeat) && !isSelected && !isHovered && !isUnavailable
                                 ? multiplexCharcoalTechColor
                                 : instanceColor;
 
