@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { AuditoriumLightingPreset, ShowState, TheaterConfiguration } from '../../types/cinema';
+import { AuditoriumLightingPreset, FourDxWallLedTheme, ShowState, TheaterConfiguration } from '../../types/cinema';
 import { ScreenBounceSample } from '../models/CinemaScreen';
 
 const NEUTRAL_WALL_FILL_TINT = new THREE.Color('#eae6f2');
@@ -22,6 +22,8 @@ interface CinemaLightingRigProps {
   fourDxFlashRef?: React.MutableRefObject<{ level: number; color: string }>;
   screenBounceRef?: React.MutableRefObject<ScreenBounceSample>;
   screenReflectionBrightness?: number;
+  effectLightIntensity?: number;
+  wallLedTheme?: FourDxWallLedTheme;
 }
 
 export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
@@ -35,6 +37,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
   fourDxFlashRef,
   screenBounceRef,
   screenReflectionBrightness = 1,
+  effectLightIntensity,
+  wallLedTheme,
 }) => {
   const { lightingProfile, auditoriumWidth, auditoriumLength, auditoriumHeight, screenPosition } = config;
   const { scene, gl } = useThree();
@@ -42,6 +46,7 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
   const isCobaltVeil = config.sideLightStyle === 'cobalt_veil_laser_recess';
   const isKakatiyaDolby = config.sideLightStyle === 'telugu_kakatiya_dolby';
   const isDeccanDolby = config.sideLightStyle === 'deccan_basalt_monsoon';
+  const isKinetic4dx = config.sideLightStyle === 'kinetic_slate_baffles_4dx';
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
   const isBioluminescentBeach = config.theaterId === 'beach_bioluminescent';
 
@@ -120,6 +125,16 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
 
     const bounce = screenBounceRef?.current ?? { r: 0.72, g: 0.8, b: 0.95, luminance: 0.25 };
 
+    const fxScale = isKinetic4dx && effectLightIntensity !== undefined ? 0.25 + effectLightIntensity * 1.15 : 1;
+    const kineticWallColor =
+      wallLedTheme === 'storm'
+        ? '#60a5fa'
+        : wallLedTheme === 'action'
+          ? '#f97316'
+          : wallLedTheme === 'underwater'
+            ? '#22d3ee'
+            : '#38bdf8';
+
     if (ambientRef.current) {
       const swBoost = isSoftwareGl ? 1.48 : 1.24;
       if (isBioluminescentBeach) {
@@ -127,7 +142,7 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isBeach) {
         ambientRef.current.intensity = 0.004 + f * lightingProfile.ambientOpenIntensity;
       } else {
-        ambientRef.current.intensity = 0.003 + f * lightingProfile.ambientOpenIntensity * swBoost;
+        ambientRef.current.intensity = 0.003 + f * lightingProfile.ambientOpenIntensity * swBoost * (isKinetic4dx ? 0.45 + fxScale * 0.55 : 1);
       }
     }
     if (mainCeilingRef.current) {
@@ -138,7 +153,7 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         mainCeilingRef.current.intensity = 0.035 + f * lightingProfile.mainOpenIntensity;
       } else {
         const mainBoost = isSoftwareGl ? 1.48 : 1.2;
-        mainCeilingRef.current.intensity = f * lightingProfile.mainOpenIntensity * mainBoost;
+        mainCeilingRef.current.intensity = f * lightingProfile.mainOpenIntensity * mainBoost * (isKinetic4dx ? 0.5 + fxScale * 0.5 : 1);
       }
     }
     if (wallFillLeftRef.current) {
@@ -153,6 +168,9 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isDeccanDolby) {
         wallFillLeftRef.current.intensity = f * 0.62;
         wallFillLeftRef.current.color.set('#96e2c8');
+      } else if (isKinetic4dx) {
+        wallFillLeftRef.current.intensity = f * lightingProfile.wallOpenIntensity * 0.46 * fxScale;
+        wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.28);
       } else {
         wallFillLeftRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
@@ -173,6 +191,9 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isDeccanDolby) {
         wallFillRightRef.current.intensity = f * 0.62;
         wallFillRightRef.current.color.set('#aee2ee');
+      } else if (isKinetic4dx) {
+        wallFillRightRef.current.intensity = f * lightingProfile.wallOpenIntensity * 0.44 * fxScale;
+        wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.28);
       } else {
         wallFillRightRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;

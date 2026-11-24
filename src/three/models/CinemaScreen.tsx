@@ -243,6 +243,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
   const isExoskeleton4dx = sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
+  const isKinetic4dx = sideLightStyle === 'kinetic_slate_baffles_4dx';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
   const isKakatiyaDolby = sideLightStyle === 'telugu_kakatiya_dolby';
   const isDeccanDolby = sideLightStyle === 'deccan_basalt_monsoon';
@@ -325,6 +326,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     active: false,
     subBass: 0,
     bass: 0,
+    bassBalance: 0,
     mid: 0,
     high: 0,
     transient: 0,
@@ -1258,6 +1260,15 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       const telemetryRunning =
         fourDxActive && showState === 'SHOW_PLAYING' && !isPaused && isVideo;
       if (telemetryRunning) {
+        if (
+          activeVideo &&
+          activeVideo.readyState >= 2 &&
+          cinemaAudioEngine.isRunning &&
+          !cinemaAudioEngine.isVideoHijackDisabled &&
+          !cinemaAudioEngine.isVideoAttached(activeVideo)
+        ) {
+          cinemaAudioEngine.attachVideoElement(activeVideo);
+        }
         cinemaAudioEngine.sampleAudioTelemetry(audioOutRef.current);
         const aud = audioOutRef.current;
         const opt = opticalOutRef.current;
@@ -1275,6 +1286,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           aud.bass > tel.bass ? 26 : 13,
           dt,
         );
+        tel.bassBalance = THREE.MathUtils.damp(tel.bassBalance, aud.bassBalance, 14, dt);
         tel.bassTransient = THREE.MathUtils.damp(
           tel.bassTransient,
           aud.transient,
@@ -1323,6 +1335,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         tel.audioActive = false;
         tel.subBass = THREE.MathUtils.damp(tel.subBass, 0, 8, dt);
         tel.bass = THREE.MathUtils.damp(tel.bass, 0, 8, dt);
+        tel.bassBalance = THREE.MathUtils.damp(tel.bassBalance, 0, 8, dt);
         tel.bassTransient = THREE.MathUtils.damp(tel.bassTransient, 0, 8, dt);
         tel.highFreq = THREE.MathUtils.damp(tel.highFreq, 0, 8, dt);
         tel.rms = THREE.MathUtils.damp(tel.rms, 0, 8, dt);
@@ -1514,19 +1527,21 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
                     ? '#1b130f'
                     : isIceAmber
                       ? '#08090c'
-                      : isCrimson4dx || isArctic4dx || isThunder4dx
-                        ? '#06070a'
-                        : isVolcanicCopper2d
-                          ? '#0b0c10'
-                          : isPrivateVolcanic
-                            ? '#140e0b'
-                            : isPrivateChampagne
-                              ? '#0c100f'
-                              : '#0b0c10'
+                      : isKinetic4dx
+                        ? '#08090c'
+                        : isCrimson4dx || isArctic4dx || isThunder4dx
+                          ? '#06070a'
+                          : isVolcanicCopper2d
+                            ? '#0b0c10'
+                            : isPrivateVolcanic
+                              ? '#140e0b'
+                              : isPrivateChampagne
+                                ? '#0c100f'
+                                : '#0b0c10'
               }
               roughness={
-                isIceFlagship || isIceCobalt || isIceAmber
-                  ? 0.95
+                isIceFlagship || isIceCobalt || isIceAmber || isKinetic4dx
+                  ? 0.96
                   : isCrimson4dx || isArctic4dx || isThunder4dx
                     ? 0.9
                     : isVolcanicCopper2d
@@ -1536,8 +1551,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
                         : 0.42
               }
               metalness={
-                isIceFlagship || isIceCobalt || isIceAmber
-                  ? 0.04
+                isIceFlagship || isIceCobalt || isIceAmber || isKinetic4dx
+                  ? 0.02
                   : isCrimson4dx || isArctic4dx || isThunder4dx
                     ? 0.1
                     : isVolcanicCopper2d
@@ -1588,13 +1603,15 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
                       ? '#160f0b'
                       : isIceAmber
                         ? '#07080b'
-                        : isCrimson4dx || isArctic4dx || isThunder4dx
-                          ? '#050608'
-                          : isPrivateVolcanic
-                            ? '#120b09'
-                            : isPrivateChampagne
-                              ? '#060908'
-                              : '#040406'
+                        : isKinetic4dx
+                          ? '#08090c'
+                          : isCrimson4dx || isArctic4dx || isThunder4dx
+                            ? '#050608'
+                            : isPrivateVolcanic
+                              ? '#120b09'
+                              : isPrivateChampagne
+                                ? '#060908'
+                                : '#040406'
               }
               roughness={0.97}
               metalness={0.0}
@@ -1631,6 +1648,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           !isArctic4dx &&
           !isThunder4dx &&
           !isExoskeleton4dx &&
+          !isKinetic4dx &&
           !isDolbyFloating &&
           !isVolcanicCopper2d &&
           !isMandap2d &&

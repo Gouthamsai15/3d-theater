@@ -572,13 +572,15 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
   const isArctic4dx = config.sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = config.sideLightStyle === 'thunder_emerald_waves';
   const isExoskeleton4dx = config.sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
+  const isKinetic4dx = config.sideLightStyle === 'kinetic_slate_baffles_4dx';
   const isAny4dx =
     config.categoryId === '4dx' ||
     Boolean(config.supports4dxEffects) ||
     isCrimson4dx ||
     isArctic4dx ||
     isThunder4dx ||
-    isExoskeleton4dx;
+    isExoskeleton4dx ||
+    isKinetic4dx;
   const isDolbyMediumLuxury =
     config.sideLightStyle === 'obsidian_slat_grazers' ||
     config.sideLightStyle === 'diagonal_parabolic_ribs';
@@ -1279,6 +1281,29 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return arr;
     }
 
+    if (isKinetic4dx) {
+      // 6 ear-to-above-ear side surround speakers per wall (~2.5m above local stadium riser) cleanly aligned between acoustic slat/diffuser bays
+      for (let idx = 0; idx < 6; idx++) {
+        const spkZ = THREE.MathUtils.lerp(config.firstRowZ - 0.8, backZ - 2.4, idx / 5);
+        const rowFrac = THREE.MathUtils.clamp(
+          (spkZ - config.firstRowZ) / Math.max(0.5, config.rowSpacing),
+          0,
+          Math.max(0, config.seatingRows - 1),
+        );
+        const spkY = Math.min(H - 1.85, Math.max(2.6, rowFrac * config.rowElevationStep + 2.55));
+        ([-1, 1] as const).forEach((side) => {
+          arr.push({
+            x: side * (W / 2 - 0.3),
+            y: spkY,
+            z: spkZ,
+            side,
+            bayIdx: idx,
+          });
+        });
+      }
+      return arr;
+    }
+
     const usableBays = wallBayZs.filter((_, idx) => idx >= 1 && idx <= wallBayZs.length - 1);
     usableBays.forEach((bz, idx) => {
       const spkZ = Math.min(backZ - 1.15, bz + 0.82);
@@ -1297,7 +1322,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return arr;
-  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
+  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, isKinetic4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
 
   // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on concealed Deccan rear topography, private salons & ScreenX 3-wall halls)
   const rearSpeakerPositions = useMemo(() => {
@@ -1326,8 +1351,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
         ? backZ - 0.68
         : isKakatiyaDolby
           ? backZ - 0.27
-          : isBiophilicMoss
-            ? backZ - 0.26
+          : isBiophilicMoss || isKinetic4dx
+            ? backZ - 0.32
             : backZ - 0.21;
 
     const list: { x: number; y: number; z: number; yaw: number; pitch: number }[] = [];
@@ -1375,7 +1400,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
 
     return list;
-  }, [isPrivateVolcanic, isPrivateChampagne, isIce, isScreenX, isKakatiyaDolby, isDeccanDolby, isCobaltVeilDolby, isParametricObsidian, isBiophilicMoss, isExoskeleton4dx, config, W, H, topTierY, backZ]);
+  }, [isPrivateVolcanic, isPrivateChampagne, isIce, isScreenX, isKakatiyaDolby, isDeccanDolby, isCobaltVeilDolby, isParametricObsidian, isBiophilicMoss, isExoskeleton4dx, isKinetic4dx, config, W, H, topTierY, backZ]);
 
   // Overhead height speaker coordinates (ICE, ScreenX, Modern Multiplex, Dolby Atmos, IMAX 12-Channel, Private Salons & bespoke 4DX ceilings)
   const atmosSpeakerPositions = useMemo(() => {
@@ -1611,6 +1636,25 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return pts;
     }
 
+    if (isKinetic4dx) {
+      // 3 longitudinal overhead Atmos lines cleanly spaced between ceiling wind turbines & mist manifolds
+      const xs = [-W * 0.27, 0, W * 0.27];
+      const zStart = Math.max(frontZ + 4.8, config.firstRowZ - 2.0);
+      const zEnd = Math.min(backZ - 2.6, config.firstRowZ + (config.seatingRows - 1) * config.rowSpacing + 0.6);
+      xs.forEach((x, xi) => {
+        for (let i = 0; i < 5; i++) {
+          const t = i / 4;
+          pts.push({
+            x,
+            y: H - 0.23,
+            z: THREE.MathUtils.lerp(zStart, zEnd, t),
+            side: xi === 0 ? -1 : 1,
+          });
+        }
+      });
+      return pts;
+    }
+
     const xs = [-W * 0.22, W * 0.22];
     const zs = [-L * 0.18, L * 0.08];
     xs.forEach((x, xi) => {
@@ -1624,7 +1668,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return pts;
-  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
+  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, isKinetic4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
 
   // Front Proscenium / Behind-Screen Dual-18" Cinema Subwoofers + 3-Way Line-Array Towers (all bottom/front-of-screen speakers omitted across every theater to prevent clipping through floating or wall-to-wall screens)
   const frontTowerPositions = useMemo(() => {
@@ -2031,6 +2075,40 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
         </group>
       ))}
 
+      {/* 4DX Kinetic Arena 250: Behind-Screen LCR Main Line-Array Enclosures, Floor-Mounted Dual Subwoofers & Corner Bass Traps */}
+      {isKinetic4dx && (
+        <group>
+          {/* Behind-Screen Left, Center, Right Main Horn/Line-Array Enclosures (safely positioned inside 2m cavity behind z = -14 screen) */}
+          {[-5.4, 0, 5.4].map((lx, li) => (
+            <group key={`kinetic-lcr-${li}`} position={[lx, config.screenPosition[1] - 0.4, frontZ + 0.72]}>
+              <mesh position={[0, -1.65, 0]} material={materials.darkSteelMat}>
+                <boxGeometry args={[1.1, 2.2, 0.75]} />
+              </mesh>
+              <mesh geometry={geometries.lineArrayCabinetGeo} material={materials.cabinetMat} />
+              <mesh position={[0, 0.42, 0]} geometry={geometries.lineArrayCabinetGeo} material={materials.cabinetMat} />
+              <mesh position={[0, 0.85, 0.24]} geometry={geometries.lineHornGeo} material={materials.hornThroatMat} />
+            </group>
+          ))}
+
+          {/* Floor-Mounted Front Dual-18" Cinema Subwoofers & Corner Bass Traps */}
+          {[-3.6, 3.6].map((sx, si) => (
+            <group key={`kinetic-front-sub-${si}`} position={[sx, 0.76, frontZ + 0.82]} scale={0.95}>
+              <mesh geometry={geometries.subCabinetGeo} material={materials.cabinetMat} castShadow />
+              <mesh position={[0, 0, 0.35]} geometry={geometries.subBaffleGeo} material={materials.baffleMat} />
+            </group>
+          ))}
+          {[-1, 1].map((side) => (
+            <mesh
+              key={`kinetic-bass-trap-${side}`}
+              position={[side * (W * 0.5 - 0.78), 1.9, frontZ + 0.86]}
+              rotation={[0, -side * 0.72, 0]}
+              material={materials.cabinetMat}
+            >
+              <boxGeometry args={[0.92, 3.6, 0.65]} />
+            </mesh>
+          ))}
+        </group>
+      )}
     </group>
   );
 };

@@ -484,7 +484,8 @@ export function createCarpetTexture(
   } else if (
     sideLightStyle === 'crimson_velocity_4dx' ||
     sideLightStyle === 'arctic_parametric_fins' ||
-    sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
+    sideLightStyle === 'exoskeleton_crimson_matrix_4dx' ||
+    sideLightStyle === 'kinetic_slate_baffles_4dx'
   ) {
     // Dark non-slip waterproof acoustic flooring: rubberized matte carbon deck with subtle diamond-tread & waterproof tile seams
     ctx.fillStyle = '#0c0d11';
@@ -668,7 +669,8 @@ export function createCarpetBumpTexture(sideLightStyle?: SideLightStyle): THREE.
   } else if (
     sideLightStyle === 'crimson_velocity_4dx' ||
     sideLightStyle === 'arctic_parametric_fins' ||
-    sideLightStyle === 'exoskeleton_crimson_matrix_4dx'
+    sideLightStyle === 'exoskeleton_crimson_matrix_4dx' ||
+    sideLightStyle === 'kinetic_slate_baffles_4dx'
   ) {
     // Tactile non-slip waterproof rubberized diamond tread lugs
     for (let y = 6; y < 256; y += 16) {
@@ -1287,6 +1289,51 @@ export function createAcousticWallTexture(
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(6, 2.5);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  if (sideLightStyle === 'kinetic_slate_baffles_4dx') {
+    // Deep charcoal/slate matte paint (#131720 to #1a1f2b) with perforated acoustic absorption micro-dots
+    const bg = ctx.createLinearGradient(0, 0, 512, 512);
+    bg.addColorStop(0, '#131720');
+    bg.addColorStop(0.5, '#171c26');
+    bg.addColorStop(1, '#12151c');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle geometric slate panel facets
+    ctx.fillStyle = '#1a1f2b';
+    ctx.fillRect(0, 0, 254, 254);
+    ctx.fillRect(258, 258, 254, 254);
+
+    // Perforated acoustic absorption matrix
+    ctx.fillStyle = 'rgba(5, 7, 10, 0.56)';
+    for (let y = 5; y < 512; y += 10) {
+      const off = ((y / 10) % 2) * 5;
+      for (let x = 5; x < 512; x += 10) {
+        ctx.beginPath();
+        ctx.arc((x + off) % 512, y, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Crisp recessed dark shadow seams
+    ctx.strokeStyle = '#090b10';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(2, 2, 508, 508);
+    ctx.beginPath();
+    ctx.moveTo(256, 0);
+    ctx.lineTo(256, 512);
+    ctx.moveTo(0, 256);
+    ctx.lineTo(512, 256);
+    ctx.stroke();
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(5, 2);
     tex.anisotropy = 8;
     return tex;
   }
@@ -2002,6 +2049,24 @@ export function createAcousticWallBumpTexture(
       ctx.lineTo(256, i);
       ctx.stroke();
     }
+  } else if (sideLightStyle === 'kinetic_slate_baffles_4dx') {
+    ctx.fillStyle = '#484848';
+    for (let y = 4; y < 256; y += 8) {
+      const off = ((y / 8) % 2) * 4;
+      for (let x = 4; x < 256; x += 8) {
+        ctx.beginPath();
+        ctx.arc((x + off) % 256, y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.strokeStyle = '#222222';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(128, 0);
+    ctx.lineTo(128, 256);
+    ctx.moveTo(0, 128);
+    ctx.lineTo(256, 128);
+    ctx.stroke();
   } else if (sideLightStyle === 'arctic_parametric_fins') {
     ctx.fillStyle = '#606060';
     for (let y = 3; y < 256; y += 6) {
@@ -3121,14 +3186,39 @@ export function createStandbyScreenTexture(
     if (architectureStyle === '4dx') {
       const isArctic = sideLightStyle === 'arctic_parametric_fins' || sideLightStyle === 'glacier_hex_matrix';
       const isThunder = sideLightStyle === 'thunder_emerald_waves';
-      const accentHex = isArctic ? '#22d3ee' : isThunder ? '#10b981' : '#ef4444';
+      const isKinetic250 = sideLightStyle === 'kinetic_slate_baffles_4dx';
+      const accentHex = isKinetic250
+        ? '#38bdf8'
+        : isArctic
+          ? '#22d3ee'
+          : isThunder
+            ? '#10b981'
+            : '#ef4444';
 
       const bgGrad = ctx.createRadialGradient(cx, cy, 30, cx, cy, 1150);
-      bgGrad.addColorStop(0, isArctic ? '#0c2536' : isThunder ? '#0a261c' : '#2a090c');
+      bgGrad.addColorStop(
+        0,
+        isKinetic250 ? '#112236' : isArctic ? '#0c2536' : isThunder ? '#0a261c' : '#2a090c',
+      );
       bgGrad.addColorStop(0.48, '#080a10');
       bgGrad.addColorStop(1, '#020204');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
+
+      if (isKinetic250) {
+        // Subtle architectural acoustic slat & motion-wave calibration lattice
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+        ctx.lineWidth = 2;
+        for (let x = 160; x <= W - 160; x += 160) {
+          ctx.beginPath();
+          ctx.moveTo(x, 80);
+          ctx.lineTo(x, H - 80);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.22)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(110, 72, W - 220, H - 144);
+      }
 
       // Dynamic kinetic speed streaks matching 4DX fins/exoskeleton
       ctx.strokeStyle = accentHex;
@@ -3146,16 +3236,18 @@ export function createStandbyScreenTexture(
       ctx.globalAlpha = 1;
 
       drawTitleBlock(
-        '4DX MULTI-SENSORY MOTION ARENA',
+        isKinetic250 ? '4DX 250-SEAT MOTION & ATMOS ARENA' : '4DX MULTI-SENSORY MOTION ARENA',
         theaterName || '4DX CINEMA',
-        'WIND · FOG · MOTION · ATMOS',
+        isKinetic250 ? '10×25 PITCH · WIND · MIST · STROBE · ATMOS' : 'WIND · FOG · MOTION · ATMOS',
         '#F8FAFC',
         accentHex,
-        isArctic
-          ? 'rgba(34, 211, 238, 0.56)'
-          : isThunder
-            ? 'rgba(16, 185, 129, 0.56)'
-            : 'rgba(239, 68, 68, 0.58)',
+        isKinetic250
+          ? 'rgba(56, 189, 248, 0.56)'
+          : isArctic
+            ? 'rgba(34, 211, 238, 0.56)'
+            : isThunder
+              ? 'rgba(16, 185, 129, 0.56)'
+              : 'rgba(239, 68, 68, 0.58)',
         false,
       );
       return;

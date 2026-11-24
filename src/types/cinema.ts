@@ -22,6 +22,7 @@ export type TheaterId =
   | '4dx_crimson'
   | '4dx_arctic'
   | '4dx_exoskeleton'
+  | '4dx_kinetic_250'
   | 'dolby'
   | 'dolby_cobalt'
   | 'dolby_bordeaux'
@@ -52,6 +53,7 @@ export type SeatModelType =
   | '4dx_arctic_pod'
   | '4dx_thunder_pod'
   | '4dx_exoskeleton_pod'
+  | '4dx_kinetic_pod'
   | 'dolby_recliner'
   | 'ice_recliner'
   | 'ice_cobalt_armchair'
@@ -85,6 +87,7 @@ export type SideLightStyle =
   | 'arctic_parametric_fins'
   | 'thunder_emerald_waves'
   | 'exoskeleton_crimson_matrix_4dx'
+  | 'kinetic_slate_baffles_4dx'
   | 'obsidian_slat_grazers'
   | 'diagonal_parabolic_ribs'
   | 'cobalt_veil_laser_recess'
@@ -124,6 +127,7 @@ export type CeilingLightStyle =
   | 'hexagonal_acoustic_4dx'
   | 'emerald_cloud_4dx'
   | 'industrial_exoskeleton_4dx'
+  | 'kinetic_4dx_grid_rig'
   | 'imax_starlight_coves'
   | 'imax_angular_grid'
   | 'imax_v_baffle_grid'
@@ -304,6 +308,15 @@ export interface FourDxSettings {
   windAudioEnabled: boolean;
   atmosphericLightEnabled: boolean;
 }
+
+export type FourDxWallLedTheme = 'idle' | 'storm' | 'action' | 'underwater';
+
+export type FourDxCameraPresetId =
+  | 'overview'
+  | 'seat_pov'
+  | 'aisle'
+  | 'screen_stage'
+  | 'wall_speaker_rig';
 
 export type AppRoute =
   | 'home'

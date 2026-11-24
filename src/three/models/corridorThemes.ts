@@ -480,6 +480,30 @@ export function getCorridorThemeConfig(config: TheaterConfiguration): CorridorTh
         gateTrimColor: '#ef4444',
       };
 
+    case 'kinetic_slate_baffles_4dx':
+      return {
+        ...base,
+        corridorWidth: 3.8,
+        corridorHeight: 3.9,
+        wallPattern: 'fourdx_kinetic',
+        primaryWallColor: '#131720',
+        secondaryWallColor: '#1a1f2b',
+        trimColor: '#0e1117',
+        metalColor: '#64748b',
+        accentColor: '#38bdf8',
+        secondaryAccentColor: '#f59e0b',
+        runnerColor: '#0e1117',
+        runnerBorderColor: '#f59e0b',
+        doorPrimaryColor: '#131720',
+        doorSecondaryColor: '#222836',
+        doorHandleColor: '#38bdf8',
+        ticketBgPrimary: '#0e1117',
+        ticketBgSecondary: '#16253b',
+        ticketAccent: '#38bdf8',
+        gateBodyColor: '#11151d',
+        gateTrimColor: '#38bdf8',
+      };
+
     case 'obsidian_slat_grazers':
       return {
         ...base,

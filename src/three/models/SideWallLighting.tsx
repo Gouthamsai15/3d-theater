@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { TheaterConfiguration } from '../../types/cinema';
+import { FourDxWallLedTheme, TheaterConfiguration } from '../../types/cinema';
 import {
   applyScreenBounceToMaterial,
   ScreenBounceUniforms,
@@ -26,6 +26,16 @@ import {
 } from '../materials/proceduralTextures';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getIceTheaterLayout } from './iceLayoutUtils';
+import { FourDxLiveTelemetry } from './fourDxTelemetry';
+
+const _kineticCovePrimaryBase = new THREE.Color('#38bdf8');
+const _kineticCoveSecondaryBase = new THREE.Color('#f59e0b');
+const _kineticCoveStormPrimary = new THREE.Color('#60a5fa');
+const _kineticCoveStormSecondary = new THREE.Color('#a78bfa');
+const _kineticCoveFirePrimary = new THREE.Color('#ef4444');
+const _kineticCoveFireSecondary = new THREE.Color('#f97316');
+const _kineticCoveFlash = new THREE.Color('#e0f2fe');
+const _kineticCoveWhite = new THREE.Color('#ffffff');
 
 export interface DeccanRockLobe {
   cx: number;
@@ -304,6 +314,10 @@ interface SideWallLightingProps {
   wallBayZs: number[];
   topTierY: number;
   lightFactor: number;
+  wallLedTheme?: FourDxWallLedTheme;
+  effectLightIntensity?: number;
+  isPlaying?: boolean;
+  fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
   trimMetalMat: THREE.Material;
   acousticPanelMat: THREE.Material;
   wallMat?: THREE.Material;
@@ -579,6 +593,10 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
   wallBayZs,
   topTierY,
   lightFactor,
+  wallLedTheme = 'idle',
+  effectLightIntensity = 0.85,
+  isPlaying = false,
+  fourDxTelemetryRef,
   trimMetalMat,
   acousticPanelMat,
   wallMat,
@@ -2001,6 +2019,182 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     arcticResources.violetStripMat.emissiveIntensity = lightFactor * 1.95;
     arcticResources.cyanStripMat.emissiveIntensity = lightFactor * 1.88;
   }
+
+  // Dedicated 4DX Kinetic Arena 250 resources: deep charcoal/slate matte paint (#131720-#1a1f2b), perforated absorption panels, dark graphite dado (#0e1117), and RGBW LED cove strips
+  const kinetic4dxResources = useMemo(() => {
+    if (sideLightStyle !== 'kinetic_slate_baffles_4dx') return null;
+
+    const perfCanvas = document.createElement('canvas');
+    perfCanvas.width = 128;
+    perfCanvas.height = 128;
+    const pCtx = perfCanvas.getContext('2d');
+    if (pCtx) {
+      pCtx.fillStyle = '#161b25';
+      pCtx.fillRect(0, 0, 128, 128);
+      pCtx.fillStyle = '#090b10';
+      for (let y = 8; y < 128; y += 16) {
+        for (let x = 8; x < 128; x += 16) {
+          pCtx.beginPath();
+          pCtx.arc(x, y, 3.1, 0, Math.PI * 2);
+          pCtx.fill();
+        }
+      }
+    }
+    const perfTex = new THREE.CanvasTexture(perfCanvas);
+    perfTex.wrapS = THREE.RepeatWrapping;
+    perfTex.wrapT = THREE.RepeatWrapping;
+    perfTex.repeat.set(6, 8);
+    perfTex.colorSpace = THREE.SRGBColorSpace;
+
+    const upperSlateMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#151a24',
+        roughness: 0.93,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const acousticSlatMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#1b202c',
+        roughness: 0.89,
+        metalness: 0.05,
+      }),
+      screenBounceUniforms,
+    );
+    const diffuserSlateMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#181e2a',
+        roughness: 0.91,
+        metalness: 0.04,
+      }),
+      screenBounceUniforms,
+    );
+    const perforatedPanelMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        map: perfTex,
+        bumpMap: perfTex,
+        bumpScale: 0.014,
+        color: '#ffffff',
+        roughness: 0.92,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const graphiteDadoMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#0e1117',
+        roughness: 0.9,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const matteSteelRevealMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#090b0f',
+        roughness: 0.56,
+        metalness: 0.45,
+      }),
+      screenBounceUniforms,
+    );
+    const covePrimaryMat = new THREE.MeshStandardMaterial({
+      color: '#101826',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.4,
+      roughness: 0.18,
+      toneMapped: false,
+    });
+    const coveSecondaryMat = new THREE.MeshStandardMaterial({
+      color: '#1c1208',
+      emissive: '#f59e0b',
+      emissiveIntensity: 1.0,
+      roughness: 0.2,
+      toneMapped: false,
+    });
+
+    return {
+      perfTex,
+      upperSlateMat,
+      acousticSlatMat,
+      diffuserSlateMat,
+      perforatedPanelMat,
+      graphiteDadoMat,
+      matteSteelRevealMat,
+      covePrimaryMat,
+      coveSecondaryMat,
+    };
+  }, [sideLightStyle, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      kinetic4dxResources?.perfTex.dispose();
+      kinetic4dxResources?.upperSlateMat.dispose();
+      kinetic4dxResources?.acousticSlatMat.dispose();
+      kinetic4dxResources?.diffuserSlateMat.dispose();
+      kinetic4dxResources?.perforatedPanelMat.dispose();
+      kinetic4dxResources?.graphiteDadoMat.dispose();
+      kinetic4dxResources?.matteSteelRevealMat.dispose();
+      kinetic4dxResources?.covePrimaryMat.dispose();
+      kinetic4dxResources?.coveSecondaryMat.dispose();
+    };
+  }, [kinetic4dxResources]);
+
+  useFrame(() => {
+    if (!kinetic4dxResources) return;
+    const scale = lightFactor * (0.2 + effectLightIntensity * 1.55);
+
+    if (isPlaying && fourDxTelemetryRef) {
+      const tel = fourDxTelemetryRef.current;
+      const bassDrive = tel.audioActive
+        ? THREE.MathUtils.clamp(tel.subBass * 0.65 + tel.bass * 0.35 + tel.bassTransient * 0.4, 0, 1.3)
+        : 0;
+      const flash = THREE.MathUtils.clamp(tel.lightningFlash, 0, 1);
+
+      if (tel.fireLevel > 0.2 && flash < 0.25) {
+        kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCoveFirePrimary);
+        kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveFireSecondary);
+      } else if (flash > 0.12) {
+        kinetic4dxResources.covePrimaryMat.emissive
+          .copy(_kineticCoveStormPrimary)
+          .lerp(_kineticCoveFlash, flash * 0.8);
+        kinetic4dxResources.coveSecondaryMat.emissive
+          .copy(_kineticCoveStormSecondary)
+          .lerp(_kineticCoveWhite, flash * 0.65);
+      } else {
+        kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCovePrimaryBase);
+        kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveSecondaryBase);
+      }
+
+      kinetic4dxResources.covePrimaryMat.emissiveIntensity =
+        scale * (0.78 + bassDrive * 0.95 + flash * 1.8);
+      kinetic4dxResources.coveSecondaryMat.emissiveIntensity =
+        scale * (0.62 + bassDrive * 0.8 + flash * 1.5);
+      return;
+    }
+
+    if (wallLedTheme === 'storm') {
+      kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCoveStormPrimary);
+      kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveStormSecondary);
+      kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 1.15;
+      kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 0.98;
+    } else if (wallLedTheme === 'action') {
+      kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCoveFirePrimary);
+      kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveFireSecondary);
+      kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 1.25;
+      kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 1.15;
+    } else if (wallLedTheme === 'underwater') {
+      kinetic4dxResources.covePrimaryMat.emissive.set('#06b6d4');
+      kinetic4dxResources.coveSecondaryMat.emissive.set('#22d3ee');
+      kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 1.12;
+      kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 0.96;
+    } else {
+      // Idle / Movie Mode: crisp low-glare cool-blue & warm-amber architectural coves
+      kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCovePrimaryBase);
+      kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveSecondaryBase);
+      kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 0.92;
+      kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 0.68;
+    }
+  });
 
   const sconceY = isPrivate ? Math.min(H * 0.58, 2.55) : Math.min(H * 0.56, topTierY + 2.05);
   const wallInnerX = W / 2 - 0.22;
@@ -7194,6 +7388,310 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           </group>
         )}
 
+      {/* 4DX Kinetic Arena 250: Low-Reflectance Charcoal/Slate Matte Walls, Graphite Vinyl Dado, Alternating Vertical/Angled Acoustic Slat Ribs, Perforated Absorption Panels & RGBW LED Cove Strips */}
+      {sideLightStyle === 'kinetic_slate_baffles_4dx' &&
+        kinetic4dxResources &&
+        (() => {
+          const zBayStart = frontZ + 2.3;
+          const zBayEnd = backZ - 1.4;
+          const bayTotalL = zBayEnd - zBayStart;
+          const bayCount = 8;
+          const bayW = bayTotalL / bayCount;
+          const soffitBottomY = H - 0.88;
+          const dadoHeightAt = (z: number) => {
+            if (z < firstRowZ - rowSpacing * 0.5) return 1.38;
+            const rFrac = THREE.MathUtils.clamp(
+              (z - firstRowZ) / Math.max(0.5, rowSpacing),
+              0,
+              Math.max(0, seatingRows - 1),
+            );
+            return Math.min(topTierY + 1.45, rFrac * rowElevationStep + 1.42);
+          };
+
+          return (
+            <group>
+              {[-1, 1].map((side) => {
+                const wallX = side * (W / 2 - 0.21);
+                const inDir = -side;
+                const dadoFrontZ0 = frontZ + 0.35;
+                const dadoFrontZ1 = firstRowZ - rowSpacing * 0.5;
+                const dadoRearZ = backZ - 0.25;
+                const dadoSlopeLen = Math.hypot(
+                  dadoRearZ - dadoFrontZ1,
+                  topTierY + 1.42 - 1.38,
+                );
+
+                return (
+                  <group key={`kinetic-4dx-wall-${side}`}>
+                    {/* Deep Charcoal-Slate Matte Upper Acoustic Wall Sheathing */}
+                    <mesh
+                      position={[wallX + inDir * 0.015, H * 0.5, 0]}
+                      material={kinetic4dxResources.upperSlateMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.03, H - 0.2, L - 0.4]} />
+                    </mesh>
+
+                    {/* Dark Graphite Lower Dado / Scuff-Resistant Kick Zone (Front Flat + Stepped Stadium Riser Follower) */}
+                    <mesh
+                      position={[wallX + inDir * 0.055, 0.7, (dadoFrontZ0 + dadoFrontZ1) * 0.5]}
+                      material={kinetic4dxResources.graphiteDadoMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.08, 1.4, Math.max(1, dadoFrontZ1 - dadoFrontZ0)]} />
+                    </mesh>
+                    {Array.from({ length: seatingRows }, (_, r) => {
+                      const rz = firstRowZ + r * rowSpacing;
+                      const rh = r * rowElevationStep + 1.42;
+                      return (
+                        <mesh
+                          key={`kinetic-dado-step-${side}-${r}`}
+                          position={[wallX + inDir * 0.055, rh * 0.5, rz]}
+                          material={kinetic4dxResources.graphiteDadoMat}
+                          receiveShadow
+                        >
+                          <boxGeometry args={[0.08, rh, rowSpacing + 0.04]} />
+                        </mesh>
+                      );
+                    })}
+                    {/* Rear Landing Dado Segment */}
+                    <mesh
+                      position={[
+                        wallX + inDir * 0.055,
+                        (topTierY + 1.45) * 0.5,
+                        (firstRowZ + (seatingRows - 1) * rowSpacing + rowSpacing * 0.5 + dadoRearZ) * 0.5,
+                      ]}
+                      material={kinetic4dxResources.graphiteDadoMat}
+                      receiveShadow
+                    >
+                      <boxGeometry
+                        args={[
+                          0.08,
+                          topTierY + 1.45,
+                          Math.max(0.4, dadoRearZ - (firstRowZ + (seatingRows - 1) * rowSpacing + rowSpacing * 0.5)),
+                        ]}
+                      />
+                    </mesh>
+
+                    {/* Matte Anodized Dado Coping Cap & Continuous Lower RGBW Cove Strip */}
+                    <ArchitecturalChannelBar
+                      start={[wallX + inDir * 0.095, 1.4, dadoFrontZ0 + 0.4]}
+                      end={[wallX + inDir * 0.095, 1.4, dadoFrontZ1]}
+                      thickness={0.055}
+                      depth={0.075}
+                      material={kinetic4dxResources.matteSteelRevealMat}
+                      interiorFocusY={H * 0.45}
+                    />
+                    <ArchitecturalChannelBar
+                      start={[wallX + inDir * 0.095, 1.4, dadoFrontZ1]}
+                      end={[wallX + inDir * 0.095, topTierY + 1.44, dadoRearZ]}
+                      thickness={0.055}
+                      depth={0.075}
+                      material={kinetic4dxResources.matteSteelRevealMat}
+                      interiorFocusY={H * 0.45}
+                    />
+                    {dadoSlopeLen > 0.5 && (
+                      <>
+                        <ArchitecturalChannelBar
+                          start={[wallX + inDir * 0.076, 1.46, dadoFrontZ0 + 0.6]}
+                          end={[wallX + inDir * 0.076, 1.46, dadoFrontZ1]}
+                          thickness={0.028}
+                          depth={0.026}
+                          material={kinetic4dxResources.coveSecondaryMat}
+                          housingMaterial={kinetic4dxResources.matteSteelRevealMat}
+                          interiorFocusY={H * 0.45}
+                        />
+                        <ArchitecturalChannelBar
+                          start={[wallX + inDir * 0.076, 1.46, dadoFrontZ1]}
+                          end={[wallX + inDir * 0.076, topTierY + 1.5, dadoRearZ - 0.25]}
+                          thickness={0.028}
+                          depth={0.026}
+                          material={kinetic4dxResources.coveSecondaryMat}
+                          housingMaterial={kinetic4dxResources.matteSteelRevealMat}
+                          interiorFocusY={H * 0.45}
+                        />
+                      </>
+                    )}
+
+                    {/* Continuous Upper Ceiling Soffit Valance + Upper Horizontal RGBW LED Cove Strip */}
+                    <mesh
+                      position={[wallX + inDir * 0.14, H - 0.44, 0]}
+                      material={kinetic4dxResources.upperSlateMat}
+                      receiveShadow
+                    >
+                      <boxGeometry args={[0.26, 0.88, L - 0.5]} />
+                    </mesh>
+                    <mesh
+                      position={[wallX + inDir * 0.075, soffitBottomY - 0.03, 0]}
+                      material={kinetic4dxResources.covePrimaryMat}
+                    >
+                      <boxGeometry args={[0.045, 0.036, L - 1.2]} />
+                    </mesh>
+
+                    {/* 8 Bays of Alternating Vertical Acoustic Slat Ribs, Perforated Absorption Panels & Stepped Angled Diffuser Modules */}
+                    {Array.from({ length: bayCount }, (_, bi) => {
+                      const z0 = zBayStart + bi * bayW + 0.1;
+                      const z1 = zBayStart + (bi + 1) * bayW - 0.1;
+                      const zMid = (z0 + z1) * 0.5;
+                      const spanZ = Math.max(1.2, z1 - z0);
+                      const botY = dadoHeightAt(zMid) + 0.16;
+                      const topY = soffitBottomY - 0.14;
+                      const panelH = Math.max(1.6, topY - botY);
+                      const midY = (botY + topY) * 0.5;
+                      const isSlatBay = bi % 2 === 0;
+
+                      return (
+                        <group key={`kinetic-bay-${side}-${bi}`}>
+                          {/* Recessed Perforated Slate Acoustic Absorption Panel */}
+                          <mesh
+                            position={[wallX + inDir * 0.045, midY, zMid]}
+                            material={kinetic4dxResources.perforatedPanelMat}
+                            receiveShadow
+                          >
+                            <boxGeometry args={[0.035, panelH, spanZ]} />
+                          </mesh>
+
+                          {/* Crisp Vertical Divider Pilaster Rib Catching Directional Grazing Light */}
+                          <mesh
+                            position={[wallX + inDir * 0.125, midY, z0 - 0.09]}
+                            material={kinetic4dxResources.acousticSlatMat}
+                            castShadow
+                            receiveShadow
+                          >
+                            <boxGeometry args={[0.18, panelH + 0.12, 0.12]} />
+                          </mesh>
+
+                          {isSlatBay ? (
+                            <group>
+                              {/* 5 Vertical Acoustic Slat Ribs with Alternating Depth Relief */}
+                              {Array.from({ length: 5 }, (_, si) => {
+                                const sz = THREE.MathUtils.lerp(z0 + 0.28, z1 - 0.28, si / 4);
+                                const ribProj = si % 2 === 0 ? 0.155 : 0.115;
+                                return (
+                                  <mesh
+                                    key={`k-slat-${si}`}
+                                    position={[wallX + inDir * ribProj, midY, sz]}
+                                    material={kinetic4dxResources.acousticSlatMat}
+                                    castShadow
+                                    receiveShadow
+                                  >
+                                    <boxGeometry args={[ribProj * 1.15, panelH - 0.08, 0.085]} />
+                                  </mesh>
+                                );
+                              })}
+                              {/* Recessed Vertical LED Cove Backlight Behind Outer Slat Frame */}
+                              <mesh
+                                position={[wallX + inDir * 0.078, midY, zMid]}
+                                material={kinetic4dxResources.covePrimaryMat}
+                              >
+                                <boxGeometry args={[0.018, panelH * 0.74, 0.032]} />
+                              </mesh>
+                            </group>
+                          ) : (
+                            <group>
+                              {/* 2 Stepped Angled Acoustic Diffuser/Absorber Baffle Modules Aimed Toward Seating */}
+                              {[-0.25, 0.25].map((zFrac, di) => {
+                                const dz = zMid + zFrac * spanZ;
+                                const yawAngle = side * (di === 0 ? 0.22 : -0.22);
+                                return (
+                                  <group
+                                    key={`k-diffuser-${di}`}
+                                    position={[wallX + inDir * 0.115, midY, dz]}
+                                    rotation={[0, yawAngle, 0]}
+                                  >
+                                    <mesh
+                                      material={kinetic4dxResources.diffuserSlateMat}
+                                      castShadow
+                                      receiveShadow
+                                    >
+                                      <boxGeometry args={[0.13, panelH - 0.18, spanZ * 0.36]} />
+                                    </mesh>
+                                    {/* Stepped Inner Acoustic Rib */}
+                                    <mesh
+                                      position={[inDir * 0.055, 0, 0]}
+                                      material={kinetic4dxResources.acousticSlatMat}
+                                    >
+                                      <boxGeometry args={[0.05, panelH - 0.42, spanZ * 0.16]} />
+                                    </mesh>
+                                  </group>
+                                );
+                              })}
+
+                              {/* Angled Diagonal RGBW LED Cove Strips Tucked Behind Geometric Diffuser Baffles */}
+                              <ArchitecturalChannelBar
+                                start={[wallX + inDir * 0.072, botY + 0.18, z0 + 0.24]}
+                                end={[wallX + inDir * 0.072, topY - 0.18, z1 - 0.24]}
+                                thickness={0.032}
+                                depth={0.028}
+                                material={kinetic4dxResources.covePrimaryMat}
+                                housingMaterial={kinetic4dxResources.matteSteelRevealMat}
+                                interiorFocusY={H * 0.45}
+                              />
+                              <ArchitecturalChannelBar
+                                start={[wallX + inDir * 0.072, topY - 0.18, z0 + 0.24]}
+                                end={[wallX + inDir * 0.072, botY + 0.18, z1 - 0.24]}
+                                thickness={0.026}
+                                depth={0.024}
+                                material={kinetic4dxResources.coveSecondaryMat}
+                                housingMaterial={kinetic4dxResources.matteSteelRevealMat}
+                                interiorFocusY={H * 0.45}
+                              />
+                            </group>
+                          )}
+                        </group>
+                      );
+                    })}
+                  </group>
+                );
+              })}
+
+              {/* Rear Wall Acoustic Slat Flanking Wings & Dado Coping */}
+              <group position={[0, 0, backZ - 0.22]}>
+                {[-1, 1].map((side) => {
+                  const wingStartX = side * (Math.min(4.8, W * 0.42) * 0.5 + 0.65);
+                  const wingEndX = side * (W * 0.5 - 0.45);
+                  const wingCx = (wingStartX + wingEndX) * 0.5;
+                  const wingW = Math.abs(wingEndX - wingStartX);
+                  return (
+                    <group key={`kinetic-rear-wing-${side}`}>
+                      <mesh
+                        position={[wingCx, (topTierY + 1.42) * 0.5, -0.04]}
+                        material={kinetic4dxResources.graphiteDadoMat}
+                      >
+                        <boxGeometry args={[wingW, topTierY + 1.42, 0.07]} />
+                      </mesh>
+                      <mesh
+                        position={[wingCx, (topTierY + 1.45 + H - 0.6) * 0.5, -0.03]}
+                        material={kinetic4dxResources.perforatedPanelMat}
+                      >
+                        <boxGeometry args={[wingW - 0.2, Math.max(1.2, H - topTierY - 2.2), 0.04]} />
+                      </mesh>
+                      {Array.from({ length: 6 }, (_, ri) => {
+                        const rx = THREE.MathUtils.lerp(wingStartX, wingEndX, ri / 5);
+                        return (
+                          <mesh
+                            key={`k-rear-slat-${ri}`}
+                            position={[rx, H * 0.5, -0.075]}
+                            material={kinetic4dxResources.acousticSlatMat}
+                          >
+                            <boxGeometry args={[0.1, H - 0.9, 0.11]} />
+                          </mesh>
+                        );
+                      })}
+                      <mesh
+                        position={[wingCx, H - 0.88, -0.06]}
+                        material={kinetic4dxResources.covePrimaryMat}
+                      >
+                        <boxGeometry args={[wingW - 0.3, 0.035, 0.04]} />
+                      </mesh>
+                    </group>
+                  );
+                })}
+              </group>
+            </group>
+          );
+        })()}
+
       {/* 4DX Thunder Arena: Dramatic 3D Parametric Ribbed Acoustic Fins in Matte Titanium Grey & Deep Espresso-Bronze + Inner Golden-Amber & Ice-White LEDs + Sleek Recessed Air Turbines */}
       {sideLightStyle === 'thunder_emerald_waves' &&
         thunderWaveWall &&
@@ -8596,6 +9094,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'arctic_parametric_fins' &&
         sideLightStyle !== 'thunder_emerald_waves' &&
         sideLightStyle !== 'exoskeleton_crimson_matrix_4dx' &&
+        sideLightStyle !== 'kinetic_slate_baffles_4dx' &&
         sideLightStyle !== 'obsidian_slat_grazers' &&
         sideLightStyle !== 'diagonal_parabolic_ribs' &&
         sideLightStyle !== 'cobalt_veil_laser_recess' &&

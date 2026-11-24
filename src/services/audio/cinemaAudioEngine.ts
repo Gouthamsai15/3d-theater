@@ -34,6 +34,10 @@ class CinemaAudioEngine {
   private signalAnalyser: AnalyserNode | null = null;
   private analyserBuf: Float32Array<ArrayBuffer> | null = null;
   private freqBuf: Uint8Array<ArrayBuffer> | null = null;
+  private leftBassAnalyser: AnalyserNode | null = null;
+  private rightBassAnalyser: AnalyserNode | null = null;
+  private leftFreqBuf: Uint8Array<ArrayBuffer> | null = null;
+  private rightFreqBuf: Uint8Array<ArrayBuffer> | null = null;
   private bassBaseline = 0;
   private stereoDirectGain: GainNode | null = null;
   private dolbyBusGain: GainNode | null = null;
@@ -200,13 +204,27 @@ class CinemaAudioEngine {
     this.inputBus.channelInterpretation = 'speakers';
 
     this.signalAnalyser = ctx.createAnalyser();
-    this.signalAnalyser.fftSize = 1024;
+    this.signalAnalyser.fftSize = 2048;
     this.signalAnalyser.minDecibels = -76;
     this.signalAnalyser.maxDecibels = -12;
-    this.signalAnalyser.smoothingTimeConstant = 0.42;
+    this.signalAnalyser.smoothingTimeConstant = 0.36;
     this.analyserBuf = new Float32Array(this.signalAnalyser.fftSize);
     this.freqBuf = new Uint8Array(this.signalAnalyser.frequencyBinCount);
     this.bassBaseline = 0;
+
+    this.leftBassAnalyser = ctx.createAnalyser();
+    this.leftBassAnalyser.fftSize = 512;
+    this.leftBassAnalyser.minDecibels = -76;
+    this.leftBassAnalyser.maxDecibels = -12;
+    this.leftBassAnalyser.smoothingTimeConstant = 0.4;
+    this.leftFreqBuf = new Uint8Array(this.leftBassAnalyser.frequencyBinCount);
+
+    this.rightBassAnalyser = ctx.createAnalyser();
+    this.rightBassAnalyser.fftSize = 512;
+    this.rightBassAnalyser.minDecibels = -76;
+    this.rightBassAnalyser.maxDecibels = -12;
+    this.rightBassAnalyser.smoothingTimeConstant = 0.4;
+    this.rightFreqBuf = new Uint8Array(this.rightBassAnalyser.frequencyBinCount);
 
     this.stereoDirectGain = ctx.createGain();
     this.stereoDirectGain.gain.value = 0;
@@ -226,6 +244,8 @@ class CinemaAudioEngine {
     // Build Clean 7.1.2 Dolby Cinema Spatial Array -> HRTF (desktop) / equalpower (mobile)
     this.splitter = ctx.createChannelSplitter(2);
     this.inputBus.connect(this.splitter);
+    this.splitter.connect(this.leftBassAnalyser, 0);
+    this.splitter.connect(this.rightBassAnalyser, 1);
 
     const mobile = isMobileDevice();
     const createSpatialPanner = (
@@ -788,21 +808,37 @@ class CinemaAudioEngine {
     active: boolean;
     subBass: number;
     bass: number;
+    bassBalance: number;
     mid: number;
     high: number;
     transient: number;
     rms: number;
   }): void {
     if (
+      this.ctx?.state === 'running' &&
+      !this.videoHijackDisabled &&
+      this.pendingVideos.size > this.videoSources.size
+    ) {
+      this.flushPendingVideos();
+    }
+
+    const mixMuted =
+      Boolean(this.lastMixState?.settings.muted) ||
+      (this.lastMixState ? this.lastMixState.settings.masterVolume <= 0.005 : false) ||
+      (this.lastMixState ? this.lastMixState.settings.videoVolume <= 0.005 : false);
+
+    if (
       !this.signalAnalyser ||
       !this.freqBuf ||
       this.ctx?.state !== 'running' ||
       this.videoSources.size === 0 ||
-      this.videoHijackDisabled
+      this.videoHijackDisabled ||
+      mixMuted
     ) {
       out.active = false;
       out.subBass = 0;
       out.bass = 0;
+      out.bassBalance = 0;
       out.mid = 0;
       out.high = 0;
       out.transient = 0;
@@ -814,7 +850,7 @@ class CinemaAudioEngine {
     const freq = this.freqBuf;
     this.signalAnalyser.getByteFrequencyData(freq);
 
-    // Time-domain RMS loudness for real physical sound-pressure scaling
+    // Time-domain RMS loudness for physical sound-pressure verification
     let rms = 0;
     if (this.analyserBuf) {
       this.signalAnalyser.getFloatTimeDomainData(this.analyserBuf);
@@ -829,9 +865,9 @@ class CinemaAudioEngine {
 
     const sr = this.ctx.sampleRate || 48000;
     const binHz = sr / this.signalAnalyser.fftSize;
-    const subStart = Math.max(1, Math.floor(35 / binHz));
-    const subEnd = Math.max(subStart, Math.min(freq.length - 1, Math.round(115 / binHz)));
-    const bassEnd = Math.max(subEnd + 1, Math.min(freq.length - 1, Math.round(240 / binHz)));
+    const subStart = Math.max(1, Math.floor(25 / binHz));
+    const subEnd = Math.max(subStart, Math.min(freq.length - 1, Math.round(105 / binHz)));
+    const bassEnd = Math.max(subEnd + 1, Math.min(freq.length - 1, Math.round(220 / binHz)));
     const midEnd = Math.max(bassEnd + 1, Math.min(freq.length - 1, Math.round(2200 / binHz)));
     const highEnd = Math.max(midEnd + 1, Math.min(freq.length - 1, Math.round(8500 / binHz)));
 
@@ -856,8 +892,8 @@ class CinemaAudioEngine {
 
     const subAvg = subSum / (Math.max(1, subEnd - subStart + 1) * 255);
     const bassAvg = bassSum / (Math.max(1, bassEnd - subStart + 1) * 255);
-    const subRaw = (subPeak / 255) * 0.62 + subAvg * 0.38;
-    const bassRaw = (bassPeak / 255) * 0.58 + bassAvg * 0.42;
+    const subRaw = (subPeak / 255) * 0.65 + subAvg * 0.35;
+    const bassRaw = (bassPeak / 255) * 0.6 + bassAvg * 0.4;
     const midRaw = midSum / (Math.max(1, midEnd - bassEnd) * 255);
     const highRaw = highSum / (Math.max(1, highEnd - midEnd) * 255);
 
@@ -867,6 +903,7 @@ class CinemaAudioEngine {
       out.active = false;
       out.subBass = 0;
       out.bass = 0;
+      out.bassBalance = 0;
       out.mid = 0;
       out.high = 0;
       out.transient = 0;
@@ -875,25 +912,52 @@ class CinemaAudioEngine {
       return;
     }
 
-    const subBass = Math.max(0, (subRaw - 0.08) / 0.92);
-    const bass = Math.max(0, (bassRaw - 0.08) / 0.92);
+    const subBass = Math.max(0, (subRaw - 0.07) / 0.93);
+    const bass = Math.max(0, (bassRaw - 0.07) / 0.93);
     const mid = Math.max(0, (midRaw - 0.06) / 0.94);
     const high = Math.max(0, (highRaw - 0.05) / 0.95);
+
+    // Stereo L/R bass balance (-1 = left-heavy bass, +1 = right-heavy bass, 0 = centered bass)
+    let bassBalance = 0;
+    if (
+      this.leftBassAnalyser &&
+      this.rightBassAnalyser &&
+      this.leftFreqBuf &&
+      this.rightFreqBuf &&
+      (subBass > 0.04 || bass > 0.04)
+    ) {
+      this.leftBassAnalyser.getByteFrequencyData(this.leftFreqBuf);
+      this.rightBassAnalyser.getByteFrequencyData(this.rightFreqBuf);
+      const lrBinHz = sr / this.leftBassAnalyser.fftSize;
+      const lrEnd = Math.max(1, Math.min(this.leftFreqBuf.length - 1, Math.round(220 / lrBinHz)));
+      let lSum = 0;
+      let rSum = 0;
+      for (let i = 1; i <= lrEnd; i++) {
+        lSum += this.leftFreqBuf[i];
+        rSum += this.rightFreqBuf[i];
+      }
+      const denom = lSum + rSum;
+      if (denom > 18) {
+        const diff = (rSum - lSum) / denom;
+        bassBalance = Math.abs(diff) < 0.04 ? 0 : Math.max(-1, Math.min(1, diff * 1.4));
+      }
+    }
 
     const peakBass = Math.max(subBass, bass);
     const deltaAboveFloor = peakBass - this.bassBaseline;
     // Asymmetric follower: captures crisp drum/beat kicks while letting sustained basslines stay heavy
-    const floorAlpha = deltaAboveFloor > 0 ? 0.045 : 0.14;
+    const floorAlpha = deltaAboveFloor > 0 ? 0.04 : 0.14;
     this.bassBaseline = this.bassBaseline * (1 - floorAlpha) + peakBass * floorAlpha;
 
     const transient = Math.min(
       1,
-      Math.max(0, deltaAboveFloor * 3.4) + Math.max(0, (peakBass - 0.72) * 0.45),
+      Math.max(0, deltaAboveFloor * 3.6) + Math.max(0, (peakBass - 0.72) * 0.45),
     );
 
     out.active = true;
     out.subBass = Math.min(1, subBass);
     out.bass = Math.min(1, bass);
+    out.bassBalance = bassBalance;
     out.mid = Math.min(1, mid);
     out.high = Math.min(1, high);
     out.transient = transient;
@@ -994,6 +1058,10 @@ class CinemaAudioEngine {
     this.signalAnalyser = null;
     this.analyserBuf = null;
     this.freqBuf = null;
+    this.leftBassAnalyser = null;
+    this.rightBassAnalyser = null;
+    this.leftFreqBuf = null;
+    this.rightFreqBuf = null;
     this.bassBaseline = 0;
     this.stereoDirectGain = null;
     this.dolbyBusGain = null;

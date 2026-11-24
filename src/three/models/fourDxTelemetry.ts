@@ -4,6 +4,7 @@ export interface FourDxAudioTelemetry {
   active: boolean;
   subBass: number;
   bass: number;
+  bassBalance: number;
   mid: number;
   high: number;
   transient: number;
@@ -14,6 +15,7 @@ export interface FourDxLiveTelemetry {
   audioActive: boolean;
   bass: number;
   subBass: number;
+  bassBalance: number;
   bassTransient: number;
   highFreq: number;
   rms: number;
@@ -38,6 +40,7 @@ export function createInitialFourDxTelemetry(): FourDxLiveTelemetry {
     audioActive: false,
     bass: 0,
     subBass: 0,
+    bassBalance: 0,
     bassTransient: 0,
     highFreq: 0,
     rms: 0,
@@ -219,7 +222,7 @@ export function analyzeVideoFrameOptical(
   // Sudden bright flash spike (lightning strike, gunfire, explosion flash)
   const lumDelta = hasPrevFrame ? meanLum - prevMeanLum : 0;
   const flashSpike =
-    lumDelta > 0.095 ? THREE.MathUtils.clamp((lumDelta - 0.08) * 4.5, 0, 1) : 0;
+    lumDelta > 0.16 ? THREE.MathUtils.clamp((lumDelta - 0.14) * 4.5, 0, 1) : 0;
 
   out.motionEnergy = rawMotion;
   out.panBias = rawPanBias;
@@ -265,7 +268,7 @@ export function createFourDxMotionSpring(): FourDxMotionSpringState {
 
 /**
  * Advances the unified 4DX seat & camera hydraulic spring-damper strictly from
- * live audio bass, beat kicks, RMS energy & video scene telemetry.
+ * live audio bass, sub-bass transients, and stereo L/R bass balance (zero randomness).
  */
 export function stepFourDxSeatPhysics(
   spring: FourDxMotionSpringState,
@@ -276,82 +279,71 @@ export function stepFourDxSeatPhysics(
   const safeDt = Math.min(Math.max(dt, 0.001), 0.04);
   spring.beatCooldown = Math.max(0, spring.beatCooldown - safeDt);
 
-  if (!active) {
-    telemetry.seatHeaveY = THREE.MathUtils.damp(telemetry.seatHeaveY, 0, 7, safeDt);
-    telemetry.seatPitchX = THREE.MathUtils.damp(telemetry.seatPitchX, 0, 7, safeDt);
-    telemetry.seatRollZ = THREE.MathUtils.damp(telemetry.seatRollZ, 0, 7, safeDt);
+  if (!active || !telemetry.audioActive) {
+    telemetry.seatHeaveY = Math.abs(telemetry.seatHeaveY) < 1e-4 ? 0 : THREE.MathUtils.damp(telemetry.seatHeaveY, 0, 8, safeDt);
+    telemetry.seatPitchX = Math.abs(telemetry.seatPitchX) < 1e-4 ? 0 : THREE.MathUtils.damp(telemetry.seatPitchX, 0, 8, safeDt);
+    telemetry.seatRollZ = Math.abs(telemetry.seatRollZ) < 1e-4 ? 0 : THREE.MathUtils.damp(telemetry.seatRollZ, 0, 8, safeDt);
     spring.heavePos = telemetry.seatHeaveY;
-    spring.heaveVel *= 0.8;
+    spring.heaveVel *= 0.78;
     spring.pitchPos = telemetry.seatPitchX;
-    spring.pitchVel *= 0.8;
+    spring.pitchVel *= 0.78;
     spring.rollPos = telemetry.seatRollZ;
-    spring.rollVel *= 0.8;
+    spring.rollVel *= 0.78;
     spring.prevBass = 0;
     return;
   }
 
-  // Real-time audio low-end & loudness drive (0 during quiet dialogue/silence!)
-  const bassDrive = telemetry.audioActive
-    ? THREE.MathUtils.clamp(
-        telemetry.subBass * 0.56 + telemetry.bass * 0.32 + telemetry.rms * 0.24,
-        0,
-        1.25,
-      )
-    : telemetry.lightningFlash * 0.75 + Math.max(0, telemetry.sceneMotion - 0.22) * 0.65;
+  // Pure low-frequency audio bass energy (0 during quiet dialogue/silence!)
+  const bassDrive = THREE.MathUtils.clamp(
+    telemetry.subBass * 0.65 + telemetry.bass * 0.35,
+    0,
+    1.25,
+  );
+  const beatPunch = Math.max(
+    telemetry.bassTransient,
+    Math.max(0, telemetry.subBass - spring.prevBass) * 3.0,
+  );
+  const gatedBass = bassDrive > 0.04 ? bassDrive : 0;
+  const gatedPunch = beatPunch > 0.08 ? beatPunch : 0;
 
-  const beatPunch = telemetry.audioActive
-    ? Math.max(telemetry.bassTransient, Math.max(0, telemetry.subBass - spring.prevBass) * 2.8)
-    : Math.max(telemetry.lightningFlash * 0.9, Math.max(0, telemetry.sceneMotion - 0.35) * 0.9);
-
-  // Hydraulic beat kick: fires sharp vertical thump, pitch rock & alternating pod roll on drum hits/drops
-  if (beatPunch > 0.16 && spring.beatCooldown <= 0) {
-    spring.beatSign = -spring.beatSign;
-    spring.beatCooldown = 0.11;
-    const kick = THREE.MathUtils.clamp(beatPunch * (0.75 + bassDrive * 0.55), 0.2, 1.4);
-    spring.heaveVel -= kick * 0.92;
-    spring.pitchVel += kick * 0.72 * (spring.beatSign > 0 ? 1 : -0.68);
-    spring.rollVel += kick * 0.66 * spring.beatSign;
+  // Hydraulic beat kick: deterministic vertical thump + pitch kick + stereo bass roll
+  if (gatedPunch > 0.14 && spring.beatCooldown <= 0) {
+    spring.beatCooldown = 0.1;
+    const kick = THREE.MathUtils.clamp(gatedPunch * (0.75 + gatedBass * 0.55), 0.18, 1.35);
+    spring.heaveVel -= kick * 0.96;
+    spring.pitchVel += kick * 0.68;
+    spring.rollVel += telemetry.bassBalance * kick * 0.72;
   }
 
-  // Nonlinear bass scaling: subtle in calm scenes, strong hydraulic throw on heavy bass & beats
-  const heavyScale = Math.min(1.4, bassDrive * bassDrive);
-  const rumbleStrength = Math.max(0, bassDrive - 0.1);
-  if (rumbleStrength > 0.01) {
-    spring.rumblePhase += safeDt * (18 + bassDrive * 24);
-    spring.groovePhase += safeDt * (4.2 + bassDrive * 5.6);
+  // Heavy sub-bass tactile transducer pulse (only active during real sub-bass pressure)
+  const subStrength = Math.max(0, telemetry.subBass - 0.22);
+  if (subStrength > 0.01) {
+    spring.rumblePhase += safeDt * (24 + telemetry.subBass * 22);
   }
-  const bassRumble =
-    rumbleStrength > 0.01 ? Math.sin(spring.rumblePhase) * rumbleStrength * 0.036 : 0;
+  const subRumble =
+    subStrength > 0.01 ? Math.sin(spring.rumblePhase) * subStrength * 0.018 : 0;
 
-  const targetHeave =
-    -bassDrive * 0.048 +
-    telemetry.pitchBias * 0.018 +
-    bassRumble;
-  const targetPitch =
-    heavyScale * 0.056 * Math.sin(spring.groovePhase * 0.85) +
-    telemetry.pitchBias * 0.042 +
-    beatPunch * 0.045 -
-    telemetry.fireLevel * 0.016;
-  const targetRoll =
-    heavyScale * 0.062 * Math.cos(spring.groovePhase * 0.65) * spring.beatSign -
-    telemetry.panBias * 0.048;
+  const heavyScale = Math.min(1.4, gatedBass * gatedBass);
+  const targetHeave = -gatedBass * 0.052 + subRumble;
+  const targetPitch = heavyScale * 0.048 + gatedPunch * 0.055;
+  const targetRoll = telemetry.bassBalance * gatedBass * 0.075;
 
-  // Underdamped hydraulic actuator springs for crisp physical slam + smooth rebound
-  const stiffnessH = 82;
-  const dampingH = 9.8;
+  // Underdamped hydraulic actuator springs for crisp physical bass slam + smooth rebound
+  const stiffnessH = 86;
+  const dampingH = 10.2;
   spring.heaveVel += (-stiffnessH * (spring.heavePos - targetHeave) - dampingH * spring.heaveVel) * safeDt;
   spring.heavePos += spring.heaveVel * safeDt;
 
-  const stiffnessR = 46;
-  const dampingR = 8.4;
+  const stiffnessR = 50;
+  const dampingR = 9.0;
   spring.pitchVel += (-stiffnessR * (spring.pitchPos - targetPitch) - dampingR * spring.pitchVel) * safeDt;
   spring.pitchPos += spring.pitchVel * safeDt;
 
   spring.rollVel += (-stiffnessR * (spring.rollPos - targetRoll) - dampingR * spring.rollVel) * safeDt;
   spring.rollPos += spring.rollVel * safeDt;
 
-  telemetry.seatHeaveY = THREE.MathUtils.clamp(spring.heavePos, -0.125, 0.115);
-  telemetry.seatPitchX = THREE.MathUtils.clamp(spring.pitchPos, -0.135, 0.135);
-  telemetry.seatRollZ = THREE.MathUtils.clamp(spring.rollPos, -0.125, 0.125);
-  spring.prevBass = telemetry.audioActive ? telemetry.subBass : bassDrive;
+  telemetry.seatHeaveY = THREE.MathUtils.clamp(spring.heavePos, -0.115, 0.095);
+  telemetry.seatPitchX = THREE.MathUtils.clamp(spring.pitchPos, -0.11, 0.125);
+  telemetry.seatRollZ = THREE.MathUtils.clamp(spring.rollPos, -0.1, 0.1);
+  spring.prevBass = telemetry.subBass;
 }

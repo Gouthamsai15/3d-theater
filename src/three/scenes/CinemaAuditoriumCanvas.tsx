@@ -269,6 +269,8 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
         <AuditoriumShell
           config={config}
           lightFactor={lightFactor}
+          isPlaying={isActivelyPlaying}
+          fourDxTelemetryRef={fourDxTelemetryRef}
           screenBounceUniforms={screenBounceUniforms}
           screenBounceRef={screenBounceRef}
           isSoftwareGl={webglInfo.isSoftwareGl || graphicsQuality === 'low'}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { TheaterConfiguration } from '../../types/cinema';
+import { useFrame } from '@react-three/fiber';
+import { FourDxWallLedTheme, TheaterConfiguration } from '../../types/cinema';
 import { getAisleWorldXs } from '../../config/seating/seatGenerator';
 import {
   createAuditoriumTextures,
@@ -20,10 +21,16 @@ import { buildDeccanJaggedRockGeo, DeccanRockLobe, SideWallLighting } from './Si
 import { BeachEnvironment } from './BeachEnvironment';
 import { ScreenBounceSample } from './CinemaScreen';
 import { getPortalLayoutMetrics } from './corridorThemes';
+import { FourDxLiveTelemetry } from './fourDxTelemetry';
 
 interface AuditoriumShellProps {
   config: TheaterConfiguration;
   lightFactor: number; // 0 = dark show playing, 1 = auditorium open
+  wallLedTheme?: FourDxWallLedTheme;
+  effectLightIntensity?: number;
+  motionTestActive?: boolean;
+  isPlaying?: boolean;
+  fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
   screenBounceUniforms?: ScreenBounceUniforms;
   screenBounceRef?: React.MutableRefObject<ScreenBounceSample>;
   isSoftwareGl?: boolean;
@@ -380,6 +387,11 @@ const BeachShell: React.FC<AuditoriumShellProps> = ({
 const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   config,
   lightFactor,
+  wallLedTheme = 'idle',
+  effectLightIntensity = 0.85,
+  motionTestActive = false,
+  isPlaying = false,
+  fourDxTelemetryRef,
   screenBounceUniforms,
 }) => {
   const {
@@ -420,6 +432,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
   const isExoskeleton4dx = sideLightStyle === 'exoskeleton_crimson_matrix_4dx';
+  const isKinetic4dx = sideLightStyle === 'kinetic_slate_baffles_4dx';
   const isDolbyObsidian = sideLightStyle === 'obsidian_slat_grazers';
   const isDolbyCobalt = sideLightStyle === 'diagonal_parabolic_ribs';
   const isDolbyVeil = sideLightStyle === 'cobalt_veil_laser_recess';
@@ -1050,12 +1063,133 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     };
   }, [materials]);
 
+  const kineticWindRotorRefs = useRef<(THREE.Group | null)[]>([]);
+  const kineticCeilingMats = useMemo(() => {
+    if (!isKinetic4dx) return null;
+    const velvetProsceniumMat = new THREE.MeshStandardMaterial({
+      color: '#08090c',
+      roughness: 0.98,
+      metalness: 0.0,
+    });
+    const ceilingSoffitMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#131720',
+        roughness: 0.94,
+        metalness: 0.03,
+      }),
+      screenBounceUniforms,
+    );
+    const trussSteelMat = applyScreenBounceToMaterial(
+      new THREE.MeshStandardMaterial({
+        color: '#181d26',
+        roughness: 0.42,
+        metalness: 0.72,
+      }),
+      screenBounceUniforms,
+    );
+    const strobeEmissiveMat = new THREE.MeshStandardMaterial({
+      color: '#e2e8f0',
+      emissive: '#e0f2fe',
+      emissiveIntensity: 0.6,
+      roughness: 0.14,
+      toneMapped: false,
+    });
+    const ceilingCoveMat = new THREE.MeshStandardMaterial({
+      color: '#0f172a',
+      emissive: '#38bdf8',
+      emissiveIntensity: 1.0,
+      roughness: 0.2,
+      toneMapped: false,
+    });
+    return {
+      velvetProsceniumMat,
+      ceilingSoffitMat,
+      trussSteelMat,
+      strobeEmissiveMat,
+      ceilingCoveMat,
+    };
+  }, [isKinetic4dx, screenBounceUniforms]);
+
+  useEffect(() => {
+    return () => {
+      if (!kineticCeilingMats) return;
+      Object.values(kineticCeilingMats).forEach((m) => m.dispose());
+    };
+  }, [kineticCeilingMats]);
+
+  useFrame((_state, delta) => {
+    if (!isKinetic4dx || !kineticCeilingMats) return;
+    const dt = Math.min(delta, 0.05);
+    const scale = lightFactor * (0.2 + effectLightIntensity * 1.55);
+
+    if (isPlaying && fourDxTelemetryRef) {
+      const tel = fourDxTelemetryRef.current;
+      const bassDrive = tel.audioActive ? THREE.MathUtils.clamp(tel.subBass * 0.65 + tel.bass * 0.35, 0, 1.25) : 0;
+      const rotorDrive = THREE.MathUtils.clamp(Math.max(bassDrive * 0.85, tel.windLevel), 0, 1.25);
+      if (rotorDrive > 0.04) {
+        const rotorSpeed = rotorDrive * 10.5;
+        for (let i = 0; i < kineticWindRotorRefs.current.length; i++) {
+          const r = kineticWindRotorRefs.current[i];
+          if (r) r.rotation.z += dt * rotorSpeed * (i % 2 === 0 ? 1 : -1);
+        }
+      }
+
+      const flashBoost = tel.lightningFlash * 3.2;
+      if (tel.fireLevel > 0.2 && tel.lightningFlash < 0.25) {
+        kineticCeilingMats.strobeEmissiveMat.emissive.set('#f97316');
+        kineticCeilingMats.ceilingCoveMat.emissive.set('#ef4444');
+      } else if (tel.lightningFlash > 0.15) {
+        kineticCeilingMats.strobeEmissiveMat.emissive.set('#e0f2fe');
+        kineticCeilingMats.ceilingCoveMat.emissive.set('#60a5fa');
+      } else {
+        kineticCeilingMats.strobeEmissiveMat.emissive.set('#93c5fd');
+        kineticCeilingMats.ceilingCoveMat.emissive.set('#38bdf8');
+      }
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity =
+        (0.28 + bassDrive * 1.35 + flashBoost) * scale;
+      kineticCeilingMats.ceilingCoveMat.emissiveIntensity =
+        (0.65 + bassDrive * 0.9 + tel.lightningFlash * 1.5) * scale;
+      return;
+    }
+
+    // Preview card / doors-open state: rotors stay still unless Motion Test is explicitly active
+    const previewRotorSpeed = motionTestActive ? 9.5 : wallLedTheme === 'storm' ? 6.5 : 0;
+    if (previewRotorSpeed > 0) {
+      for (let i = 0; i < kineticWindRotorRefs.current.length; i++) {
+        const r = kineticWindRotorRefs.current[i];
+        if (r) r.rotation.z += dt * previewRotorSpeed * (i % 2 === 0 ? 1 : -1);
+      }
+    }
+
+    if (wallLedTheme === 'storm') {
+      kineticCeilingMats.strobeEmissiveMat.emissive.set('#e0f2fe');
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = 0.85 * scale;
+      kineticCeilingMats.ceilingCoveMat.emissive.set('#60a5fa');
+      kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.15;
+    } else if (wallLedTheme === 'action') {
+      kineticCeilingMats.strobeEmissiveMat.emissive.set('#f97316');
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 1.8 : 0.85) * scale;
+      kineticCeilingMats.ceilingCoveMat.emissive.set('#ef4444');
+      kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.25;
+    } else if (wallLedTheme === 'underwater') {
+      kineticCeilingMats.strobeEmissiveMat.emissive.set('#22d3ee');
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = scale * 0.8;
+      kineticCeilingMats.ceilingCoveMat.emissive.set('#06b6d4');
+      kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.1;
+    } else {
+      kineticCeilingMats.strobeEmissiveMat.emissive.set('#93c5fd');
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 1.1 : 0.35) * scale;
+      kineticCeilingMats.ceilingCoveMat.emissive.set('#38bdf8');
+      kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 0.85;
+    }
+  });
+
   // Step lights remain ALWAYS ON during the entire show
   materials.posterMat.emissiveIntensity = 0.02 + lightFactor * 0.46;
   materials.entranceSignMat.opacity = 0.08 + lightFactor * 0.92;
   materials.translucentQuartzMat.emissiveIntensity = 0.34 + lightFactor * 0.64;
 
-  const stepEmissiveIntensity = 1.45;
+  const stepEmissiveIntensity = isKinetic4dx ? 0.85 + effectLightIntensity * 0.75 : 1.45;
   const rowBadgeOpacity = 0.65 + lightFactor * 0.35;
   const wallAccentIntensity = lightFactor * 1.55;
   const ceilingPuckIntensity = lightFactor * 2.2;
@@ -1846,15 +1980,15 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 );
               })()}
 
-              {/* Compact aisle safety handrail posts (brushed aluminum on 4DX Thunder Arena, dark metallic on Crimson/Arctic/Exo-Skeleton; omitted on The Deccan open central staircase) */}
-              {!isDeccanDolby && (isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
+              {/* Compact aisle safety handrail posts (brushed aluminum on 4DX Thunder Arena, dark metallic on Crimson/Arctic/Exo-Skeleton/Kinetic; omitted on The Deccan open central staircase) */}
+              {!isDeccanDolby && (isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || isKinetic4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
                 <group position={[ax + (ax >= 0 ? 0.52 : -0.52), tier.y, tier.z - tier.depth / 2 + 0.14]}>
                   <mesh
                     position={[0, 0.38, 0]}
                     material={
                       isThunder4dx
                         ? materials.brushedAluminumMat
-                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx
+                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx || isKinetic4dx
                           ? materials.nosingMat
                           : materials.trimMetalMat
                     }
@@ -1873,14 +2007,14 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                     material={
                       isThunder4dx
                         ? materials.brushedAluminumMat
-                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx
+                        : isCrimson4dx || isArctic4dx || isExoskeleton4dx || isKinetic4dx
                           ? materials.nosingMat
                           : materials.trimMetalMat
                     }
                   >
                     <boxGeometry args={[0.038, 0.03, Math.hypot(rowSpacing, rowElevationStep) * 1.02]} />
                   </mesh>
-                  {(isCrimson4dx || isArctic4dx || isExoskeleton4dx) && (
+                  {(isCrimson4dx || isArctic4dx || isExoskeleton4dx || isKinetic4dx) && (
                     <mesh position={[0, 0.46, rowSpacing * 0.48]} rotation={[Math.atan2(rowElevationStep, rowSpacing), 0, 0]} material={materials.trimMetalMat}>
                       <boxGeometry args={[0.02, 0.018, Math.hypot(rowSpacing, rowElevationStep) * 1.02]} />
                     </mesh>
@@ -1904,6 +2038,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isArctic4dx ||
                 isThunder4dx ||
                 isExoskeleton4dx ||
+                isKinetic4dx ||
                 isPrivateVolcanic ||
                 isScreenX ||
                 isMandap2d ||
@@ -1911,8 +2046,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isDolbyVeil ||
                 isKakatiyaDolby) &&
                 [
-                  isKakatiyaDolby ? -0.78 : isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : -0.46,
-                  isKakatiyaDolby ? 0.78 : isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : 0.46,
+                  isKakatiyaDolby ? -0.78 : isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : isKinetic4dx ? -0.68 : -0.46,
+                  isKakatiyaDolby ? 0.78 : isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : isKinetic4dx ? 0.68 : 0.46,
                 ].map((ex, ei) => (
                   <mesh
                     key={`aisle-edge-${tier.row}-${aIdx}-${ei}`}
@@ -2172,6 +2307,41 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
+      {/* 4DX Kinetic Arena 250: Low-Glare Velvet-Black Proscenium Frame (#08090c) & Acoustic Sub-Stage Cavity */}
+      {isKinetic4dx && kineticCeilingMats && (
+        <group>
+          {/* Matte Velvet-Black Proscenium Side Wings Flanking 18m Screen */}
+          {[-1, 1].map((side) => (
+            <mesh
+              key={`kinetic-prosc-wing-${side}`}
+              position={[side * (W / 2 - wingWidth / 2 - 0.04), H * 0.5, screenPosition[2] + 0.14]}
+              material={kineticCeilingMats.velvetProsceniumMat}
+              receiveShadow
+            >
+              <boxGeometry args={[wingWidth + 0.25, H - 0.08, 0.36]} />
+            </mesh>
+          ))}
+          {/* Upper Velvet-Black Proscenium Valance */}
+          {valanceHeight > 0.15 && (
+            <mesh
+              position={[0, H - valanceHeight / 2 - 0.02, screenPosition[2] + 0.14]}
+              material={kineticCeilingMats.velvetProsceniumMat}
+              receiveShadow
+            >
+              <boxGeometry args={[screenWidth + 1.0, valanceHeight + 0.14, 0.38]} />
+            </mesh>
+          )}
+          {/* Lower Acoustic Floor Kick & Sub-Screen Fascia Sill (behind-screen LCR/sub cavity stays cleanly accessible behind z = -14) */}
+          <mesh
+            position={[0, Math.max(0.24, (screenPosition[1] - screenHeight / 2) * 0.5), screenPosition[2] + 0.18]}
+            material={kineticCeilingMats.velvetProsceniumMat}
+            receiveShadow
+          >
+            <boxGeometry args={[W - 0.4, Math.max(0.45, screenPosition[1] - screenHeight / 2 + 0.06), 0.22]} />
+          </mesh>
+        </group>
+      )}
+
       {/* Raised Front Stage Apron */}
       {!isIce &&
         !isScreenX &&
@@ -2180,6 +2350,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isArctic4dx &&
         !isThunder4dx &&
         !isExoskeleton4dx &&
+        !isKinetic4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -2883,6 +3054,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isArctic4dx &&
         !isThunder4dx &&
         !isExoskeleton4dx &&
+        !isKinetic4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -2933,6 +3105,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isArctic4dx &&
         !isThunder4dx &&
         !isExoskeleton4dx &&
+        !isKinetic4dx &&
         !isDolbyFloating &&
         !isVolcanicCopper2d &&
         !isMandap2d &&
@@ -3970,6 +4143,10 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         wallBayZs={wallBayZs}
         topTierY={topTierY}
         lightFactor={lightFactor}
+        wallLedTheme={wallLedTheme}
+        effectLightIntensity={effectLightIntensity}
+        isPlaying={isPlaying}
+        fourDxTelemetryRef={fourDxTelemetryRef}
         trimMetalMat={materials.trimMetalMat}
         acousticPanelMat={materials.acousticPanelMat}
         wallMat={materials.wallMat}
@@ -4689,12 +4866,13 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* 4DX Overhead Wind/Strobe Rig Truss (generic 4DX halls, replaced by bespoke ceilings in Crimson, Arctic, Thunder & Exo-Skeleton 4DX) */}
+      {/* 4DX Overhead Wind/Strobe Rig Truss (generic 4DX halls, replaced by bespoke ceilings in Crimson, Arctic, Thunder, Exo-Skeleton & Kinetic 4DX) */}
       {environmentProfile.architectureStyle === '4dx' &&
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
         !isExoskeleton4dx &&
+        !isKinetic4dx &&
         Array.from({ length: 4 }, (_, i) => (
           <group key={`4dx-rig-${i}`} position={[0, H - 0.58, firstRowZ + i * 3.6]}>
             <mesh material={materials.trimMetalMat}>
@@ -6194,6 +6372,122 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
               roughness={0.22}
             />
           </mesh>
+        </group>
+      )}
+
+      {/* 4DX Kinetic Arena 250 Ceiling: Charcoal-Slate Matte Acoustic Soffits (#131720), Structural Perimeter Trusses, Spinning Wind Turbines, Mist/Scent Manifolds, High-Output Strobe Pods & RGBW Coves */}
+      {ceilingLightStyle === 'kinetic_4dx_grid_rig' && kineticCeilingMats && (
+        <group>
+          {/* Transverse Matte Charcoal-Slate Acoustic Ceiling Baffles (#131720) */}
+          {Array.from({ length: 7 }, (_, i) => {
+            const tz = frontZ + 2.5 + i * ((L - 5.0) / 6);
+            return (
+              <mesh
+                key={`kinetic-ceil-baffle-${i}`}
+                position={[0, H - 0.31, tz]}
+                material={kineticCeilingMats.ceilingSoffitMat}
+                receiveShadow
+              >
+                <boxGeometry args={[W - 1.2, 0.22, 0.22]} />
+              </mesh>
+            );
+          })}
+
+          {/* Perimeter Structural Steel Trusses Supporting Wind Turbines & Strobes */}
+          {[-W * 0.41, W * 0.41].map((tx, ti) => (
+            <group key={`kinetic-perim-truss-${ti}`} position={[tx, H - 0.56, -0.5]}>
+              <mesh material={kineticCeilingMats.trussSteelMat}>
+                <boxGeometry args={[0.28, 0.16, L - 3.6]} />
+              </mesh>
+              <mesh position={[0, -0.1, 0]} material={kineticCeilingMats.ceilingCoveMat}>
+                <boxGeometry args={[0.05, 0.024, L - 4.2]} />
+              </mesh>
+            </group>
+          ))}
+
+          {/* Ceiling-Mounted Wind Turbines / Directional Blower Nozzles Along Upper Perimeter Trusses */}
+          {[
+            { x: -W * 0.39, z: -L * 0.28 },
+            { x: W * 0.39, z: -L * 0.28 },
+            { x: -W * 0.39, z: L * 0.04 },
+            { x: W * 0.39, z: L * 0.04 },
+          ].map((wt, wi) => (
+            <group key={`kinetic-wind-turbine-${wi}`} position={[wt.x, H - 0.88, wt.z]} rotation={[0.24, wt.x < 0 ? 0.16 : -0.16, 0]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]} material={kineticCeilingMats.trussSteelMat} castShadow>
+                <cylinderGeometry args={[0.38, 0.42, 0.46, 20, 1, true]} />
+              </mesh>
+              <mesh position={[0, 0.32, 0]} material={kineticCeilingMats.trussSteelMat}>
+                <boxGeometry args={[0.12, 0.36, 0.12]} />
+              </mesh>
+              {/* Spinning 6-Blade Wind Rotor */}
+              <group
+                ref={(el) => {
+                  kineticWindRotorRefs.current[wi] = el;
+                }}
+              >
+                <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.brushedAluminumMat}>
+                  <cylinderGeometry args={[0.08, 0.08, 0.12, 12]} />
+                </mesh>
+                {Array.from({ length: 6 }, (_, bi) => (
+                  <mesh
+                    key={`blade-${bi}`}
+                    rotation={[0, 0, (bi * Math.PI) / 3]}
+                    material={materials.brushedAluminumMat}
+                  >
+                    <boxGeometry args={[0.66, 0.08, 0.02]} />
+                  </mesh>
+                ))}
+              </group>
+            </group>
+          ))}
+
+          {/* Longitudinal Mist, Rain & Scent Effect Manifold Pipes + HVAC Diffuser Pods */}
+          {[-W * 0.17, W * 0.17].map((mx, mi) => (
+            <group key={`kinetic-mist-pipe-${mi}`} position={[mx, H - 0.46, 0]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]} material={materials.brushedAluminumMat}>
+                <cylinderGeometry args={[0.032, 0.032, L - 5.2, 10]} />
+              </mesh>
+              {Array.from({ length: 9 }, (_, ni) => {
+                const nz = frontZ + 4.0 + ni * ((L - 7.8) / 8);
+                return (
+                  <group key={`k-mist-noz-${ni}`} position={[0, -0.055, nz]}>
+                    <mesh material={kineticCeilingMats.trussSteelMat}>
+                      <cylinderGeometry args={[0.042, 0.042, 0.04, 10]} />
+                    </mesh>
+                    <mesh position={[0, -0.05, 0]} material={materials.brushedAluminumMat}>
+                      <cylinderGeometry args={[0.014, 0.028, 0.06, 10]} />
+                    </mesh>
+                  </group>
+                );
+              })}
+            </group>
+          ))}
+
+          {/* High-Output Strobe Light Pods Near Upper Front & Side Trusses */}
+          {[
+            { x: -W * 0.37, y: H - 0.72, z: frontZ + 3.2 },
+            { x: W * 0.37, y: H - 0.72, z: frontZ + 3.2 },
+            { x: -W * 0.41, y: H - 0.72, z: -L * 0.08 },
+            { x: W * 0.41, y: H - 0.72, z: -L * 0.08 },
+            { x: -W * 0.41, y: H - 0.72, z: L * 0.18 },
+            { x: W * 0.41, y: H - 0.72, z: L * 0.18 },
+          ].map((sp, si) => (
+            <group key={`kinetic-strobe-${si}`} position={[sp.x, sp.y, sp.z]} rotation={[0.35, sp.x < 0 ? 0.32 : -0.32, 0]}>
+              <mesh material={kineticCeilingMats.trussSteelMat}>
+                <boxGeometry args={[0.36, 0.18, 0.18]} />
+              </mesh>
+              <mesh position={[0, 0, 0.095]} material={kineticCeilingMats.strobeEmissiveMat}>
+                <planeGeometry args={[0.3, 0.12]} />
+              </mesh>
+            </group>
+          ))}
+
+          {/* Ceiling RGBW Perimeter Coves Synced to 4DX Theme */}
+          {[-W * 0.29, W * 0.29].map((cx, ci) => (
+            <mesh key={`kinetic-ceil-cove-${ci}`} position={[cx, H - 0.24, 0]} material={kineticCeilingMats.ceilingCoveMat}>
+              <boxGeometry args={[0.045, 0.025, L - 3.0]} />
+            </mesh>
+          ))}
         </group>
       )}
 

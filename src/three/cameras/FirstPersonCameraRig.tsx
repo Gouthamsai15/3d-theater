@@ -1142,17 +1142,17 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
     look.yaw = THREE.MathUtils.damp(look.yaw, look.targetYaw, followLambda, dt);
     look.pitch = THREE.MathUtils.damp(look.pitch, look.targetPitch, followLambda, dt);
 
-    // Synchronized 4DX camera heave, pitch & roll driven by live audio bass + video optical motion
+    // Synchronized 4DX camera heave, pitch & roll matching each seat's local hydraulic pedestal pivot
     let motionX = 0;
     let motionY = 0;
     let swayPitch = 0;
     let swayRoll = 0;
     if (isPlaying && fourDxCameraIntensity > 0.01 && fourDxTelemetryRef) {
       const tel = fourDxTelemetryRef.current;
-      motionY = tel.seatHeaveY * 1.15 * fourDxCameraIntensity;
-      motionX = -tel.seatRollZ * 0.62 * fourDxCameraIntensity;
-      swayPitch = tel.seatPitchX * 0.92 * fourDxCameraIntensity;
-      swayRoll = tel.seatRollZ * 0.85 * fourDxCameraIntensity;
+      motionY = tel.seatHeaveY * fourDxCameraIntensity;
+      motionX = -Math.sin(tel.seatRollZ) * 0.92 * fourDxCameraIntensity;
+      swayPitch = tel.seatPitchX * fourDxCameraIntensity;
+      swayRoll = tel.seatRollZ * fourDxCameraIntensity;
     }
 
     if (viewMode === 'screen_full') {

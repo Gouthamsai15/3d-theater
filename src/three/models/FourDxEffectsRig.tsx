@@ -49,6 +49,7 @@ export const FourDxEffectsRig: React.FC<FourDxEffectsRigProps> = ({
     config.sideLightStyle === 'crimson_velocity_4dx' ||
     config.sideLightStyle === 'arctic_parametric_fins' ||
     config.sideLightStyle === 'thunder_emerald_waves' ||
+    config.sideLightStyle === 'kinetic_slate_baffles_4dx' ||
     isExoskeleton4dx;
 
   const { W, L, H, firstRowZ, screenZ, screenY, screenW, screenH } = useMemo(
@@ -422,14 +423,13 @@ export const FourDxEffectsRig: React.FC<FourDxEffectsRigProps> = ({
     const rainLevel = tel ? tel.rainLevel : 0;
     const snowLevel = tel ? tel.snowLevel : 0;
     const windLevel = tel ? tel.windLevel : 0;
-    const sceneMotion = tel ? tel.sceneMotion : 0;
     const bass = tel ? tel.bass : 0;
     const subBass = tel ? tel.subBass : 0;
     const lightningFlash = tel ? tel.lightningFlash : 0;
 
-    // 1. Live Video-Driven Wind & Exo-Skeleton Storm Turbines (idle when calm)
+    // 1. Live Audio-Bass & Storm-Wind Driven Wind & Exo-Skeleton Storm Turbines (idle when calm)
     const windDrive = THREE.MathUtils.clamp(
-      windLevel * 0.65 + sceneMotion * 0.35 + bass * 0.32,
+      windLevel * 0.6 + bass * 0.45,
       0,
       1,
     );
@@ -451,7 +451,6 @@ export const FourDxEffectsRig: React.FC<FourDxEffectsRigProps> = ({
       const arr = posAttr.array as Float32Array;
       for (let i = 0; i < particleCount; i++) {
         arr[i * 3 + 2] += windSpeed * dt;
-        arr[i * 3 + 1] += Math.sin(t * 2.6 + i) * 0.12 * dt;
         if (arr[i * 3 + 2] > L * 0.45) {
           arr[i * 3] = (Math.random() - 0.5) * (W - 2.5);
           arr[i * 3 + 1] = 1.0 + Math.random() * (H - 2.4);
@@ -536,7 +535,7 @@ export const FourDxEffectsRig: React.FC<FourDxEffectsRigProps> = ({
     }
 
     const fireGlowEnergy = activeFire * (1.0 + subBass * 0.65);
-    const flicker = 0.88 + Math.sin(t * 24) * 0.07 + Math.cos(t * 37) * 0.05;
+    const flicker = 0.82 + subBass * 0.38;
     if (fireLightLeftRef.current) {
       const leftBias = THREE.MathUtils.clamp(1.0 - fireCenterX * 0.45, 0.5, 1.35);
       fireLightLeftRef.current.intensity = THREE.MathUtils.damp(

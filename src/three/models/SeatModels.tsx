@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ThreeEvent, useFrame } from '@react-three/fiber';
-import { CameraViewMode, SeatData, SeatModelType, TheaterConfiguration } from '../../types/cinema';
+import { CameraViewMode, FourDxWallLedTheme, SeatData, SeatModelType, TheaterConfiguration } from '../../types/cinema';
 import { getFourSeatPodGroupKey } from '../../config/seating/seatGenerator';
 import { createMarbleTrayTexture, createSeatUpholsteryTextures } from '../materials/proceduralTextures';
 import {
@@ -12,6 +12,19 @@ import { BeachSeats } from './BeachSeats';
 import { ReservedSeatMarker } from './ReservedSeatMarker';
 import { FourDxLiveTelemetry } from './fourDxTelemetry';
 
+const _kineticPivotMat = new THREE.Matrix4();
+const _kineticInvPivotMat = new THREE.Matrix4();
+const _kineticRotMat = new THREE.Matrix4();
+const _kineticTransformMat = new THREE.Matrix4();
+const _kineticEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const _kineticRestMat = new THREE.Matrix4();
+const _kineticFinalMat = new THREE.Matrix4();
+const _kineticColor = new THREE.Color();
+const _kineticHighlightIdle = new THREE.Color('#38bdf8');
+const _kineticHighlightStorm = new THREE.Color('#a78bfa');
+const _kineticHighlightAction = new THREE.Color('#f97316');
+const _kineticHighlightCyan = new THREE.Color('#22d3ee');
+
 interface SeatModelsProps {
   config: TheaterConfiguration;
   seats: SeatData[];
@@ -20,6 +33,9 @@ interface SeatModelsProps {
   fourDxVibration: number; // 0..1 active motion intensity
   fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
   isPlaying: boolean;
+  motionTestActive?: boolean;
+  motionTestIntensity?: number;
+  wallLedTheme?: FourDxWallLedTheme;
   lightFactor?: number; // 0 = dark show, 1 = house lights on
   viewMode?: CameraViewMode;
   interactive?: boolean;
@@ -420,6 +436,32 @@ function getSeatProportions(model: SeatModelType, widthScale = 1): SeatPartOffse
         pedestalRadius: 0.13,
         pedestalHeight: 0.28,
         pedestalPos: [0, 0.27, 0.03],
+        is4dxPod: true,
+      };
+    case '4dx_kinetic_pod':
+      return {
+        cushionWidth: 0.57 * s,
+        cushionHeight: 0.165,
+        cushionDepth: 0.56,
+        cushionPos: [0, 0.48, 0.01],
+        backrestWidth: 0.55 * s,
+        backrestHeight: 0.72,
+        backrestDepth: 0.16,
+        backrestPos: [0, 0.85, 0.22],
+        backrestTilt: 0.1,
+        headrestWidth: 0.44 * s,
+        headrestHeight: 0.24,
+        headrestDepth: 0.16,
+        headrestPos: [0, 1.25, 0.27],
+        armWidth: 0.105,
+        armHeight: 0.125,
+        armDepth: 0.58,
+        armOffsetX: 0.345 * s,
+        armPosY: 0.65,
+        armPosZ: 0.02,
+        pedestalRadius: 0.19,
+        pedestalHeight: 0.36,
+        pedestalPos: [0, 0.19, 0.04],
         is4dxPod: true,
       };
     case '4dx_motion':
@@ -1057,6 +1099,9 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   fourDxVibration,
   fourDxTelemetryRef,
   isPlaying,
+  motionTestActive = false,
+  motionTestIntensity = 0.75,
+  wallLedTheme = 'idle',
   lightFactor = 1,
   viewMode = 'seat',
   interactive = false,
@@ -1118,11 +1163,25 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   const isChampagneDaybed = seatModel === 'champagne_daybed';
   const isScreenXPit = seatModel === 'screenx_lounge_pit';
   const isMultiplexScreenXRocker = seatModel === 'screenx_multiplex_rocker';
+  const motionEnvelopeRef = useRef(0);
+  const kineticNeedsResetRef = useRef(false);
+  const kineticRestMatricesRef = useRef<{
+    mesh: THREE.InstancedMesh;
+    matrices: Float32Array;
+  }[]>([]);
+  const kineticRestColorsRef = useRef<{
+    cushion: THREE.Color[];
+    backrest: THREE.Color[];
+    headrest: THREE.Color[];
+  }>({ cushion: [], backrest: [], headrest: [] });
+
   const isCrimson4dxPod = seatModel === '4dx_crimson_pod';
   const isArctic4dxPod = seatModel === '4dx_arctic_pod';
   const isThunder4dxPod = seatModel === '4dx_thunder_pod';
   const isExoskeleton4dxPod = seatModel === '4dx_exoskeleton_pod';
-  const isAny4dxPod = isCrimson4dxPod || isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod;
+  const isKinetic4dxPod = seatModel === '4dx_kinetic_pod';
+  const isBlockPod4dx = isCrimson4dxPod || isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod;
+  const isAny4dxPod = isBlockPod4dx || isKinetic4dxPod;
   const isMultiplexStadium = seatModel === 'multiplex_stadium';
   const isMandapSeat = seatModel === 'mandap_royal_stadium';
   const isParametricPurpleSeat = seatModel === 'charcoal_purple_stadium';
@@ -1160,11 +1219,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                       ? 'violet_stitched'
                       : isExoskeleton4dxPod
                         ? 'crimson_tech_leather'
-                        : isThunder4dxPod
+                        : isThunder4dxPod || isKinetic4dxPod
                           ? 'perforated'
                           : 'default',
       ),
-    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat, isDolbyDeccanSeat],
+    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat, isDolbyDeccanSeat],
   );
 
   const marbleTrayMap = useMemo(
@@ -1206,7 +1265,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
 
   // Group modular synchronized 4DX motion pods so every 4-seat (or 3-seat center) bank sits on an articulated hydraulic chassis deck
   const fourSeatPods = useMemo(() => {
-    if (!isAny4dxPod) return [];
+    if (!isBlockPod4dx) return [];
     const podMap = new Map<string, { sumX: number; minX: number; maxX: number; y: number; z: number; yaw: number; count: number }>();
     seats.forEach((seat) => {
       const key = getFourSeatPodGroupKey(seat.rowIndex, seat.seatNumber, config);
@@ -1229,7 +1288,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       yaw: val.yaw,
       width: Math.max(1.85, val.maxX - val.minX + 0.84),
     }));
-  }, [isAny4dxPod, seats, config]);
+  }, [isBlockPod4dx, seats, config]);
 
   useEffect(() => {
     return () => {
@@ -1332,9 +1391,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                                           ? '#363b44'
                                           : isExoskeleton4dxPod
                                             ? '#13151b'
-                                            : isAny4dxPod
-                                              ? '#16181f'
-                                              : environmentProfile.seatTrimColor,
+                                            : isKinetic4dxPod
+                                              ? '#181e29'
+                                              : isAny4dxPod
+                                                ? '#16181f'
+                                                : environmentProfile.seatTrimColor,
         roughness: isIceRecliner
           ? 0.28
           : isIceCobaltArmchair
@@ -1432,11 +1493,13 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
               ? '#c9a861'
               : isThunder4dxPod
                 ? '#9aa3b2'
-                : isExoskeleton4dxPod
-                  ? '#181b22'
-                  : isAny4dxPod
-                    ? '#1a1d24'
-                    : '#121318',
+                : isKinetic4dxPod
+                  ? '#1e2532'
+                  : isExoskeleton4dxPod
+                    ? '#181b22'
+                    : isAny4dxPod
+                      ? '#1a1d24'
+                      : '#121318',
         roughness: isThunder4dxPod ? 0.26 : isScreenXPit ? 0.32 : isWalnutLoveseat || isChampagneDaybed ? 0.28 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.8 : 0.36,
         metalness: isThunder4dxPod ? 0.88 : isScreenXPit ? 0.82 : isWalnutLoveseat || isChampagneDaybed ? 0.85 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.15 : 0.78,
       }),
@@ -1477,19 +1540,21 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                             ? '#b91c1c'
                             : isArctic4dxPod
                               ? '#8b5cf6'
-                              : isThunder4dxPod
-                                ? '#b4becd'
-                                : isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
-                                  ? '#252934'
-                                  : '#525866',
+                              : isKinetic4dxPod
+                                ? '#0ea5e9'
+                                : isThunder4dxPod
+                                  ? '#b4becd'
+                                  : isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
+                                    ? '#252934'
+                                    : '#525866',
         roughness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.72 : 0.24,
         metalness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.16 : 0.88,
       }),
       screenBounceUniforms,
     );
     const nozzleMat = new THREE.MeshStandardMaterial({
-      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
-      emissive: isArctic4dxPod ? '#8b5cf6' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
+      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isKinetic4dxPod ? '#38bdf8' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
+      emissive: isArctic4dxPod ? '#8b5cf6' : isKinetic4dxPod ? '#38bdf8' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
       emissiveIntensity: isThunder4dxPod || isExoskeleton4dxPod ? 0.26 : 0.35,
       roughness: 0.24,
       metalness: 0.86,
@@ -1503,7 +1568,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     });
     const pipingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
+        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isKinetic4dxPod ? '#38bdf8' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
         emissive: isParametricPurpleSeat ? '#7e22ce' : '#000000',
         emissiveIntensity: isParametricPurpleSeat ? 0.26 : 0,
         roughness: isThunder4dxPod || isDolbyKakatiyaSeat || isDolbyDeccanSeat ? 0.32 : 0.28,
@@ -1521,7 +1586,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     );
     const lumbarMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isThunder4dxPod ? '#323740' : isExoskeleton4dxPod ? '#15181f' : '#16181f',
+        color: isThunder4dxPod ? '#323740' : isKinetic4dxPod ? '#161b24' : isExoskeleton4dxPod ? '#15181f' : '#16181f',
         roughness: 0.38,
         metalness: 0.04,
       }),
@@ -1763,18 +1828,22 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
             props.pedestalHeight,
             isChampagneDaybed ? props.cushionDepth * 0.86 : isScreenXPit ? 0.86 : 0.56,
           )
-        : new THREE.CylinderGeometry(
-            props.pedestalRadius * 0.82,
-            props.pedestalRadius * 1.12,
-            props.pedestalHeight,
-            14,
-          );
-    const pedestalFlangeGeo = new THREE.CylinderGeometry(
-      props.pedestalRadius * 1.9,
-      props.pedestalRadius * 2.1,
-      0.035,
-      16,
-    );
+        : isKinetic4dxPod
+          ? new THREE.BoxGeometry(props.cushionWidth * 0.62, props.pedestalHeight, 0.38)
+          : new THREE.CylinderGeometry(
+              props.pedestalRadius * 0.82,
+              props.pedestalRadius * 1.12,
+              props.pedestalHeight,
+              14,
+            );
+    const pedestalFlangeGeo = isKinetic4dxPod
+      ? new THREE.BoxGeometry(props.cushionWidth * 0.84, 0.045, 0.52)
+      : new THREE.CylinderGeometry(
+          props.pedestalRadius * 1.9,
+          props.pedestalRadius * 2.1,
+          0.035,
+          16,
+        );
     const footrestGeo = buildErgonomicCushionGeo(props.cushionWidth * 0.88, 0.095, 0.36);
     const nozzleGeo = new THREE.CylinderGeometry(0.025, 0.032, 0.56, 10);
     nozzleGeo.rotateZ(Math.PI / 2);
@@ -2245,7 +2314,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
         );
         pipingRef.current.setMatrixAt(idx, dummy.matrix);
       }
-      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod) && backShellRef.current) {
+      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && backShellRef.current) {
         setSeatPart(
           sx,
           sy,
@@ -2334,11 +2403,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.cushionWidth * 0.38, 0.31, -0.31, -0.35);
           steelFootHangerRightRef.current.setMatrixAt(idx, dummy.matrix);
         }
-        if ((isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod) && lumbarCushionRef.current) {
+        if ((isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && lumbarCushionRef.current) {
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, props.backrestPos[1] - 0.19, props.backrestPos[2] - 0.095, props.backrestTilt);
           lumbarCushionRef.current.setMatrixAt(idx, dummy.matrix);
         }
-        if ((isThunder4dxPod || isExoskeleton4dxPod) && leftActuatorRef.current && rightActuatorRef.current) {
+        if ((isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && leftActuatorRef.current && rightActuatorRef.current) {
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, -props.backrestWidth * 0.51, props.backrestPos[1] - 0.12, props.backrestPos[2] - 0.04, props.backrestTilt);
           leftActuatorRef.current.setMatrixAt(idx, dummy.matrix);
           setSeatPart(sx, sy, sz, yaw, cosY, sinY, props.backrestWidth * 0.51, props.backrestPos[1] - 0.12, props.backrestPos[2] - 0.04, props.backrestTilt);
@@ -2583,38 +2652,198 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
       m.computeBoundingSphere();
     });
-  }, [seats, selectedSeatId, hoveredSeatId, props, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat]);
 
-  const seatPivotZ = useMemo(
-    () => config.firstRowZ + Math.max(0, config.seatingRows - 1) * config.rowSpacing * 0.5,
-    [config.firstRowZ, config.seatingRows, config.rowSpacing],
-  );
+    const supports4dxMotion = Boolean(config.supports4dxEffects || seatModel === '4dx_motion' || isAny4dxPod);
+    if (supports4dxMotion) {
+      const upperRefs = [
+        cushionRef.current,
+        backrestRef.current,
+        headrestRef.current,
+        leftArmRef.current,
+        rightArmRef.current,
+        cupholderRef.current,
+        cupRimRef.current,
+        footrestRef.current,
+        nozzleRef.current,
+        backShellRef.current,
+        leftBolsterRef.current,
+        rightBolsterRef.current,
+        redStitchTrimRef.current,
+        neckVentRef.current,
+        steelFootBarRef.current,
+        steelFootHangerLeftRef.current,
+        steelFootHangerRightRef.current,
+        lumbarCushionRef.current,
+        leftActuatorRef.current,
+        rightActuatorRef.current,
+        seatTagRef.current,
+        popcornBucketRef.current,
+        popcornMoundRef.current,
+        sodaCupRef.current,
+        sodaLidRef.current,
+        sodaStrawRef.current,
+      ];
+      kineticRestMatricesRef.current = upperRefs
+        .filter((m): m is THREE.InstancedMesh => Boolean(m))
+        .map((m) => ({
+          mesh: m,
+          matrices: new Float32Array(m.instanceMatrix.array),
+        }));
 
-  useFrame((_, delta) => {
+      if (isKinetic4dxPod) {
+        const extractColors = (mesh: THREE.InstancedMesh | null) => {
+          const arr: THREE.Color[] = [];
+          if (!mesh) return arr;
+          for (let i = 0; i < seats.length; i++) {
+            const c = new THREE.Color();
+            if (mesh.instanceColor) mesh.getColorAt(i, c);
+            else c.copy(normalColor);
+            arr.push(c);
+          }
+          return arr;
+        };
+        kineticRestColorsRef.current = {
+          cushion: extractColors(cushionRef.current),
+          backrest: extractColors(backrestRef.current),
+          headrest: extractColors(headrestRef.current),
+        };
+      } else {
+        kineticRestColorsRef.current = { cushion: [], backrest: [], headrest: [] };
+      }
+    } else {
+      kineticRestMatricesRef.current = [];
+      kineticRestColorsRef.current = { cushion: [], backrest: [], headrest: [] };
+    }
+  }, [seats, selectedSeatId, hoveredSeatId, props, config.supports4dxEffects, seatModel, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat]);
+
+  useFrame((state, delta) => {
     const grp = seatGroupRef.current;
     if (!grp) return;
     const dt = Math.min(delta, 0.05);
-    if (
-      (config.supports4dxEffects || seatModel === '4dx_motion' || isAny4dxPod) &&
-      isPlaying &&
-      fourDxVibration > 0.01 &&
-      fourDxTelemetryRef
-    ) {
+    const supports4dxMotion = Boolean(config.supports4dxEffects || seatModel === '4dx_motion' || isAny4dxPod);
+    if (!supports4dxMotion) return;
+
+    const restMeshes = kineticRestMatricesRef.current;
+    const restColors = kineticRestColorsRef.current;
+
+    let heave = 0;
+    let pitch = 0;
+    let roll = 0;
+    let bassEnergyGlow = 0;
+    let shouldMove = false;
+
+    if (isPlaying && fourDxVibration > 0.01 && fourDxTelemetryRef) {
       const tel = fourDxTelemetryRef.current;
-      const heave = tel.seatHeaveY * fourDxVibration;
-      const pitch = tel.seatPitchX * 0.28 * fourDxVibration;
-      const roll = tel.seatRollZ * 0.42 * fourDxVibration;
-      grp.position.y = heave + Math.sin(pitch) * seatPivotZ;
-      grp.rotation.x = pitch;
-      grp.rotation.z = roll;
-    } else if (
-      grp.position.y !== 0 ||
-      grp.rotation.x !== 0 ||
-      grp.rotation.z !== 0
-    ) {
-      grp.position.y = Math.abs(grp.position.y) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.position.y, 0, 9, dt);
-      grp.rotation.x = Math.abs(grp.rotation.x) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.rotation.x, 0, 9, dt);
-      grp.rotation.z = Math.abs(grp.rotation.z) < 1e-4 ? 0 : THREE.MathUtils.damp(grp.rotation.z, 0, 9, dt);
+      heave = tel.seatHeaveY * fourDxVibration;
+      pitch = tel.seatPitchX * fourDxVibration;
+      roll = tel.seatRollZ * fourDxVibration;
+      bassEnergyGlow = THREE.MathUtils.clamp(
+        (tel.subBass * 0.65 + tel.bass * 0.35 + tel.bassTransient * 0.5) * fourDxVibration,
+        0,
+        1,
+      );
+      shouldMove =
+        Math.abs(heave) > 1e-4 ||
+        Math.abs(pitch) > 1e-4 ||
+        Math.abs(roll) > 1e-4 ||
+        bassEnergyGlow > 0.02;
+    } else if (!isPlaying && isKinetic4dxPod && motionTestActive) {
+      // Explicit preview-card Motion Test toggle (deterministic uniform bass-kick simulation)
+      motionEnvelopeRef.current = THREE.MathUtils.damp(
+        motionEnvelopeRef.current,
+        Math.max(0.05, motionTestIntensity),
+        6.5,
+        dt,
+      );
+      const env = motionEnvelopeRef.current;
+      const t = state.clock.elapsedTime;
+      const pulse = Math.pow(Math.max(0, Math.sin(t * 2.4)), 2);
+      heave = -pulse * 0.065 * env;
+      pitch = pulse * 0.068 * env;
+      roll = 0;
+      bassEnergyGlow = pulse * env;
+      shouldMove = env > 0.002;
+    } else {
+      motionEnvelopeRef.current = 0;
+    }
+
+    if (shouldMove && restMeshes.length > 0) {
+      kineticNeedsResetRef.current = true;
+      _kineticEuler.set(pitch, 0, roll, 'YXZ');
+      _kineticRotMat.makeRotationFromEuler(_kineticEuler);
+
+      for (let idx = 0; idx < seats.length; idx++) {
+        const [sx, sy, sz] = seats[idx].worldPosition;
+        const pivX = sx;
+        const pivY = sy + 0.34;
+        const pivZ = sz + 0.04;
+
+        _kineticPivotMat.makeTranslation(pivX, pivY + heave, pivZ);
+        _kineticInvPivotMat.makeTranslation(-pivX, -pivY, -pivZ);
+        _kineticTransformMat.multiplyMatrices(_kineticPivotMat, _kineticRotMat).multiply(_kineticInvPivotMat);
+
+        for (let mIdx = 0; mIdx < restMeshes.length; mIdx++) {
+          const entry = restMeshes[mIdx];
+          _kineticRestMat.fromArray(entry.matrices, idx * 16);
+          _kineticFinalMat.multiplyMatrices(_kineticTransformMat, _kineticRestMat);
+          entry.mesh.setMatrixAt(idx, _kineticFinalMat);
+        }
+      }
+
+      for (let mIdx = 0; mIdx < restMeshes.length; mIdx++) {
+        restMeshes[mIdx].mesh.instanceMatrix.needsUpdate = true;
+      }
+
+      if (isKinetic4dxPod) {
+        const zoneHighlight =
+          wallLedTheme === 'storm'
+            ? _kineticHighlightStorm
+            : wallLedTheme === 'action'
+              ? _kineticHighlightAction
+              : wallLedTheme === 'underwater'
+                ? _kineticHighlightCyan
+                : _kineticHighlightIdle;
+        const zoneMix = bassEnergyGlow * 0.38;
+
+        for (let idx = 0; idx < seats.length; idx++) {
+          if (cushionRef.current && restColors.cushion[idx]) {
+            _kineticColor.copy(restColors.cushion[idx]).lerp(zoneHighlight, zoneMix);
+            cushionRef.current.setColorAt(idx, _kineticColor);
+          }
+          if (backrestRef.current && restColors.backrest[idx]) {
+            _kineticColor.copy(restColors.backrest[idx]).lerp(zoneHighlight, zoneMix * 0.85);
+            backrestRef.current.setColorAt(idx, _kineticColor);
+          }
+          if (headrestRef.current && restColors.headrest[idx]) {
+            _kineticColor.copy(restColors.headrest[idx]).lerp(zoneHighlight, zoneMix * 1.15);
+            headrestRef.current.setColorAt(idx, _kineticColor);
+          }
+        }
+        if (cushionRef.current?.instanceColor) cushionRef.current.instanceColor.needsUpdate = true;
+        if (backrestRef.current?.instanceColor) backrestRef.current.instanceColor.needsUpdate = true;
+        if (headrestRef.current?.instanceColor) headrestRef.current.instanceColor.needsUpdate = true;
+        materials.nozzleMat.emissive.copy(zoneHighlight);
+        materials.nozzleMat.emissiveIntensity = 0.25 + bassEnergyGlow * 1.6;
+      }
+    } else if (kineticNeedsResetRef.current) {
+      kineticNeedsResetRef.current = false;
+      for (let mIdx = 0; mIdx < restMeshes.length; mIdx++) {
+        const entry = restMeshes[mIdx];
+        entry.mesh.instanceMatrix.array.set(entry.matrices);
+        entry.mesh.instanceMatrix.needsUpdate = true;
+      }
+      if (isKinetic4dxPod) {
+        for (let idx = 0; idx < seats.length; idx++) {
+          if (cushionRef.current && restColors.cushion[idx]) cushionRef.current.setColorAt(idx, restColors.cushion[idx]);
+          if (backrestRef.current && restColors.backrest[idx]) backrestRef.current.setColorAt(idx, restColors.backrest[idx]);
+          if (headrestRef.current && restColors.headrest[idx]) headrestRef.current.setColorAt(idx, restColors.headrest[idx]);
+        }
+        if (cushionRef.current?.instanceColor) cushionRef.current.instanceColor.needsUpdate = true;
+        if (backrestRef.current?.instanceColor) backrestRef.current.instanceColor.needsUpdate = true;
+        if (headrestRef.current?.instanceColor) headrestRef.current.instanceColor.needsUpdate = true;
+        materials.nozzleMat.emissive.set('#38bdf8');
+        materials.nozzleMat.emissiveIntensity = isPlaying ? 0.18 : 0.35;
+      }
     }
   });
 
@@ -2791,14 +3020,14 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
           args={[geometries.pipingGeo, materials.pipingMat, count]}
         />
       )}
-      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod) && (
+      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && (
         <instancedMesh
           ref={backShellRef}
           args={[
             geometries.backShellGeo,
             isVolcanicCopperSeat || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
               ? materials.charcoalBolsterMat
-              : isThunder4dxPod || isExoskeleton4dxPod
+              : isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod
                 ? materials.baseMat
                 : materials.trimMat,
             count,
@@ -2846,14 +3075,14 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
             ref={redStitchTrimRef}
             args={[geometries.redStitchTrimGeo, materials.pipingMat, count]}
           />
-          {(isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod) && (
+          {(isArctic4dxPod || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && (
             <instancedMesh
               ref={lumbarCushionRef}
               args={[geometries.lumbarCushionGeo, materials.lumbarMat, count]}
               receiveShadow
             />
           )}
-          {(isThunder4dxPod || isExoskeleton4dxPod) && (
+          {(isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && (
             <>
               <instancedMesh
                 ref={leftActuatorRef}
