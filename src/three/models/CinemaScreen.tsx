@@ -525,8 +525,8 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
             ? 0.04
             : isIceFlagship
               ? 0.09
-              : isZeroStageImax || isIceCobalt
-                ? 0.14
+              : isZeroStageImax || isIceCobalt || isKinetic4dx
+                ? 0.12
                 : isIceAmber
                   ? 0.16
                   : isVolcanicCopper2d
@@ -539,7 +539,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
             ? 0.04
             : isIceFlagship
               ? 0.06
-              : isZeroStageImax || isIceCobalt
+              : isZeroStageImax || isIceCobalt || isKinetic4dx
                 ? 0.1
                 : isIceAmber
                   ? 0.12
@@ -552,19 +552,19 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         48,
         4,
       ),
-    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isVolcanicCopper2d, isPrivateVolcanic, isPrivateChampagne],
+    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isVolcanicCopper2d, isPrivateVolcanic, isPrivateChampagne],
   );
 
   const velvetMaskGeo = useMemo(
     () =>
       buildCurvedScreenGeometry(
-        screenWidth + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.045 : isZeroStageImax || isIceCobalt ? 0.08 : isIceAmber ? 0.1 : isPrivateChampagne || isPrivateVolcanic ? 0.09 : 0.3),
-        screenHeight + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.035 : isZeroStageImax || isIceCobalt ? 0.06 : isIceAmber ? 0.08 : isPrivateChampagne || isPrivateVolcanic ? 0.07 : 0.24),
+        screenWidth + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.045 : isZeroStageImax || isIceCobalt || isKinetic4dx ? 0.06 : isIceAmber ? 0.1 : isPrivateChampagne || isPrivateVolcanic ? 0.09 : 0.3),
+        screenHeight + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.035 : isZeroStageImax || isIceCobalt || isKinetic4dx ? 0.04 : isIceAmber ? 0.08 : isPrivateChampagne || isPrivateVolcanic ? 0.07 : 0.24),
         screenCurvature,
         48,
         4,
       ),
-    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isPrivateChampagne, isPrivateVolcanic],
+    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isPrivateChampagne, isPrivateVolcanic],
   );
 
   const brassTrimGeo = useMemo(
@@ -1057,13 +1057,15 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       showState === 'AUDITORIUM_OPEN'
         ? isFloatingFramelessScreenX
           ? 0.72
-          : isScreenX
-            ? 0.56
-            : isDeccanDolby
-              ? 0.86
-              : isMandap2d
-                ? 0.58
-                : 0.42
+          : isKinetic4dx
+            ? 0.8
+            : isScreenX
+              ? 0.56
+              : isDeccanDolby
+                ? 0.86
+                : isMandap2d
+                  ? 0.58
+                  : 0.42
         : showState === 'SHOW_STARTING'
           ? 0.62
           : showState === 'SHOW_PLAYING'

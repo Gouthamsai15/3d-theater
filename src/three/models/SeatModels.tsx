@@ -441,23 +441,23 @@ function getSeatProportions(model: SeatModelType, widthScale = 1): SeatPartOffse
     case '4dx_kinetic_pod':
       return {
         cushionWidth: 0.57 * s,
-        cushionHeight: 0.165,
-        cushionDepth: 0.56,
-        cushionPos: [0, 0.48, 0.01],
-        backrestWidth: 0.55 * s,
-        backrestHeight: 0.72,
-        backrestDepth: 0.16,
-        backrestPos: [0, 0.85, 0.22],
-        backrestTilt: 0.1,
-        headrestWidth: 0.44 * s,
-        headrestHeight: 0.24,
-        headrestDepth: 0.16,
-        headrestPos: [0, 1.25, 0.27],
+        cushionHeight: 0.16,
+        cushionDepth: 0.55,
+        cushionPos: [0, 0.47, 0.01],
+        backrestWidth: 0.54 * s,
+        backrestHeight: 0.66,
+        backrestDepth: 0.155,
+        backrestPos: [0, 0.81, 0.21],
+        backrestTilt: 0.11,
+        headrestWidth: 0.43 * s,
+        headrestHeight: 0.2,
+        headrestDepth: 0.15,
+        headrestPos: [0, 1.19, 0.26],
         armWidth: 0.105,
         armHeight: 0.125,
-        armDepth: 0.58,
-        armOffsetX: 0.345 * s,
-        armPosY: 0.65,
+        armDepth: 0.56,
+        armOffsetX: 0.34 * s,
+        armPosY: 0.64,
         armPosZ: 0.02,
         pedestalRadius: 0.19,
         pedestalHeight: 0.36,
@@ -1331,8 +1331,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                       ? 0.9
                       : isDolbyVeilSeat
                         ? 0.88
-                        : isExoskeleton4dxPod
-                          ? 0.46
+                        : isExoskeleton4dxPod || isKinetic4dxPod
+                          ? 0.44
                           : isImaxSolarSeat
                             ? 0.48
                             : isImaxRocker
@@ -1342,7 +1342,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                                 : isLeather
                                   ? 0.28
                                   : 0.72,
-        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker || isExoskeleton4dxPod ? 0.05 : isLeather ? 0.07 : 0.02,
+        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker || isExoskeleton4dxPod || isKinetic4dxPod ? 0.05 : isLeather ? 0.07 : 0.02,
       }),
       screenBounceUniforms,
     );
@@ -1392,7 +1392,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                                           : isExoskeleton4dxPod
                                             ? '#13151b'
                                             : isKinetic4dxPod
-                                              ? '#181e29'
+                                              ? '#27303e'
                                               : isAny4dxPod
                                                 ? '#16181f'
                                                 : environmentProfile.seatTrimColor,
@@ -1494,7 +1494,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
               : isThunder4dxPod
                 ? '#9aa3b2'
                 : isKinetic4dxPod
-                  ? '#1e2532'
+                  ? '#1d232e'
                   : isExoskeleton4dxPod
                     ? '#181b22'
                     : isAny4dxPod
@@ -1541,7 +1541,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                             : isArctic4dxPod
                               ? '#8b5cf6'
                               : isKinetic4dxPod
-                                ? '#232834'
+                                ? '#2c3544'
                                 : isThunder4dxPod
                                   ? '#b4becd'
                                   : isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
@@ -1553,7 +1553,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       screenBounceUniforms,
     );
     const nozzleMat = new THREE.MeshStandardMaterial({
-      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isKinetic4dxPod ? '#161a22' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
+      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isKinetic4dxPod ? '#1b212c' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
       emissive: isArctic4dxPod ? '#8b5cf6' : isKinetic4dxPod ? '#0f172a' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
       emissiveIntensity: isKinetic4dxPod ? 0.0 : isThunder4dxPod || isExoskeleton4dxPod ? 0.26 : 0.35,
       roughness: 0.24,
@@ -1568,7 +1568,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     });
     const pipingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isKinetic4dxPod ? '#232834' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
+        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isKinetic4dxPod ? '#2c3544' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
         emissive: isParametricPurpleSeat ? '#7e22ce' : '#000000',
         emissiveIntensity: isParametricPurpleSeat ? 0.26 : 0,
         roughness: isThunder4dxPod || isDolbyKakatiyaSeat || isDolbyDeccanSeat ? 0.32 : 0.28,
@@ -1586,7 +1586,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     );
     const lumbarMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isThunder4dxPod ? '#323740' : isKinetic4dxPod ? '#161b24' : isExoskeleton4dxPod ? '#15181f' : '#16181f',
+        color: isThunder4dxPod ? '#323740' : isKinetic4dxPod ? '#1c222d' : isExoskeleton4dxPod ? '#15181f' : '#16181f',
         roughness: 0.38,
         metalness: 0.04,
       }),

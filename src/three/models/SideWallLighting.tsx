@@ -2104,9 +2104,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     const awCtx = amberWashCanvas.getContext('2d');
     if (awCtx) {
       const grad = awCtx.createLinearGradient(0, 128, 0, 0);
-      grad.addColorStop(0.0, 'rgba(255, 214, 140, 0.92)');
-      grad.addColorStop(0.32, 'rgba(245, 178, 86, 0.42)');
-      grad.addColorStop(0.75, 'rgba(245, 165, 65, 0.08)');
+      grad.addColorStop(0.0, 'rgba(255, 218, 145, 0.96)');
+      grad.addColorStop(0.32, 'rgba(248, 182, 88, 0.48)');
+      grad.addColorStop(0.75, 'rgba(245, 165, 65, 0.10)');
       grad.addColorStop(1.0, 'rgba(245, 165, 65, 0.0)');
       awCtx.fillStyle = grad;
       awCtx.fillRect(0, 0, 32, 128);
@@ -2116,9 +2116,28 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     amberWashTex.wrapS = THREE.ClampToEdgeWrapping;
     amberWashTex.wrapT = THREE.ClampToEdgeWrapping;
 
+    const cyanWashCanvas = document.createElement('canvas');
+    cyanWashCanvas.width = 32;
+    cyanWashCanvas.height = 128;
+    const cwCtx = cyanWashCanvas.getContext('2d');
+    if (cwCtx) {
+      const grad = cwCtx.createLinearGradient(0, 0, 0, 128);
+      grad.addColorStop(0.0, 'rgba(130, 245, 255, 0.0)');
+      grad.addColorStop(0.32, 'rgba(130, 245, 255, 0.28)');
+      grad.addColorStop(0.5, 'rgba(205, 252, 255, 0.68)');
+      grad.addColorStop(0.68, 'rgba(130, 245, 255, 0.28)');
+      grad.addColorStop(1.0, 'rgba(130, 245, 255, 0.0)');
+      cwCtx.fillStyle = grad;
+      cwCtx.fillRect(0, 0, 32, 128);
+    }
+    const cyanWashTex = new THREE.CanvasTexture(cyanWashCanvas);
+    cyanWashTex.colorSpace = THREE.SRGBColorSpace;
+    cyanWashTex.wrapS = THREE.ClampToEdgeWrapping;
+    cyanWashTex.wrapT = THREE.ClampToEdgeWrapping;
+
     const upperSlateMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#171c25',
+        color: '#0e1219',
         roughness: 0.92,
         metalness: 0.03,
       }),
@@ -2126,17 +2145,17 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     );
     const acousticSlatMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#222935',
-        roughness: 0.85,
-        metalness: 0.06,
+        color: '#2e3848',
+        roughness: 0.72,
+        metalness: 0.08,
       }),
       screenBounceUniforms,
     );
     const diffuserSlateMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#1f2632',
-        roughness: 0.84,
-        metalness: 0.07,
+        color: '#313c4d',
+        roughness: 0.68,
+        metalness: 0.1,
         flatShading: true,
         side: THREE.DoubleSide,
       }),
@@ -2147,7 +2166,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         map: perfTex,
         bumpMap: perfTex,
         bumpScale: 0.012,
-        color: '#ffffff',
+        color: '#c9d4e4',
         roughness: 0.94,
         metalness: 0.02,
       }),
@@ -2155,38 +2174,46 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     );
     const graphiteDadoMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#151a23',
-        roughness: 0.9,
-        metalness: 0.03,
+        color: '#212936',
+        roughness: 0.84,
+        metalness: 0.04,
       }),
       screenBounceUniforms,
     );
     const matteSteelRevealMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#0a0c10',
-        roughness: 0.52,
-        metalness: 0.42,
+        color: '#0b0e13',
+        roughness: 0.48,
+        metalness: 0.45,
       }),
       screenBounceUniforms,
     );
     const covePrimaryMat = new THREE.MeshStandardMaterial({
-      color: '#d8fcf9',
-      emissive: '#8ff3ef',
-      emissiveIntensity: 2.1,
-      roughness: 0.16,
+      color: '#e6ffff',
+      emissive: '#8ff6ff',
+      emissiveIntensity: 2.3,
+      roughness: 0.14,
       toneMapped: false,
     });
     const coveSecondaryMat = new THREE.MeshStandardMaterial({
-      color: '#ffedd5',
-      emissive: '#ffd285',
-      emissiveIntensity: 1.85,
-      roughness: 0.18,
+      color: '#ffefd2',
+      emissive: '#ffc366',
+      emissiveIntensity: 2.35,
+      roughness: 0.16,
       toneMapped: false,
     });
     const amberUplightWashMat = new THREE.MeshBasicMaterial({
       map: amberWashTex,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.85,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    const cyanRibbonWashMat = new THREE.MeshBasicMaterial({
+      map: cyanWashTex,
+      transparent: true,
+      opacity: 0.78,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
@@ -2195,26 +2222,27 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     const frontZVal = -L / 2;
     const backZVal = L / 2;
     const topY = H - 0.28;
+    const dadoBaseY = 1.92;
     const dadoYAt = (z: number) => {
-      if (z <= firstRowZ - 0.5) return 2.05;
+      if (z <= firstRowZ - 0.5) return dadoBaseY;
       const maxRowZ = firstRowZ + Math.max(0, seatingRows - 1) * rowSpacing;
-      if (z >= maxRowZ) return topTierY + 2.05;
+      if (z >= maxRowZ) return topTierY + dadoBaseY;
       const t = (z - (firstRowZ - 0.5)) / Math.max(0.5, maxRowZ - (firstRowZ - 0.5));
-      return THREE.MathUtils.lerp(2.05, topTierY + 2.05, t);
+      return THREE.MathUtils.lerp(dadoBaseY, topTierY + dadoBaseY, t);
     };
 
     const facetBay1Geo = buildKineticOrigamiPanelGeometry(
       3.4,
       topY,
-      dadoYAt(-8.15),
-      dadoYAt(-4.75),
+      dadoYAt(-8.4),
+      dadoYAt(-5.0),
       0,
     );
     const facetBay3Geo = buildKineticOrigamiPanelGeometry(
       3.6,
       topY,
-      dadoYAt(-1.15),
-      dadoYAt(2.45),
+      dadoYAt(-2.4),
+      dadoYAt(1.2),
       1,
     );
 
@@ -2225,23 +2253,23 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     const dadoShape = new THREE.Shape();
     dadoShape.moveTo(dadoFrontZ0, 0);
     dadoShape.lineTo(dadoRearZ, 0);
-    dadoShape.lineTo(dadoRearZ, topTierY + 2.05);
-    dadoShape.lineTo(dadoMaxRowZ, topTierY + 2.05);
-    dadoShape.lineTo(dadoFrontZ1, 2.05);
-    dadoShape.lineTo(dadoFrontZ0, 2.05);
+    dadoShape.lineTo(dadoRearZ, topTierY + dadoBaseY);
+    dadoShape.lineTo(dadoMaxRowZ, topTierY + dadoBaseY);
+    dadoShape.lineTo(dadoFrontZ1, dadoBaseY);
+    dadoShape.lineTo(dadoFrontZ0, dadoBaseY);
     dadoShape.closePath();
     const dadoGeo = new THREE.ExtrudeGeometry(dadoShape, {
-      depth: 0.075,
+      depth: 0.085,
       bevelEnabled: false,
       curveSegments: 1,
     });
-    // ExtrudeGeometry extrudes along +Z from shape (X=z, Y=y). Rotate -90 deg around Y so shape X->+Z, shape Y->+Y, extrude depth->-X; or rotate +90 deg around Y: (x, y, z) -> (z, y, -x). Let's build explicit rotation so Z runs front->back cleanly:
     dadoGeo.rotateY(-Math.PI / 2);
     dadoGeo.computeVertexNormals();
 
     return {
       perfTex,
       amberWashTex,
+      cyanWashTex,
       upperSlateMat,
       acousticSlatMat,
       diffuserSlateMat,
@@ -2251,9 +2279,11 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       covePrimaryMat,
       coveSecondaryMat,
       amberUplightWashMat,
+      cyanRibbonWashMat,
       facetBay1Geo,
       facetBay3Geo,
       dadoGeo,
+      dadoBaseY,
       frontZVal,
       backZVal,
     };
@@ -2263,6 +2293,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     return () => {
       kinetic4dxResources?.perfTex.dispose();
       kinetic4dxResources?.amberWashTex.dispose();
+      kinetic4dxResources?.cyanWashTex.dispose();
       kinetic4dxResources?.upperSlateMat.dispose();
       kinetic4dxResources?.acousticSlatMat.dispose();
       kinetic4dxResources?.diffuserSlateMat.dispose();
@@ -2272,6 +2303,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       kinetic4dxResources?.covePrimaryMat.dispose();
       kinetic4dxResources?.coveSecondaryMat.dispose();
       kinetic4dxResources?.amberUplightWashMat.dispose();
+      kinetic4dxResources?.cyanRibbonWashMat.dispose();
       kinetic4dxResources?.facetBay1Geo.dispose();
       kinetic4dxResources?.facetBay3Geo.dispose();
       kinetic4dxResources?.dadoGeo.dispose();
@@ -2280,8 +2312,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
 
   useFrame(() => {
     if (!kinetic4dxResources) return;
-    const scale = lightFactor * (0.2 + effectLightIntensity * 1.55);
-    kinetic4dxResources.amberUplightWashMat.opacity = THREE.MathUtils.clamp(scale * 0.52, 0.04, 0.78);
+    const scale = lightFactor * (0.25 + effectLightIntensity * 1.55);
+    kinetic4dxResources.amberUplightWashMat.opacity = THREE.MathUtils.clamp(scale * 0.74, 0.06, 0.92);
+    kinetic4dxResources.cyanRibbonWashMat.opacity = THREE.MathUtils.clamp(scale * 0.65, 0.05, 0.85);
 
     if (isPlaying && fourDxTelemetryRef) {
       const tel = fourDxTelemetryRef.current;
@@ -2306,17 +2339,17 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       }
 
       kinetic4dxResources.covePrimaryMat.emissiveIntensity =
-        scale * (1.15 + bassDrive * 1.15 + flash * 1.9);
+        scale * (1.35 + bassDrive * 1.2 + flash * 1.9);
       kinetic4dxResources.coveSecondaryMat.emissiveIntensity =
-        scale * (0.95 + bassDrive * 0.85 + flash * 1.4);
+        scale * (1.2 + bassDrive * 0.9 + flash * 1.4);
       return;
     }
 
     // Crisp pale ice-cyan zig-zag LED ribbon + warm golden-amber dado cove
     kinetic4dxResources.covePrimaryMat.emissive.copy(_kineticCovePrimaryBase);
     kinetic4dxResources.coveSecondaryMat.emissive.copy(_kineticCoveSecondaryBase);
-    kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 1.48;
-    kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 1.28;
+    kinetic4dxResources.covePrimaryMat.emissiveIntensity = scale * 1.75;
+    kinetic4dxResources.coveSecondaryMat.emissiveIntensity = scale * 1.72;
   });
 
   const sconceY = isPrivate ? Math.min(H * 0.58, 2.55) : Math.min(H * 0.56, topTierY + 2.05);
@@ -7511,43 +7544,44 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
           </group>
         )}
 
-      {/* 4DX Kinetic Arena 250: Smooth Charcoal-Slate Fabric Dado with Warm-Amber Uplight Wash, Tall Fluted Vertical Acoustic Ribs, 3D Faceted Origami Acoustic Diffusers & Single Stepped Zig-Zag Ice-Cyan LED Ribbon */}
+      {/* 4DX Kinetic Arena 250: Smooth Charcoal-Slate Fabric Dado with Warm-Amber Uplight Wash, Tall Fluted Vertical Acoustic Ribs, 3D Faceted Origami Acoustic Diffusers & Bold Stepped Ice-Cyan LED Ribbon */}
       {sideLightStyle === 'kinetic_slate_baffles_4dx' &&
         kinetic4dxResources &&
         (() => {
           const zBayStart = frontZ + 1.55;
           const zBayEnd = backZ - 0.35;
           const topY = H - 0.28;
+          const dadoBaseY = kinetic4dxResources.dadoBaseY;
           const dadoFrontZ0 = frontZ + 0.45;
           const dadoFrontZ1 = firstRowZ - 0.5;
           const dadoMaxRowZ = firstRowZ + Math.max(0, seatingRows - 1) * rowSpacing;
           const dadoRearZ = backZ - 0.25;
           const dadoYAt = (z: number) => {
-            if (z <= dadoFrontZ1) return 2.05;
-            if (z >= dadoMaxRowZ) return topTierY + 2.05;
+            if (z <= dadoFrontZ1) return dadoBaseY;
+            if (z >= dadoMaxRowZ) return topTierY + dadoBaseY;
             const t = (z - dadoFrontZ1) / Math.max(0.5, dadoMaxRowZ - dadoFrontZ1);
-            return THREE.MathUtils.lerp(2.05, topTierY + 2.05, t);
+            return THREE.MathUtils.lerp(dadoBaseY, topTierY + dadoBaseY, t);
           };
 
           const ribBays = [
-            { z0: zBayStart, z1: -8.15, ribCount: 15 },
-            { z0: -4.75, z1: -1.15, ribCount: 15 },
-            { z0: 2.45, z1: zBayEnd, ribCount: 40 },
+            { z0: zBayStart, z1: -8.4, ribCount: 12 },
+            { z0: -5.0, z1: -2.4, ribCount: 12 },
+            { z0: 1.2, z1: zBayEnd, ribCount: 46 },
           ];
 
-          const seamZs = [-9.8, -7.2, -4.75, -2.4, -1.15, 0.8, 2.45, 5.2, 8.2, 10.9];
+          const seamZs = [-10.2, -8.4, -6.7, -5.0, -2.4, -0.6, 1.2, 4.2, 7.2, 10.2];
 
-          const cyanPolyline: [number, number, boolean][] = [
-            [zBayStart + 0.12, 4.45, false],
-            [-8.15, 4.45, false],
-            [-7.35, 4.45, true],
-            [-6.05, 5.15, true],
-            [-4.75, 4.55, true],
-            [-1.15, 4.55, false],
-            [0.25, 4.75, true],
-            [1.55, 5.45, true],
-            [2.45, 4.95, true],
-            [zBayEnd - 0.2, 7.95, false],
+          const cyanPolyline: [number, number][] = [
+            [zBayStart + 0.1, 4.15],
+            [-8.4, 4.45],
+            [-7.4, 4.85],
+            [-6.3, 4.3],
+            [-5.0, 4.75],
+            [-2.4, 4.75],
+            [-1.2, 5.35],
+            [-0.1, 4.75],
+            [1.2, 5.15],
+            [zBayEnd - 0.2, 7.65],
           ];
 
           const slopeAng = Math.atan2(topTierY, Math.max(0.5, dadoMaxRowZ - dadoFrontZ1));
@@ -7572,9 +7606,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                       <boxGeometry args={[0.028, H - 0.16, L - 0.36]} />
                     </mesh>
 
-                    {/* Smooth Seamless Charcoal-Slate Fabric Lower Dado (dadoGeo rotated so Z spans front->back, X depth 0..-0.075) */}
+                    {/* Smooth Seamless Charcoal-Slate Fabric Lower Dado */}
                     <mesh
-                      position={[wallX + (side === -1 ? 0.075 : 0), 0, 0]}
+                      position={[wallX + (side === -1 ? 0.085 : 0), 0, 0]}
                       geometry={kinetic4dxResources.dadoGeo}
                       material={kinetic4dxResources.graphiteDadoMat}
                       receiveShadow
@@ -7586,7 +7620,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                       return (
                         <mesh
                           key={`kinetic-dado-seam-${side}-${si}`}
-                          position={[wallX + inDir * 0.078, sh * 0.5, sz]}
+                          position={[wallX + inDir * 0.088, sh * 0.5, sz]}
                           material={kinetic4dxResources.matteSteelRevealMat}
                         >
                           <boxGeometry args={[0.012, sh - 0.04, 0.018]} />
@@ -7594,26 +7628,26 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                       );
                     })}
 
-                    {/* Crisp Dark Dado Coping Ledge & Continuous Warm-Amber Uplight LED Strip */}
+                    {/* Protruding Dado Coping Ledge & Bright Warm-Amber Linear Uplight LED Strip */}
                     {[
-                      { z0: dadoFrontZ0 + 0.8, y0: 2.05, z1: dadoFrontZ1, y1: 2.05 },
-                      { z0: dadoFrontZ1, y0: 2.05, z1: dadoMaxRowZ, y1: topTierY + 2.05 },
-                      { z0: dadoMaxRowZ, y0: topTierY + 2.05, z1: dadoRearZ - 0.1, y1: topTierY + 2.05 },
+                      { z0: dadoFrontZ0 + 0.8, y0: dadoBaseY, z1: dadoFrontZ1, y1: dadoBaseY },
+                      { z0: dadoFrontZ1, y0: dadoBaseY, z1: dadoMaxRowZ, y1: topTierY + dadoBaseY },
+                      { z0: dadoMaxRowZ, y0: topTierY + dadoBaseY, z1: dadoRearZ - 0.1, y1: topTierY + dadoBaseY },
                     ].map((seg, sgi) => (
                       <React.Fragment key={`kinetic-amber-cove-${side}-${sgi}`}>
                         <ArchitecturalChannelBar
-                          start={[wallX + inDir * 0.088, seg.y0, seg.z0]}
-                          end={[wallX + inDir * 0.088, seg.y1, seg.z1]}
-                          thickness={0.046}
-                          depth={0.09}
+                          start={[wallX + inDir * 0.105, seg.y0, seg.z0]}
+                          end={[wallX + inDir * 0.105, seg.y1, seg.z1]}
+                          thickness={0.048}
+                          depth={0.185}
                           material={kinetic4dxResources.matteSteelRevealMat}
                           interiorFocusY={H * 0.45}
                         />
                         <ArchitecturalChannelBar
-                          start={[wallX + inDir * 0.072, seg.y0 + 0.036, seg.z0]}
-                          end={[wallX + inDir * 0.072, seg.y1 + 0.036, seg.z1]}
-                          thickness={0.03}
-                          depth={0.026}
+                          start={[wallX + inDir * 0.168, seg.y0 + 0.032, seg.z0]}
+                          end={[wallX + inDir * 0.168, seg.y1 + 0.032, seg.z1]}
+                          thickness={0.034}
+                          depth={0.034}
                           material={kinetic4dxResources.coveSecondaryMat}
                           housingMaterial={kinetic4dxResources.matteSteelRevealMat}
                           interiorFocusY={H * 0.45}
@@ -7621,38 +7655,42 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                       </React.Fragment>
                     ))}
 
-                    {/* Soft Golden-Amber Uplight Gradient Grazing Lower Foot of Acoustic Ribs & Origami Panels */}
-                    <mesh
-                      position={[wallX + inDir * 0.045, 2.05 + 0.62, (dadoFrontZ0 + 0.8 + dadoFrontZ1) * 0.5]}
-                      rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
-                      material={kinetic4dxResources.amberUplightWashMat}
-                    >
-                      <planeGeometry args={[frontFlatLen - 0.8, 1.24]} />
-                    </mesh>
-                    <mesh
-                      position={[
-                        wallX + inDir * 0.045,
-                        2.05 + topTierY * 0.5 + 0.62,
-                        (dadoFrontZ1 + dadoMaxRowZ) * 0.5,
-                      ]}
-                      rotation={[-slopeAng, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
-                      material={kinetic4dxResources.amberUplightWashMat}
-                    >
-                      <planeGeometry args={[slopeSegLen, 1.24]} />
-                    </mesh>
-                    {rearFlatLen > 0.6 && (
-                      <mesh
-                        position={[
-                          wallX + inDir * 0.045,
-                          topTierY + 2.05 + 0.62,
-                          (dadoMaxRowZ + dadoRearZ - 0.1) * 0.5,
-                        ]}
-                        rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
-                        material={kinetic4dxResources.amberUplightWashMat}
-                      >
-                        <planeGeometry args={[rearFlatLen - 0.1, 1.24]} />
-                      </mesh>
-                    )}
+                    {/* Visible Warm Golden-Amber Uplight Gradient Washing Across Front of Fluted Ribs & Origami Base */}
+                    {[0.048, 0.184].map((washDepth, wi) => (
+                      <React.Fragment key={`kinetic-amber-wash-${side}-${wi}`}>
+                        <mesh
+                          position={[wallX + inDir * washDepth, dadoBaseY + 0.82, (dadoFrontZ0 + 0.8 + dadoFrontZ1) * 0.5]}
+                          rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                          material={kinetic4dxResources.amberUplightWashMat}
+                        >
+                          <planeGeometry args={[frontFlatLen - 0.8, 1.64]} />
+                        </mesh>
+                        <mesh
+                          position={[
+                            wallX + inDir * washDepth,
+                            dadoBaseY + topTierY * 0.5 + 0.82,
+                            (dadoFrontZ1 + dadoMaxRowZ) * 0.5,
+                          ]}
+                          rotation={[-slopeAng, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                          material={kinetic4dxResources.amberUplightWashMat}
+                        >
+                          <planeGeometry args={[slopeSegLen, 1.64]} />
+                        </mesh>
+                        {rearFlatLen > 0.6 && (
+                          <mesh
+                            position={[
+                              wallX + inDir * washDepth,
+                              topTierY + dadoBaseY + 0.82,
+                              (dadoMaxRowZ + dadoRearZ - 0.1) * 0.5,
+                            ]}
+                            rotation={[0, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                            material={kinetic4dxResources.amberUplightWashMat}
+                          >
+                            <planeGeometry args={[rearFlatLen - 0.1, 1.64]} />
+                          </mesh>
+                        )}
+                      </React.Fragment>
+                    ))}
 
                     {/* Bays 0, 2, 4: Tall Vertical Fluted Slate Acoustic Ribs Rising from Dado to Ceiling */}
                     {ribBays.map((bay, bi) => {
@@ -7690,7 +7728,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
 
                     {/* Bays 1 & 3: Sculpted 3D Faceted Origami / Triangular Acoustic Diffuser Panels */}
                     <mesh
-                      position={[wallX + inDir * 0.015, 0, -6.45]}
+                      position={[wallX + inDir * 0.015, 0, -6.7]}
                       scale={[inDir, 1, 1]}
                       geometry={kinetic4dxResources.facetBay1Geo}
                       material={kinetic4dxResources.diffuserSlateMat}
@@ -7698,7 +7736,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                       receiveShadow
                     />
                     <mesh
-                      position={[wallX + inDir * 0.015, 0, 0.65]}
+                      position={[wallX + inDir * 0.015, 0, -0.6]}
                       scale={[inDir, 1, 1]}
                       geometry={kinetic4dxResources.facetBay3Geo}
                       material={kinetic4dxResources.diffuserSlateMat}
@@ -7707,36 +7745,47 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                     />
 
                     {/* Crisp Vertical Steel Shadow-Gap Framing Around Origami Diffuser Bays */}
-                    {[-8.15, -4.75, -1.15, 2.45].map((bz, bzi) => {
+                    {[-8.4, -5.0, -2.4, 1.2].map((bz, bzi) => {
                       const botY = dadoYAt(bz) + 0.03;
                       const bH = Math.max(1.0, topY - botY);
                       return (
                         <mesh
                           key={`kinetic-bay-seam-${side}-${bzi}`}
-                          position={[wallX + inDir * 0.095, (botY + topY) * 0.5, bz]}
+                          position={[wallX + inDir * 0.098, (botY + topY) * 0.5, bz]}
                           material={kinetic4dxResources.matteSteelRevealMat}
                         >
-                          <boxGeometry args={[0.15, bH, 0.045]} />
+                          <boxGeometry args={[0.16, bH, 0.05]} />
                         </mesh>
                       );
                     })}
 
-                    {/* Continuous Stepped Zig-Zag Ice-Cyan Linear LED Ribbon (Tucked Inside Vertical Flutes & Tracing Origami Ridges — Zero X-Crossbars) */}
+                    {/* Bold Stepped Ice-Cyan Linear LED Ribbon + Soft Luminous Cyan Halo Wash */}
                     {cyanPolyline.slice(0, -1).map((pt, pi) => {
                       const nextPt = cyanPolyline[pi + 1];
-                      const proudAcrossOrigami = pt[2] || nextPt[2];
-                      const cx = wallX + inDir * (proudAcrossOrigami ? 0.155 : 0.072);
+                      const cx = wallX + inDir * 0.184;
+                      const segLen = Math.hypot(nextPt[0] - pt[0], nextPt[1] - pt[1]);
+                      const segAng = Math.atan2(nextPt[1] - pt[1], nextPt[0] - pt[0]);
+                      const midZ = (pt[0] + nextPt[0]) * 0.5;
+                      const midY = (pt[1] + nextPt[1]) * 0.5;
                       return (
-                        <ArchitecturalChannelBar
-                          key={`kinetic-cyan-ribbon-${side}-${pi}`}
-                          start={[cx, pt[1], pt[0]]}
-                          end={[cx, nextPt[1], nextPt[0]]}
-                          thickness={0.048}
-                          depth={0.042}
-                          material={kinetic4dxResources.covePrimaryMat}
-                          housingMaterial={kinetic4dxResources.matteSteelRevealMat}
-                          interiorFocusY={H * 0.45}
-                        />
+                        <React.Fragment key={`kinetic-cyan-ribbon-${side}-${pi}`}>
+                          <ArchitecturalChannelBar
+                            start={[cx, pt[1], pt[0]]}
+                            end={[cx, nextPt[1], nextPt[0]]}
+                            thickness={0.072}
+                            depth={0.048}
+                            material={kinetic4dxResources.covePrimaryMat}
+                            housingMaterial={kinetic4dxResources.matteSteelRevealMat}
+                            interiorFocusY={H * 0.45}
+                          />
+                          <mesh
+                            position={[wallX + inDir * 0.188, midY, midZ]}
+                            rotation={[side === -1 ? -segAng : segAng, side === -1 ? Math.PI / 2 : -Math.PI / 2, 0]}
+                            material={kinetic4dxResources.cyanRibbonWashMat}
+                          >
+                            <planeGeometry args={[segLen + 0.14, 0.48]} />
+                          </mesh>
+                        </React.Fragment>
                       );
                     })}
                   </group>
@@ -7750,34 +7799,35 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                   const wingEndX = side * (W * 0.5 - 0.45);
                   const wingCx = (wingStartX + wingEndX) * 0.5;
                   const wingW = Math.abs(wingEndX - wingStartX);
+                  const rearDadoTop = topTierY + kinetic4dxResources.dadoBaseY;
                   return (
                     <group key={`kinetic-rear-wing-${side}`}>
                       <mesh
-                        position={[wingCx, (topTierY + 2.05) * 0.5, -0.04]}
+                        position={[wingCx, rearDadoTop * 0.5, -0.04]}
                         material={kinetic4dxResources.graphiteDadoMat}
                       >
-                        <boxGeometry args={[wingW, topTierY + 2.05, 0.07]} />
+                        <boxGeometry args={[wingW, rearDadoTop, 0.07]} />
                       </mesh>
                       <mesh
-                        position={[wingCx, (topTierY + 2.08 + H - 0.35) * 0.5, -0.03]}
+                        position={[wingCx, (rearDadoTop + 0.03 + H - 0.35) * 0.5, -0.03]}
                         material={kinetic4dxResources.perforatedPanelMat}
                       >
-                        <boxGeometry args={[wingW - 0.2, Math.max(1.2, H - topTierY - 2.4), 0.04]} />
+                        <boxGeometry args={[wingW - 0.2, Math.max(1.2, H - rearDadoTop - 0.38), 0.04]} />
                       </mesh>
                       {Array.from({ length: 8 }, (_, ri) => {
                         const rx = THREE.MathUtils.lerp(wingStartX, wingEndX, ri / 7);
                         return (
                           <mesh
                             key={`k-rear-slat-${ri}`}
-                            position={[rx, (topTierY + 2.08 + H - 0.3) * 0.5, -0.075]}
+                            position={[rx, (rearDadoTop + 0.03 + H - 0.3) * 0.5, -0.075]}
                             material={kinetic4dxResources.acousticSlatMat}
                           >
-                            <boxGeometry args={[0.095, Math.max(1.2, H - topTierY - 2.38), 0.12]} />
+                            <boxGeometry args={[0.095, Math.max(1.2, H - rearDadoTop - 0.35), 0.12]} />
                           </mesh>
                         );
                       })}
                       <mesh
-                        position={[wingCx, topTierY + 2.08, -0.06]}
+                        position={[wingCx, rearDadoTop + 0.03, -0.06]}
                         material={kinetic4dxResources.coveSecondaryMat}
                       >
                         <boxGeometry args={[wingW - 0.15, 0.028, 0.032]} />

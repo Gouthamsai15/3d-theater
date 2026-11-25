@@ -1083,16 +1083,23 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     );
     const trussSteelMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: '#181d26',
-        roughness: 0.42,
-        metalness: 0.72,
+        color: '#222833',
+        roughness: 0.36,
+        metalness: 0.78,
       }),
       screenBounceUniforms,
     );
+    const smokedLensMat = new THREE.MeshStandardMaterial({
+      color: '#0b1017',
+      roughness: 0.14,
+      metalness: 0.72,
+      emissive: '#93c5fd',
+      emissiveIntensity: 0.02,
+    });
     const strobeEmissiveMat = new THREE.MeshStandardMaterial({
       color: '#e2e8f0',
       emissive: '#e0f2fe',
-      emissiveIntensity: 0.6,
+      emissiveIntensity: 0.4,
       roughness: 0.14,
       toneMapped: false,
     });
@@ -1107,6 +1114,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       velvetProsceniumMat,
       ceilingSoffitMat,
       trussSteelMat,
+      smokedLensMat,
       strobeEmissiveMat,
       ceilingCoveMat,
     };
@@ -1140,21 +1148,26 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       if (tel.fireLevel > 0.2 && tel.lightningFlash < 0.25) {
         kineticCeilingMats.strobeEmissiveMat.emissive.set('#f97316');
         kineticCeilingMats.ceilingCoveMat.emissive.set('#ef4444');
+        kineticCeilingMats.smokedLensMat.emissive.set('#f97316');
       } else if (tel.lightningFlash > 0.15) {
         kineticCeilingMats.strobeEmissiveMat.emissive.set('#e0f2fe');
         kineticCeilingMats.ceilingCoveMat.emissive.set('#60a5fa');
+        kineticCeilingMats.smokedLensMat.emissive.set('#e0f2fe');
       } else {
         kineticCeilingMats.strobeEmissiveMat.emissive.set('#93c5fd');
         kineticCeilingMats.ceilingCoveMat.emissive.set('#38bdf8');
+        kineticCeilingMats.smokedLensMat.emissive.set('#64748b');
       }
       kineticCeilingMats.strobeEmissiveMat.emissiveIntensity =
-        (0.28 + bassDrive * 1.35 + flashBoost) * scale;
+        (0.22 + bassDrive * 1.15 + flashBoost) * scale;
+      kineticCeilingMats.smokedLensMat.emissiveIntensity =
+        tel.lightningFlash > 0.15 ? flashBoost * 0.9 : bassDrive * 0.18;
       kineticCeilingMats.ceilingCoveMat.emissiveIntensity =
         (0.65 + bassDrive * 0.9 + tel.lightningFlash * 1.5) * scale;
       return;
     }
 
-    // Preview card / doors-open state: rotors stay still unless Motion Test is explicitly active
+    // Preview card / doors-open state: trusses show sleek dark smoked-glass optics unless storm lightning flash test is active
     const previewRotorSpeed = motionTestActive ? 9.5 : wallLedTheme === 'storm' ? 6.5 : 0;
     if (previewRotorSpeed > 0) {
       for (let i = 0; i < kineticWindRotorRefs.current.length; i++) {
@@ -1163,24 +1176,26 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       }
     }
 
+    kineticCeilingMats.smokedLensMat.emissiveIntensity = motionTestActive ? 0.24 : 0.02;
+
     if (wallLedTheme === 'storm') {
       kineticCeilingMats.strobeEmissiveMat.emissive.set('#e0f2fe');
-      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = 0.85 * scale;
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = 0.65 * scale;
       kineticCeilingMats.ceilingCoveMat.emissive.set('#60a5fa');
       kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.15;
     } else if (wallLedTheme === 'action') {
       kineticCeilingMats.strobeEmissiveMat.emissive.set('#f97316');
-      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 1.8 : 0.85) * scale;
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 1.4 : 0.65) * scale;
       kineticCeilingMats.ceilingCoveMat.emissive.set('#ef4444');
       kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.25;
     } else if (wallLedTheme === 'underwater') {
       kineticCeilingMats.strobeEmissiveMat.emissive.set('#22d3ee');
-      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = scale * 0.8;
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = scale * 0.65;
       kineticCeilingMats.ceilingCoveMat.emissive.set('#06b6d4');
       kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 1.1;
     } else {
       kineticCeilingMats.strobeEmissiveMat.emissive.set('#93c5fd');
-      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 1.1 : 0.35) * scale;
+      kineticCeilingMats.strobeEmissiveMat.emissiveIntensity = (motionTestActive ? 0.9 : 0.25) * scale;
       kineticCeilingMats.ceilingCoveMat.emissive.set('#38bdf8');
       kineticCeilingMats.ceilingCoveMat.emissiveIntensity = scale * 0.85;
     }
@@ -1836,7 +1851,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                                 : materials.nosingMat
                     }
                   >
-                    <boxGeometry args={[isDeccanDolby ? 2.26 : isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
+                    <boxGeometry args={[isDeccanDolby ? 2.26 : isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isKinetic4dx ? 1.42 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
                   </mesh>
 
                   {/* Always-on recessed safety step LED line */}
@@ -1847,11 +1862,11 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                       tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : isDeccanDolby ? 0.022 : 0.026),
                     ]}
                   >
-                    <boxGeometry args={[isDeccanDolby ? 2.14 : isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil ? 0.012 : isDeccanDolby ? 0.009 : 0.014, isDolbyVeil ? 0.011 : isDeccanDolby ? 0.020 : 0.026]} />
+                    <boxGeometry args={[isDeccanDolby ? 2.14 : isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isKinetic4dx ? 1.34 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil ? 0.012 : isKinetic4dx ? 0.016 : isDeccanDolby ? 0.009 : 0.014, isDolbyVeil ? 0.011 : isKinetic4dx ? 0.028 : isDeccanDolby ? 0.020 : 0.026]} />
                     <meshStandardMaterial
                       color={isDeccanDolby ? '#f2cfa0' : lightingProfile.stepLightColor}
                       emissive={isDeccanDolby ? '#d4a36a' : lightingProfile.stepLightColor}
-                      emissiveIntensity={isDeccanDolby ? stepEmissiveIntensity * 0.95 : isDolbyVeil ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
+                      emissiveIntensity={isDeccanDolby ? stepEmissiveIntensity * 0.95 : isKinetic4dx ? stepEmissiveIntensity * 1.45 : isDolbyVeil ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
                       toneMapped={false}
                       roughness={0.22}
                     />
@@ -2312,34 +2327,34 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       {/* 4DX Kinetic Arena 250: Low-Glare Velvet-Black Proscenium Frame (#08090c) & Acoustic Sub-Stage Cavity */}
       {isKinetic4dx && kineticCeilingMats && (
         <group>
-          {/* Matte Velvet-Black Proscenium Side Wings Flanking 18m Screen */}
+          {/* Matte Velvet-Black Proscenium Side Wings Flanking 21.4m Big Screen (strictly outside screen edge) */}
           {[-1, 1].map((side) => (
             <mesh
               key={`kinetic-prosc-wing-${side}`}
-              position={[side * (W / 2 - wingWidth / 2 - 0.04), H * 0.5, screenPosition[2] + 0.14]}
+              position={[side * (screenWidth / 2 + wingWidth / 2 + 0.06), H * 0.5, screenPosition[2] - 0.02]}
               material={kineticCeilingMats.velvetProsceniumMat}
               receiveShadow
             >
-              <boxGeometry args={[wingWidth + 0.25, H - 0.08, 0.36]} />
+              <boxGeometry args={[wingWidth + 0.08, H - 0.08, 0.24]} />
             </mesh>
           ))}
           {/* Upper Velvet-Black Proscenium Valance */}
           {valanceHeight > 0.15 && (
             <mesh
-              position={[0, H - valanceHeight / 2 - 0.02, screenPosition[2] + 0.14]}
+              position={[0, H - valanceHeight / 2 - 0.01, screenPosition[2] - 0.02]}
               material={kineticCeilingMats.velvetProsceniumMat}
               receiveShadow
             >
-              <boxGeometry args={[screenWidth + 1.0, valanceHeight + 0.14, 0.38]} />
+              <boxGeometry args={[screenWidth + 0.4, valanceHeight + 0.08, 0.24]} />
             </mesh>
           )}
-          {/* Lower Acoustic Floor Kick & Sub-Screen Fascia Sill (behind-screen LCR/sub cavity stays cleanly accessible behind z = -14) */}
+          {/* Lower Acoustic Floor Kick & Sub-Screen Fascia Sill */}
           <mesh
-            position={[0, Math.max(0.24, (screenPosition[1] - screenHeight / 2) * 0.5), screenPosition[2] + 0.18]}
+            position={[0, Math.max(0.24, (screenPosition[1] - screenHeight / 2) * 0.5), screenPosition[2] - 0.02]}
             material={kineticCeilingMats.velvetProsceniumMat}
             receiveShadow
           >
-            <boxGeometry args={[W - 0.4, Math.max(0.45, screenPosition[1] - screenHeight / 2 + 0.06), 0.22]} />
+            <boxGeometry args={[W - 0.4, Math.max(0.45, screenPosition[1] - screenHeight / 2 + 0.04), 0.22]} />
           </mesh>
         </group>
       )}
@@ -6396,40 +6411,40 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         </group>
       )}
 
-      {/* 4DX Kinetic Arena 250 Ceiling: T-Bar Acoustic Grid Tile Ceiling with Subtle Warm Pinhole Downlights + 3 Full-Width Cross-Braced Black Steel Box Trusses Carrying Suspended Spotlight / Effect Cans */}
+      {/* 4DX Kinetic Arena 250 Ceiling: T-Bar Acoustic Grid Tile Ceiling with Subtle Warm Pinhole Downlights + 3 Full-Width Cross-Braced Black Steel Box Trusses Carrying 8 Sleek Black Theatrical Spotlight Cans Each */}
       {ceilingLightStyle === 'kinetic_4dx_grid_rig' && kineticCeilingMats && (
         <group>
           {/* Subtle Warm Pinhole Ceiling Downlights Recessed in T-Bar Acoustic Grid */}
           {[
-            [-W * 0.26, frontZ + 8.4],
-            [W * 0.26, frontZ + 8.4],
-            [-W * 0.26, frontZ + 14.8],
-            [W * 0.26, frontZ + 14.8],
-            [-W * 0.26, frontZ + 21.2],
-            [W * 0.26, frontZ + 21.2],
+            [-W * 0.26, frontZ + 8.0],
+            [W * 0.26, frontZ + 8.0],
+            [-W * 0.26, frontZ + 14.4],
+            [W * 0.26, frontZ + 14.4],
+            [-W * 0.26, frontZ + 20.6],
+            [W * 0.26, frontZ + 20.6],
           ].map(([px, pz], pi) => (
             <mesh key={`kinetic-pinhole-${pi}`} position={[px, H - 0.21, pz]} rotation={[Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[0.065, 14]} />
+              <circleGeometry args={[0.06, 14]} />
               <meshStandardMaterial
                 color="#fff6e3"
                 emissive="#ffe2b0"
-                emissiveIntensity={0.18 + lightFactor * 1.45}
+                emissiveIntensity={0.22 + lightFactor * 1.55}
                 toneMapped={false}
               />
             </mesh>
           ))}
 
-          {/* 3 Full-Width Cross-Braced Black Steel Box Trusses with 7 Suspended Cylindrical Spotlight / 4DX Effect Cans Each */}
-          {[frontZ + 5.2, frontZ + 11.6, frontZ + 18.0].map((tz, ti) => {
-            const trussSpan = W * 0.88;
+          {/* 3 Full-Width Cross-Braced Black Steel Box Trusses with 8 Suspended Matte-Black Spotlight Pods Each */}
+          {[frontZ + 4.8, frontZ + 11.2, frontZ + 17.6].map((tz, ti) => {
+            const trussSpan = W * 0.92;
             const trussHalfSpan = trussSpan * 0.5;
-            const trussY = H - 1.06;
-            const halfBox = 0.22;
-            const bayCount = 14;
+            const trussY = H - 1.04;
+            const halfBox = 0.21;
+            const bayCount = 16;
             const bayLen = trussSpan / bayCount;
             const diagLen = Math.hypot(bayLen, halfBox * 2);
             const diagAng = Math.atan2(halfBox * 2, bayLen);
-            const canCount = 7;
+            const canCount = 8;
 
             return (
               <group key={`kinetic-full-truss-${ti}`} position={[0, trussY, tz]}>
@@ -6441,7 +6456,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                   [halfBox, halfBox],
                 ].map(([cy, cz], ci) => (
                   <mesh key={`chord-${ci}`} position={[0, cy, cz]} material={kineticCeilingMats.trussSteelMat} castShadow>
-                    <boxGeometry args={[trussSpan, 0.044, 0.044]} />
+                    <boxGeometry args={[trussSpan, 0.042, 0.042]} />
                   </mesh>
                 ))}
 
@@ -6449,36 +6464,33 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 {[-trussHalfSpan * 0.86, -trussHalfSpan * 0.3, trussHalfSpan * 0.3, trussHalfSpan * 0.86].map((hx, hi) => (
                   <group key={`hanger-${hi}`} position={[hx, halfBox + 0.42, 0]}>
                     <mesh position={[0, 0, -halfBox]} material={kineticCeilingMats.trussSteelMat}>
-                      <cylinderGeometry args={[0.016, 0.016, 0.86, 8]} />
+                      <cylinderGeometry args={[0.015, 0.015, 0.86, 8]} />
                     </mesh>
                     <mesh position={[0, 0, halfBox]} material={kineticCeilingMats.trussSteelMat}>
-                      <cylinderGeometry args={[0.016, 0.016, 0.86, 8]} />
+                      <cylinderGeometry args={[0.015, 0.015, 0.86, 8]} />
                     </mesh>
                   </group>
                 ))}
 
-                {/* Box-Truss Vertical Uprights & Diagonal Cross-Bracing Webbing (Front, Back & Top/Bottom Faces) */}
+                {/* Box-Truss Vertical Uprights & Diagonal Cross-Bracing Webbing */}
                 {Array.from({ length: bayCount + 1 }, (_, bi) => {
                   const bx = -trussHalfSpan + bi * bayLen;
                   const diagCx = bx + bayLen * 0.5;
                   const flip = bi % 2 === 0 ? 1 : -1;
                   return (
                     <React.Fragment key={`tbay-${bi}`}>
-                      {/* Vertical Posts Front & Back */}
                       <mesh position={[bx, 0, -halfBox]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.028, halfBox * 2, 0.028]} />
+                        <boxGeometry args={[0.026, halfBox * 2, 0.026]} />
                       </mesh>
                       <mesh position={[bx, 0, halfBox]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.028, halfBox * 2, 0.028]} />
+                        <boxGeometry args={[0.026, halfBox * 2, 0.026]} />
                       </mesh>
-                      {/* Cross Tie Top & Bottom */}
                       <mesh position={[bx, -halfBox, 0]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.026, 0.026, halfBox * 2]} />
+                        <boxGeometry args={[0.024, 0.024, halfBox * 2]} />
                       </mesh>
                       <mesh position={[bx, halfBox, 0]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.026, 0.026, halfBox * 2]} />
+                        <boxGeometry args={[0.024, 0.024, halfBox * 2]} />
                       </mesh>
-                      {/* Diagonal Braces Front, Back & Bottom */}
                       {bi < bayCount && (
                         <>
                           <mesh
@@ -6486,21 +6498,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                             rotation={[0, 0, flip * diagAng]}
                             material={kineticCeilingMats.trussSteelMat}
                           >
-                            <boxGeometry args={[diagLen, 0.024, 0.024]} />
+                            <boxGeometry args={[diagLen, 0.022, 0.022]} />
                           </mesh>
                           <mesh
                             position={[diagCx, 0, -halfBox]}
                             rotation={[0, 0, -flip * diagAng]}
                             material={kineticCeilingMats.trussSteelMat}
                           >
-                            <boxGeometry args={[diagLen, 0.024, 0.024]} />
+                            <boxGeometry args={[diagLen, 0.022, 0.022]} />
                           </mesh>
                           <mesh
                             position={[diagCx, -halfBox, 0]}
                             rotation={[0, flip * diagAng, 0]}
                             material={kineticCeilingMats.trussSteelMat}
                           >
-                            <boxGeometry args={[diagLen, 0.022, 0.022]} />
+                            <boxGeometry args={[diagLen, 0.02, 0.02]} />
                           </mesh>
                         </>
                       )}
@@ -6508,67 +6520,33 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                   );
                 })}
 
-                {/* 7 Suspended Cylindrical Matte-Black Spotlight / 4DX Effect Cans Under Truss */}
+                {/* 8 Sleek Matte-Black Cylindrical Theatrical Spotlight Pods Under Truss */}
                 {Array.from({ length: canCount }, (_, si) => {
-                  const sx = THREE.MathUtils.lerp(-trussHalfSpan * 0.84, trussHalfSpan * 0.84, si / (canCount - 1));
+                  const sx = THREE.MathUtils.lerp(-trussHalfSpan * 0.86, trussHalfSpan * 0.86, si / (canCount - 1));
                   const yawToCenter = sx < -1 ? 0.14 : sx > 1 ? -0.14 : 0;
                   return (
-                    <group key={`truss-can-${ti}-${si}`} position={[sx, -halfBox - 0.14, 0]} rotation={[0.38, yawToCenter, 0]}>
+                    <group key={`truss-can-${ti}-${si}`} position={[sx, -halfBox - 0.16, 0]} rotation={[0.52, yawToCenter, 0]}>
                       {/* Mounting Yoke Arm */}
                       <mesh position={[0, 0.15, 0]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.28, 0.032, 0.032]} />
+                        <boxGeometry args={[0.26, 0.03, 0.03]} />
                       </mesh>
-                      <mesh position={[-0.13, 0.06, 0]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.026, 0.19, 0.032]} />
+                      <mesh position={[-0.12, 0.06, 0]} material={kineticCeilingMats.trussSteelMat}>
+                        <boxGeometry args={[0.024, 0.19, 0.03]} />
                       </mesh>
-                      <mesh position={[0.13, 0.06, 0]} material={kineticCeilingMats.trussSteelMat}>
-                        <boxGeometry args={[0.026, 0.19, 0.032]} />
+                      <mesh position={[0.12, 0.06, 0]} material={kineticCeilingMats.trussSteelMat}>
+                        <boxGeometry args={[0.024, 0.19, 0.03]} />
                       </mesh>
-                      {/* Main Projector / 4DX Effect Barrel */}
+                      {/* Main Theatrical Spotlight Barrel */}
                       <mesh rotation={[Math.PI / 2, 0, 0]} material={kineticCeilingMats.trussSteelMat} castShadow>
-                        <cylinderGeometry args={[0.125, 0.135, 0.34, 16]} />
+                        <cylinderGeometry args={[0.115, 0.128, 0.34, 16]} />
                       </mesh>
-                      {/* Front Snoot Rim & Subtle Dark Glass Lens */}
-                      <mesh position={[0, 0, 0.172]} material={kineticCeilingMats.strobeEmissiveMat}>
-                        <circleGeometry args={[0.105, 14]} />
+                      {/* Recessed Dark Smoked Optical Glass Lens (never white/blue headlight discs) */}
+                      <mesh position={[0, 0, 0.171]} material={kineticCeilingMats.smokedLensMat}>
+                        <circleGeometry args={[0.092, 14]} />
                       </mesh>
                     </group>
                   );
                 })}
-
-                {/* Discreet Shrouded Blower Pods Tucked at Outer Corners of Front & Mid Trusses for Bass-Driven Airflow */}
-                {ti < 2 &&
-                  [-1, 1].map((side, bi) => {
-                    const rotorIdx = ti * 2 + bi;
-                    return (
-                      <group
-                        key={`kinetic-shrouded-blower-${ti}-${bi}`}
-                        position={[side * (trussHalfSpan - 0.35), 0, 0]}
-                      >
-                        <mesh rotation={[Math.PI / 2, 0, 0]} material={kineticCeilingMats.trussSteelMat}>
-                          <cylinderGeometry args={[0.16, 0.16, 0.28, 14, 1, true]} />
-                        </mesh>
-                        <group
-                          ref={(el) => {
-                            kineticWindRotorRefs.current[rotorIdx] = el;
-                          }}
-                        >
-                          <mesh rotation={[Math.PI / 2, 0, 0]} material={kineticCeilingMats.trussSteelMat}>
-                            <cylinderGeometry args={[0.04, 0.04, 0.08, 10]} />
-                          </mesh>
-                          {Array.from({ length: 4 }, (_, bladeIdx) => (
-                            <mesh
-                              key={`blade-${bladeIdx}`}
-                              rotation={[0, 0, (bladeIdx * Math.PI) / 2]}
-                              material={kineticCeilingMats.trussSteelMat}
-                            >
-                              <boxGeometry args={[0.26, 0.045, 0.015]} />
-                            </mesh>
-                          ))}
-                        </group>
-                      </group>
-                    );
-                  })}
               </group>
             );
           })}

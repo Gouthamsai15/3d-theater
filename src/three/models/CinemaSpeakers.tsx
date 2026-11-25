@@ -1282,23 +1282,24 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
 
     if (isKinetic4dx) {
-      // 4 sleek matte-black side surround speakers per wall positioned cleanly just below the zig-zag ice-cyan LED line
-      const zMin = frontZ + 3.2;
-      const zMax = backZ - 2.4;
-      for (let idx = 0; idx < 4; idx++) {
-        const frac = idx / 3;
-        const spkZ = THREE.MathUtils.lerp(zMin, zMax, frac);
-        const spkY = THREE.MathUtils.lerp(3.45, 5.95, frac);
+      // 4 sleek matte-black side surround speakers per wall positioned cleanly between the amber dado shelf and cyan LED line
+      const kineticCoords: [number, number][] = [
+        [-8.6, 3.1],
+        [-3.6, 3.6],
+        [1.4, 4.48],
+        [6.8, 5.82],
+      ];
+      kineticCoords.forEach(([spkZ, spkY], idx) => {
         ([-1, 1] as const).forEach((side) => {
           arr.push({
-            x: side * (W / 2 - 0.34),
+            x: side * (W / 2 - 0.36),
             y: spkY,
             z: spkZ,
             side,
             bayIdx: idx,
           });
         });
-      }
+      });
       return arr;
     }
 

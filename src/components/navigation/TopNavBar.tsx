@@ -38,13 +38,13 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({ onOpenAbout }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#070709]/92">
-      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-8 px-6 py-4 lg:px-10">
+    <header className="sticky top-0 z-40 border-b border-white/[0.08] bg-[#070709]">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 sm:gap-8 px-3.5 py-2.5 sm:px-6 sm:py-4 lg:px-10">
         {/* Zone 1: Brand Wordmark (single clean element) */}
         <button
           type="button"
           onClick={() => handleNavClick('home')}
-          className="font-display text-xl font-semibold tracking-wide text-[#F4F1EA] whitespace-nowrap shrink-0 cursor-pointer hover:text-[#D4AF37] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]/70 rounded"
+          className="font-display text-lg sm:text-xl font-semibold tracking-wide text-[#F4F1EA] whitespace-nowrap shrink-0 cursor-pointer hover:text-[#D4AF37] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF37]/70 rounded"
         >
           Aurelia Cinema
         </button>

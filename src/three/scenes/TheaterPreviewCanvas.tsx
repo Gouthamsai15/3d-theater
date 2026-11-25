@@ -34,7 +34,7 @@ const PreviewOrbitRig: React.FC<{
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
     const baseFov = computeAdaptiveCinemaFov(config.categoryId, size.width, size.height);
-    const nextFov = isDeccan ? Math.max(baseFov, 66) : isKinetic4dx ? Math.max(baseFov, 64) : baseFov;
+    const nextFov = isDeccan ? Math.max(baseFov, 66) : isKinetic4dx ? Math.max(baseFov, 66) : baseFov;
     if (Math.abs(persp.fov - nextFov) > 0.05) {
       persp.fov = nextFov;
       persp.updateProjectionMatrix();
@@ -96,7 +96,7 @@ const PreviewOrbitRig: React.FC<{
         isDeccan
           ? [0, 4.75, -7.5]
           : isKinetic4dx
-            ? [0, 5.15, -6.5]
+            ? [0, 4.75, -8.8]
             : [
                 0,
                 Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
@@ -135,7 +135,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
   const rearY = isDeccan
     ? 6.05
     : isKinetic4dx
-      ? 5.65
+      ? 5.15
       : Math.min(
           config.auditoriumHeight - 1.1,
           (config.seatingRows - 1) * config.rowElevationStep + 2.4,
@@ -143,7 +143,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
   const rearZ = isDeccan
     ? 13.85
     : isKinetic4dx
-      ? 11.4
+      ? 9.6
       : Math.min(config.auditoriumLength / 2 - 0.9, config.auditoriumLength * 0.3);
   const initialCamX = isDeccan || isKinetic4dx ? 0 : config.auditoriumWidth * 0.22;
   const baseFov = computeAdaptiveCinemaFov(
@@ -163,7 +163,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
         }}
         camera={{
           position: [initialCamX, rearY, rearZ],
-          fov: isDeccan ? Math.max(baseFov, 66) : isKinetic4dx ? Math.max(baseFov, 64) : baseFov,
+          fov: isDeccan ? Math.max(baseFov, 66) : isKinetic4dx ? Math.max(baseFov, 66) : baseFov,
           near: 0.1,
           far: config.categoryId === 'beach' ? 2400 : 120,
         }}

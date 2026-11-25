@@ -47,7 +47,7 @@ export const StepProgressBar: React.FC = () => {
 
   return (
     <div className="border-b border-white/[0.06] bg-[#0B0C10]">
-      <div className="mx-auto flex max-w-[1440px] items-center gap-4 overflow-x-auto px-6 py-3 lg:px-10">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between sm:justify-start gap-1.5 sm:gap-4 overflow-x-auto px-3.5 py-2 sm:px-6 sm:py-3 lg:px-10">
         {steps.map((step, idx) => {
           const isCurrent = route === step.route;
           return (
@@ -56,7 +56,7 @@ export const StepProgressBar: React.FC = () => {
                 type="button"
                 disabled={!step.reachable}
                 onClick={() => step.reachable && navigate(step.route)}
-                className={`flex items-center gap-2 text-xs whitespace-nowrap shrink-0 transition-colors ${
+                className={`flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors ${
                   isCurrent
                     ? 'font-semibold text-[#E5C158]'
                     : step.reachable
@@ -68,7 +68,7 @@ export const StepProgressBar: React.FC = () => {
                 <span>{step.label}</span>
               </button>
               {idx < steps.length - 1 && (
-                <span className="text-neutral-700 text-xs select-none" aria-hidden="true">
+                <span className="text-neutral-700 text-[10px] sm:text-xs select-none" aria-hidden="true">
                   /
                 </span>
               )}

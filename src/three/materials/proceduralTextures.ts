@@ -3206,18 +3206,63 @@ export function createStandbyScreenTexture(
       ctx.fillRect(0, 0, W, H);
 
       if (isKinetic250) {
-        // Subtle architectural acoustic slat & motion-wave calibration lattice
-        ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
-        ctx.lineWidth = 2;
-        for (let x = 160; x <= W - 160; x += 160) {
-          ctx.beginPath();
-          ctx.moveTo(x, 80);
-          ctx.lineTo(x, H - 80);
-          ctx.stroke();
-        }
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.22)';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(110, 72, W - 220, H - 144);
+        // Full edge-to-edge luminous widescreen ice-steel atmospheric cinema visual matching the slate-cyan auditorium palette
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+        skyGrad.addColorStop(0.0, '#1e2c3e');
+        skyGrad.addColorStop(0.32, '#4d6b88');
+        skyGrad.addColorStop(0.62, '#a7c4d8');
+        skyGrad.addColorStop(0.84, '#6d8aa2');
+        skyGrad.addColorStop(1.0, '#16202c');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, W, H);
+
+        // Luminous volumetric cloud/mist corona behind center horizon
+        const sunGlow = ctx.createRadialGradient(cx, cy - 30, 30, cx, cy - 30, 920);
+        sunGlow.addColorStop(0.0, 'rgba(240, 250, 255, 0.92)');
+        sunGlow.addColorStop(0.32, 'rgba(186, 230, 253, 0.58)');
+        sunGlow.addColorStop(0.7, 'rgba(100, 145, 180, 0.22)');
+        sunGlow.addColorStop(1.0, 'rgba(20, 32, 46, 0.0)');
+        ctx.fillStyle = sunGlow;
+        ctx.fillRect(0, 0, W, H);
+
+        // Atmospheric faceted steel-slate terrain silhouettes framing bottom corners
+        ctx.fillStyle = 'rgba(16, 24, 34, 0.88)';
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        ctx.lineTo(0, H * 0.62);
+        ctx.lineTo(W * 0.16, H * 0.72);
+        ctx.lineTo(W * 0.34, H * 0.82);
+        ctx.lineTo(W * 0.52, H * 0.87);
+        ctx.lineTo(W * 0.72, H * 0.79);
+        ctx.lineTo(W * 0.88, H * 0.66);
+        ctx.lineTo(W, H * 0.58);
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fill();
+
+        // Crisp subtle dark architectural vignette only at extreme corners
+        const vig = ctx.createRadialGradient(cx, cy, W * 0.34, cx, cy, W * 0.72);
+        vig.addColorStop(0, 'rgba(8, 12, 18, 0)');
+        vig.addColorStop(1, 'rgba(6, 9, 14, 0.45)');
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, 0, W, H);
+
+        // Clean high-contrast centered theater typography
+        ctx.fillStyle = '#0c1522';
+        ctx.font = '700 28px "Montserrat", "Plus Jakarta Sans", sans-serif';
+        drawTrackedText(ctx, '4DX KINETIC ARENA · 250 SEATS', cx, cy - 84, 14);
+
+        ctx.fillStyle = '#08101b';
+        ctx.shadowColor = 'rgba(255, 255, 255, 0.75)';
+        ctx.shadowBlur = 24;
+        ctx.font = '900 104px "Montserrat", "Plus Jakarta Sans", sans-serif';
+        drawTrackedText(ctx, '4DX KINETIC', cx, cy + 10, 22);
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#14263a';
+        ctx.font = '700 26px "Montserrat", "Plus Jakarta Sans", sans-serif';
+        drawTrackedText(ctx, 'MOTION · WIND · ATMOS · CURVED LASER PROJECTION', cx, cy + 92, 12);
+        return;
       }
 
       // Dynamic kinetic speed streaks matching 4DX fins/exoskeleton
@@ -3236,18 +3281,16 @@ export function createStandbyScreenTexture(
       ctx.globalAlpha = 1;
 
       drawTitleBlock(
-        isKinetic250 ? '4DX 250-SEAT MOTION & ATMOS ARENA' : '4DX MULTI-SENSORY MOTION ARENA',
+        '4DX MULTI-SENSORY MOTION ARENA',
         theaterName || '4DX CINEMA',
-        isKinetic250 ? '10×25 PITCH · WIND · MIST · STROBE · ATMOS' : 'WIND · FOG · MOTION · ATMOS',
+        'WIND · FOG · MOTION · ATMOS',
         '#F8FAFC',
         accentHex,
-        isKinetic250
-          ? 'rgba(56, 189, 248, 0.56)'
-          : isArctic
-            ? 'rgba(34, 211, 238, 0.56)'
-            : isThunder
-              ? 'rgba(16, 185, 129, 0.56)'
-              : 'rgba(239, 68, 68, 0.58)',
+        isArctic
+          ? 'rgba(34, 211, 238, 0.56)'
+          : isThunder
+            ? 'rgba(16, 185, 129, 0.56)'
+            : 'rgba(239, 68, 68, 0.58)',
         false,
       );
       return;
@@ -3960,21 +4003,21 @@ export function createTBarCeilingGridTexture(): THREE.CanvasTexture {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  // Matte-black perforated mineral acoustic ceiling field
-  ctx.fillStyle = '#0c0d12';
+  // Dark slate perforated mineral acoustic ceiling field
+  ctx.fillStyle = '#171c25';
   ctx.fillRect(0, 0, size, size);
 
   // Subtle acoustic micro-perforation stipple
   for (let i = 0; i < 6400; i++) {
     const px = (i * 73 + (i % 19) * 11) % size;
     const py = (i * 131 + (i % 23) * 7) % size;
-    ctx.fillStyle = i % 3 === 0 ? 'rgba(32, 36, 46, 0.24)' : 'rgba(3, 4, 7, 0.55)';
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(42, 50, 64, 0.28)' : 'rgba(6, 8, 12, 0.52)';
     ctx.fillRect(px, py, 2, 2);
   }
 
   // Crisp 4x4 dark-slate suspended T-bar grid rails
   const step = size / 4;
-  ctx.strokeStyle = '#2b303c';
+  ctx.strokeStyle = '#333b4a';
   ctx.lineWidth = 4;
   for (let i = 0; i <= 4; i++) {
     const p = i * step;
@@ -3990,7 +4033,7 @@ export function createTBarCeilingGridTexture(): THREE.CanvasTexture {
   }
 
   // Fine dark inner shadow seam flanking T-bars
-  ctx.strokeStyle = '#050608';
+  ctx.strokeStyle = '#090c12';
   ctx.lineWidth = 1.5;
   for (let i = 0; i < 4; i++) {
     for (let j = 0; j < 4; j++) {

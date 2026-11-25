@@ -169,8 +169,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillLeftRef.current.intensity = f * 0.62;
         wallFillLeftRef.current.color.set('#96e2c8');
       } else if (isKinetic4dx) {
-        wallFillLeftRef.current.intensity = f * 0.58 * fxScale;
-        wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.22);
+        wallFillLeftRef.current.intensity = f * 0.72 * fxScale;
+        wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.35);
       } else {
         wallFillLeftRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
@@ -192,8 +192,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillRightRef.current.intensity = f * 0.62;
         wallFillRightRef.current.color.set('#aee2ee');
       } else if (isKinetic4dx) {
-        wallFillRightRef.current.intensity = f * 0.55 * fxScale;
-        wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.22);
+        wallFillRightRef.current.intensity = f * 0.7 * fxScale;
+        wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.35);
       } else {
         wallFillRightRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;
