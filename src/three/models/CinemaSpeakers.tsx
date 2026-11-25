@@ -1282,18 +1282,16 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     }
 
     if (isKinetic4dx) {
-      // 6 ear-to-above-ear side surround speakers per wall (~2.5m above local stadium riser) cleanly aligned between acoustic slat/diffuser bays
-      for (let idx = 0; idx < 6; idx++) {
-        const spkZ = THREE.MathUtils.lerp(config.firstRowZ - 0.8, backZ - 2.4, idx / 5);
-        const rowFrac = THREE.MathUtils.clamp(
-          (spkZ - config.firstRowZ) / Math.max(0.5, config.rowSpacing),
-          0,
-          Math.max(0, config.seatingRows - 1),
-        );
-        const spkY = Math.min(H - 1.85, Math.max(2.6, rowFrac * config.rowElevationStep + 2.55));
+      // 4 sleek matte-black side surround speakers per wall positioned cleanly just below the zig-zag ice-cyan LED line
+      const zMin = frontZ + 3.2;
+      const zMax = backZ - 2.4;
+      for (let idx = 0; idx < 4; idx++) {
+        const frac = idx / 3;
+        const spkZ = THREE.MathUtils.lerp(zMin, zMax, frac);
+        const spkY = THREE.MathUtils.lerp(3.45, 5.95, frac);
         ([-1, 1] as const).forEach((side) => {
           arr.push({
-            x: side * (W / 2 - 0.3),
+            x: side * (W / 2 - 0.34),
             y: spkY,
             z: spkZ,
             side,
@@ -1761,8 +1759,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           />
         ))}
 
-        {/* Subtle Cinema Power Status Badge LED (omitted on Sylva Moss 250, Dolby Cobalt Veil 250, Dolby Kakatiya Heritage, The Deccan – Monsoon, IMAX Cobalt Horizon, 4DX Exo-Skeleton 550 & 4DX Arctic Storm so surrounds remain sleek matte black) */}
-        {!isBiophilicMoss && !isCobaltVeilDolby && !isKakatiyaDolby && !isDeccanDolby && !isCobaltHorizonImax && !isExoskeleton4dx && !isArctic4dx && (
+        {/* Subtle Cinema Power Status Badge LED (omitted on clean matte-black surround halls) */}
+        {!isBiophilicMoss && !isCobaltVeilDolby && !isKakatiyaDolby && !isDeccanDolby && !isCobaltHorizonImax && !isExoskeleton4dx && !isArctic4dx && !isKinetic4dx && (
           <mesh position={[0, -0.285, 0.186]} material={materials.statusLedMat}>
             <boxGeometry args={[0.045, 0.012, 0.008]} />
           </mesh>
@@ -1838,7 +1836,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
               />
             </group>
           </group>
-        ) : isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d ? (
+        ) : isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d || isKinetic4dx ? (
           <group
             key={`atmos-flush-${i}`}
             position={[ap.x, ap.y, ap.z]}
@@ -1847,7 +1845,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
             <mesh
               position={[0, 0.004, 0]}
               geometry={geometries.flushCeilingTrimGeo}
-              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d ? materials.cabinetMat : materials.darkSteelMat}
+              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d || isKinetic4dx ? materials.cabinetMat : materials.darkSteelMat}
             />
             <mesh
               position={[0, 0.001, 0]}
@@ -2078,11 +2076,11 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       {/* 4DX Kinetic Arena 250: Behind-Screen LCR Main Line-Array Enclosures, Floor-Mounted Dual Subwoofers & Corner Bass Traps */}
       {isKinetic4dx && (
         <group>
-          {/* Behind-Screen Left, Center, Right Main Horn/Line-Array Enclosures (safely positioned inside 2m cavity behind z = -14 screen) */}
-          {[-5.4, 0, 5.4].map((lx, li) => (
-            <group key={`kinetic-lcr-${li}`} position={[lx, config.screenPosition[1] - 0.4, frontZ + 0.72]}>
+          {/* Behind-Screen Left, Center, Right Main Horn/Line-Array Enclosures */}
+          {[-5.6, 0, 5.6].map((lx, li) => (
+            <group key={`kinetic-lcr-${li}`} position={[lx, config.screenPosition[1] - 0.4, frontZ + 0.56]}>
               <mesh position={[0, -1.65, 0]} material={materials.darkSteelMat}>
-                <boxGeometry args={[1.1, 2.2, 0.75]} />
+                <boxGeometry args={[1.1, 2.2, 0.65]} />
               </mesh>
               <mesh geometry={geometries.lineArrayCabinetGeo} material={materials.cabinetMat} />
               <mesh position={[0, 0.42, 0]} geometry={geometries.lineArrayCabinetGeo} material={materials.cabinetMat} />
@@ -2091,8 +2089,8 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           ))}
 
           {/* Floor-Mounted Front Dual-18" Cinema Subwoofers & Corner Bass Traps */}
-          {[-3.6, 3.6].map((sx, si) => (
-            <group key={`kinetic-front-sub-${si}`} position={[sx, 0.76, frontZ + 0.82]} scale={0.95}>
+          {[-3.8, 3.8].map((sx, si) => (
+            <group key={`kinetic-front-sub-${si}`} position={[sx, 0.76, frontZ + 0.64]} scale={0.95}>
               <mesh geometry={geometries.subCabinetGeo} material={materials.cabinetMat} castShadow />
               <mesh position={[0, 0, 0.35]} geometry={geometries.subBaffleGeo} material={materials.baffleMat} />
             </group>
@@ -2100,7 +2098,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
           {[-1, 1].map((side) => (
             <mesh
               key={`kinetic-bass-trap-${side}`}
-              position={[side * (W * 0.5 - 0.78), 1.9, frontZ + 0.86]}
+              position={[side * (W * 0.5 - 0.78), 1.9, frontZ + 0.68]}
               rotation={[0, -side * 0.72, 0]}
               material={materials.cabinetMat}
             >

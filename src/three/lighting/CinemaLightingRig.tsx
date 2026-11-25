@@ -133,7 +133,7 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
           ? '#f97316'
           : wallLedTheme === 'underwater'
             ? '#22d3ee'
-            : '#38bdf8';
+            : '#8eeae8';
 
     if (ambientRef.current) {
       const swBoost = isSoftwareGl ? 1.48 : 1.24;
@@ -169,8 +169,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillLeftRef.current.intensity = f * 0.62;
         wallFillLeftRef.current.color.set('#96e2c8');
       } else if (isKinetic4dx) {
-        wallFillLeftRef.current.intensity = f * lightingProfile.wallOpenIntensity * 0.46 * fxScale;
-        wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.28);
+        wallFillLeftRef.current.intensity = f * 0.58 * fxScale;
+        wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.22);
       } else {
         wallFillLeftRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.34 + flashLevel * 0.85;
@@ -192,8 +192,8 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
         wallFillRightRef.current.intensity = f * 0.62;
         wallFillRightRef.current.color.set('#aee2ee');
       } else if (isKinetic4dx) {
-        wallFillRightRef.current.intensity = f * lightingProfile.wallOpenIntensity * 0.44 * fxScale;
-        wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.28);
+        wallFillRightRef.current.intensity = f * 0.55 * fxScale;
+        wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.22);
       } else {
         wallFillRightRef.current.intensity =
           f * lightingProfile.wallOpenIntensity * 0.32 + flashLevel * 0.85;

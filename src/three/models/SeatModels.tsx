@@ -1541,21 +1541,21 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                             : isArctic4dxPod
                               ? '#8b5cf6'
                               : isKinetic4dxPod
-                                ? '#0ea5e9'
+                                ? '#232834'
                                 : isThunder4dxPod
                                   ? '#b4becd'
                                   : isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
                                     ? '#252934'
                                     : '#525866',
-        roughness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.72 : 0.24,
+        roughness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.72 : isKinetic4dxPod ? 0.34 : 0.24,
         metalness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.16 : 0.88,
       }),
       screenBounceUniforms,
     );
     const nozzleMat = new THREE.MeshStandardMaterial({
-      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isKinetic4dxPod ? '#38bdf8' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
-      emissive: isArctic4dxPod ? '#8b5cf6' : isKinetic4dxPod ? '#38bdf8' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
-      emissiveIntensity: isThunder4dxPod || isExoskeleton4dxPod ? 0.26 : 0.35,
+      color: isCrimson4dxPod ? '#2563eb' : isArctic4dxPod ? '#22d3ee' : isKinetic4dxPod ? '#161a22' : isExoskeleton4dxPod ? '#cbd5e1' : isThunder4dxPod ? '#c2cbd8' : '#38bdf8',
+      emissive: isArctic4dxPod ? '#8b5cf6' : isKinetic4dxPod ? '#0f172a' : isExoskeleton4dxPod ? '#ef4444' : isThunder4dxPod ? '#f59e0b' : '#0ea5e9',
+      emissiveIntensity: isKinetic4dxPod ? 0.0 : isThunder4dxPod || isExoskeleton4dxPod ? 0.26 : 0.35,
       roughness: 0.24,
       metalness: 0.86,
     });
@@ -1568,7 +1568,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     });
     const pipingMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
-        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isKinetic4dxPod ? '#38bdf8' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
+        color: isCrimson4dxPod || isExoskeleton4dxPod ? '#dc2626' : isArctic4dxPod || isParametricPurpleSeat ? '#a855f7' : isKinetic4dxPod ? '#232834' : isDolbyKakatiyaSeat ? '#c89d4c' : isDolbyDeccanSeat ? '#9a7446' : isThunder4dxPod ? '#9aa3b2' : '#6b7280',
         emissive: isParametricPurpleSeat ? '#7e22ce' : '#000000',
         emissiveIntensity: isParametricPurpleSeat ? 0.26 : 0,
         roughness: isThunder4dxPod || isDolbyKakatiyaSeat || isDolbyDeccanSeat ? 0.32 : 0.28,
@@ -1794,11 +1794,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   ]);
 
   useEffect(() => {
-    materials.nozzleMat.emissiveIntensity = isPlaying ? 0.18 : 0.35;
+    materials.nozzleMat.emissiveIntensity = isKinetic4dxPod ? 0 : isPlaying ? 0.18 : 0.35;
     materials.armControlMat.emissiveIntensity = isPlaying ? 0.22 : 0.75;
     materials.dolbyTagMat.emissiveIntensity = isPlaying ? 0.32 : 0.78;
     materials.lampShadeMat.emissiveIntensity = isPlaying ? 0.18 : 0.92;
-  }, [materials, isPlaying]);
+  }, [materials, isPlaying, isKinetic4dxPod]);
 
   const geometries = useMemo(() => {
     const cushionGeo = buildErgonomicCushionGeo(
@@ -2841,8 +2841,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
         if (cushionRef.current?.instanceColor) cushionRef.current.instanceColor.needsUpdate = true;
         if (backrestRef.current?.instanceColor) backrestRef.current.instanceColor.needsUpdate = true;
         if (headrestRef.current?.instanceColor) headrestRef.current.instanceColor.needsUpdate = true;
-        materials.nozzleMat.emissive.set('#38bdf8');
-        materials.nozzleMat.emissiveIntensity = isPlaying ? 0.18 : 0.35;
+        materials.nozzleMat.emissive.set('#1e293b');
+        materials.nozzleMat.emissiveIntensity = 0;
       }
     }
   });
