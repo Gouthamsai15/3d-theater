@@ -100,6 +100,31 @@ function getSeatProportions(model: SeatModelType, widthScale = 1): SeatPartOffse
         pedestalHeight: 0.35,
         pedestalPos: [0, 0.175, 0.02],
       };
+    case 'imax_tree_walnut':
+      return {
+        cushionWidth: 0.62 * s,
+        cushionHeight: 0.19,
+        cushionDepth: 0.59,
+        cushionPos: [0, 0.43, 0.01],
+        backrestWidth: 0.6 * s,
+        backrestHeight: 0.72,
+        backrestDepth: 0.175,
+        backrestPos: [0, 0.8, 0.25],
+        backrestTilt: 0.14,
+        headrestWidth: 0.48 * s,
+        headrestHeight: 0.22,
+        headrestDepth: 0.15,
+        headrestPos: [0, 1.18, 0.31],
+        armWidth: 0.145,
+        armHeight: 0.145,
+        armDepth: 0.6,
+        armOffsetX: 0.39 * s,
+        armPosY: 0.585,
+        armPosZ: 0.03,
+        pedestalRadius: 0.25,
+        pedestalHeight: 0.35,
+        pedestalPos: [0, 0.175, 0.02],
+      };
     case 'ice_recliner':
       return {
         cushionWidth: 0.72 * s,
@@ -1151,6 +1176,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   const sodaStrawRef = useRef<THREE.InstancedMesh>(null);
   const fluteGlassRef = useRef<THREE.InstancedMesh>(null);
   const fluteLiquidRef = useRef<THREE.InstancedMesh>(null);
+  const aisleArmLightRef = useRef<THREE.InstancedMesh>(null);
   const seatGroupRef = useRef<THREE.Group>(null);
 
   const count = seats.length;
@@ -1188,6 +1214,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   const isBiophilicMossSeat = seatModel === 'charcoal_moss_rocker';
   const isVolcanicCopperSeat = isMultiplexStadium && config.theaterId === 'standard_2d';
   const isImaxRocker = seatModel === 'imax_rocker';
+  const isTreeOfLifeSeat = seatModel === 'imax_tree_walnut';
   const isImaxAuroraSeat = isImaxRocker && config.theaterId === 'imax_aurora';
   const isImaxSolarSeat = isImaxRocker && config.theaterId === 'imax_solar';
   const isDolbyObsidianSeat = config.theaterId === 'dolby';
@@ -1205,25 +1232,27 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
         isAny4dxPod,
         isChampagneDaybed || isWalnutLoveseat
           ? 'boucle'
-          : isIceObsidianRecliner
-            ? 'suede'
-            : isDolbyVeilSeat
-              ? 'charcoal_knit'
-              : isDolbyKakatiyaSeat
-                ? 'maroon_gold_leather'
-                : isDolbyDeccanSeat
-                  ? 'forest_emerald_bronze_leather'
-                  : isIceRecliner || isDolbyObsidianSeat
-                    ? 'blue_stitched'
-                    : isArctic4dxPod
-                      ? 'violet_stitched'
-                      : isExoskeleton4dxPod
-                        ? 'crimson_tech_leather'
-                        : isThunder4dxPod || isKinetic4dxPod
-                          ? 'perforated'
-                          : 'default',
+          : isTreeOfLifeSeat
+            ? 'forest_green_weave'
+            : isIceObsidianRecliner
+              ? 'suede'
+              : isDolbyVeilSeat
+                ? 'charcoal_knit'
+                : isDolbyKakatiyaSeat
+                  ? 'maroon_gold_leather'
+                  : isDolbyDeccanSeat
+                    ? 'forest_emerald_bronze_leather'
+                    : isIceRecliner || isDolbyObsidianSeat
+                      ? 'blue_stitched'
+                      : isArctic4dxPod
+                        ? 'violet_stitched'
+                        : isExoskeleton4dxPod
+                          ? 'crimson_tech_leather'
+                          : isThunder4dxPod || isKinetic4dxPod
+                            ? 'perforated'
+                            : 'default',
       ),
-    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat, isDolbyDeccanSeat],
+    [isLeather, isIceRecliner, isIceObsidianRecliner, isAny4dxPod, isChampagneDaybed, isWalnutLoveseat, isTreeOfLifeSeat, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isDolbyObsidianSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat, isDolbyDeccanSeat],
   );
 
   const marbleTrayMap = useMemo(
@@ -1321,9 +1350,11 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
             ? 0.86
             : isScreenXPit || isMultiplexScreenXRocker
               ? 0.84
-              : isBiophilicMossSeat
-                ? 0.89
-                : isMultiplexStadium
+                : isBiophilicMossSeat
+                  ? 0.89
+                  : isTreeOfLifeSeat
+                    ? 0.86
+                    : isMultiplexStadium
                   ? 0.82
                   : isMandapSeat
                     ? 0.92
@@ -1342,7 +1373,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                                 : isLeather
                                   ? 0.28
                                   : 0.72,
-        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker || isExoskeleton4dxPod || isKinetic4dxPod ? 0.05 : isLeather ? 0.07 : 0.02,
+        metalness: isIceObsidianRecliner || isWalnutLoveseat || isScreenXPit || isMultiplexScreenXRocker || isMultiplexStadium || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isTreeOfLifeSeat || isDolbyVeilSeat ? 0.01 : isImaxRocker || isExoskeleton4dxPod || isKinetic4dxPod ? 0.05 : isLeather ? 0.07 : 0.02,
       }),
       screenBounceUniforms,
     );
@@ -1367,6 +1398,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                     ? '#171920'
                     : isBiophilicMossSeat
                       ? '#272c30'
+                      : isTreeOfLifeSeat
+                        ? '#5c3520'
                       : isVolcanicCopperSeat
                         ? '#4f3a29'
                         : isWalnutLoveseat
@@ -1406,6 +1439,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                 ? 0.36
                 : isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
                   ? 0.88
+                  : isTreeOfLifeSeat
+                    ? 0.44
                   : isChampagneDaybed
                     ? 0.86
                     : isWalnutLoveseat
@@ -1435,6 +1470,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                 ? 0.06
                 : isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
                   ? 0.02
+                  : isTreeOfLifeSeat
+                    ? 0.06
                   : isChampagneDaybed
                     ? 0.02
                     : isWalnutLoveseat
@@ -1500,16 +1537,16 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                     : isAny4dxPod
                       ? '#1a1d24'
                       : '#121318',
-        roughness: isThunder4dxPod ? 0.26 : isScreenXPit ? 0.32 : isWalnutLoveseat || isChampagneDaybed ? 0.28 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.8 : 0.36,
-        metalness: isThunder4dxPod ? 0.88 : isScreenXPit ? 0.82 : isWalnutLoveseat || isChampagneDaybed ? 0.85 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.15 : 0.78,
+        roughness: isThunder4dxPod ? 0.26 : isScreenXPit ? 0.32 : isWalnutLoveseat || isChampagneDaybed ? 0.28 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat ? 0.8 : 0.36,
+        metalness: isThunder4dxPod ? 0.88 : isScreenXPit ? 0.82 : isWalnutLoveseat || isChampagneDaybed ? 0.85 : isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat ? 0.15 : 0.78,
       }),
       screenBounceUniforms,
     );
     const cupMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
         color: '#07080a',
-        roughness: isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.72 : 0.28,
-        metalness: isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker ? 0.12 : 0.75,
+        roughness: isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat ? 0.72 : 0.28,
+        metalness: isMultiplexStadium || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat ? 0.12 : 0.75,
       }),
       screenBounceUniforms,
     );
@@ -1536,6 +1573,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                         ? '#b89446'
                         : isWalnutLoveseat
                           ? '#5e432c'
+                          : isTreeOfLifeSeat
+                            ? '#3f2618'
                           : isCrimson4dxPod || isExoskeleton4dxPod
                             ? '#b91c1c'
                             : isArctic4dxPod
@@ -1547,8 +1586,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
                                   : isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat
                                     ? '#252934'
                                     : '#525866',
-        roughness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.72 : isKinetic4dxPod ? 0.34 : 0.24,
-        metalness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat ? 0.16 : 0.88,
+        roughness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isTreeOfLifeSeat ? 0.72 : isKinetic4dxPod ? 0.34 : 0.24,
+        metalness: isMultiplexStadium || isImaxRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isTreeOfLifeSeat ? 0.16 : 0.88,
       }),
       screenBounceUniforms,
     );
@@ -1725,6 +1764,13 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       }),
       screenBounceUniforms,
     );
+    const aisleArmLightMat = new THREE.MeshStandardMaterial({
+      color: '#ffcf86',
+      emissive: '#ffaa44',
+      emissiveIntensity: 0.16 + lightFactor * 1.15,
+      roughness: 0.24,
+      toneMapped: false,
+    });
     return {
       primaryMat,
       trimMat,
@@ -1752,6 +1798,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       fluteLiquidMat,
       tactileBackingMat,
       tactileFaceMat,
+      aisleArmLightMat,
     };
   }, [
     environmentProfile,
@@ -1775,6 +1822,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     isMandapSeat,
     isParametricPurpleSeat,
     isBiophilicMossSeat,
+    isTreeOfLifeSeat,
     isVolcanicCopperSeat,
     isImaxRocker,
     isImaxAuroraSeat,
@@ -1798,7 +1846,8 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     materials.armControlMat.emissiveIntensity = isPlaying ? 0.22 : 0.75;
     materials.dolbyTagMat.emissiveIntensity = isPlaying ? 0.32 : 0.78;
     materials.lampShadeMat.emissiveIntensity = isPlaying ? 0.18 : 0.92;
-  }, [materials, isPlaying, isKinetic4dxPod]);
+    materials.aisleArmLightMat.emissiveIntensity = 0.16 + lightFactor * 1.15;
+  }, [materials, isPlaying, isKinetic4dxPod, lightFactor]);
 
   const geometries = useMemo(() => {
     const cushionGeo = buildErgonomicCushionGeo(
@@ -1927,6 +1976,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
     const throwBlanketGeo = buildErgonomicCushionGeo(0.46, 0.065, 0.52);
     const lampStemGeo = new THREE.CylinderGeometry(0.014, 0.022, 0.48, 10);
     const lampShadeGeo = new THREE.CylinderGeometry(0.065, 0.105, 0.14, 16);
+    const aisleArmLightGeo = new THREE.BoxGeometry(0.018, 0.036, 0.18);
 
     return {
       cushionGeo,
@@ -1964,6 +2014,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       throwBlanketGeo,
       lampStemGeo,
       lampShadeGeo,
+      aisleArmLightGeo,
     };
   }, [
     props,
@@ -2116,20 +2167,44 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       headrestRef.current?.setMatrixAt(idx, dummy.matrix);
       headrestRef.current?.setColorAt(idx, headrestColor);
 
-      // Left & Right Sculpted Armrests (wide armrests on IMAX Aurora/Obsidian Amber & Dolby halls)
-      const armScaleX = isDolbyCobaltSeat || isDolbyVeilSeat ? 1.24 : isImaxAuroraSeat || isImaxSolarSeat ? 1.22 : isDolbyObsidianSeat || isDolbyKakatiyaSeat ? 1.16 : 1.0;
+      // Left & Right Sculpted Armrests (wide armrests on IMAX Aurora/Obsidian Amber/Tree of Life & Dolby halls)
+      const armScaleX = isDolbyCobaltSeat || isDolbyVeilSeat ? 1.24 : isImaxAuroraSeat || isImaxSolarSeat ? 1.22 : isDolbyObsidianSeat || isDolbyKakatiyaSeat || isTreeOfLifeSeat ? 1.15 : 1.0;
       const effectiveArmOffsetX = isDolbyCobaltSeat
         ? props.armOffsetX + 0.018
         : isDolbyVeilSeat || isImaxAuroraSeat || isImaxSolarSeat
           ? props.armOffsetX + 0.014
-          : isDolbyObsidianSeat || isDolbyKakatiyaSeat
-            ? props.armOffsetX + 0.01
+          : isDolbyObsidianSeat || isDolbyKakatiyaSeat || isTreeOfLifeSeat
+            ? props.armOffsetX + 0.012
             : props.armOffsetX;
       setSeatPart(sx, sy, sz, yaw, cosY, sinY, -effectiveArmOffsetX, props.armPosY, props.armPosZ, 0, armScaleX, 1, 1);
       leftArmRef.current?.setMatrixAt(idx, dummy.matrix);
 
       setSeatPart(sx, sy, sz, yaw, cosY, sinY, effectiveArmOffsetX, props.armPosY, props.armPosZ, 0, armScaleX, 1, 1);
       rightArmRef.current?.setMatrixAt(idx, dummy.matrix);
+
+      // Warm amber courtesy sconce glow inset on aisle-facing walnut armrest ends (Tree of Life IMAX)
+      if (isTreeOfLifeSeat && aisleArmLightRef.current) {
+        const isLeftAisleEdge = seat.seatNumber === 1 || seat.seatNumber === 6 || seat.seatNumber === 15;
+        const isRightAisleEdge = seat.seatNumber === 5 || seat.seatNumber === 14 || seat.seatNumber === config.seatsPerRow;
+        if (isLeftAisleEdge || isRightAisleEdge) {
+          const armDir = isLeftAisleEdge ? -1 : 1;
+          setSeatPart(
+            sx,
+            sy,
+            sz,
+            yaw,
+            cosY,
+            sinY,
+            armDir * (effectiveArmOffsetX + props.armWidth * armScaleX * 0.49),
+            props.armPosY - 0.01,
+            props.armPosZ - 0.09,
+          );
+          aisleArmLightRef.current.setMatrixAt(idx, dummy.matrix);
+        } else {
+          setSeatPart(sx, sy, sz, yaw, cosY, sinY, 0, -10, 0, 0, 0.0001, 0.0001, 0.0001);
+          aisleArmLightRef.current.setMatrixAt(idx, dummy.matrix);
+        }
+      }
 
       // Recessed Cupholder & Brushed Trim Rim (omitted on bespoke private luxury loveseats, daybeds & ScreenX wireless-charging lounge pits)
       if (!isWalnutLoveseat && !isChampagneDaybed && !isScreenXPit) {
@@ -2314,7 +2389,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
         );
         pipingRef.current.setMatrixAt(idx, dummy.matrix);
       }
-      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && backShellRef.current) {
+      if ((isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && backShellRef.current) {
         setSeatPart(
           sx,
           sy,
@@ -2644,6 +2719,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       sodaStrawRef.current,
       fluteGlassRef.current,
       fluteLiquidRef.current,
+      aisleArmLightRef.current,
     ];
 
     meshes.forEach((m) => {
@@ -2714,7 +2790,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
       kineticRestMatricesRef.current = [];
       kineticRestColorsRef.current = { cushion: [], backrest: [], headrest: [] };
     }
-  }, [seats, selectedSeatId, hoveredSeatId, props, config.supports4dxEffects, seatModel, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat]);
+  }, [seats, selectedSeatId, hoveredSeatId, props, config.supports4dxEffects, config.seatsPerRow, seatModel, environmentProfile.seatPrimaryColor, isPlaying, isIceRecliner, isIceCobaltArmchair, isIceObsidianRecliner, isAnyIceSeat, isWalnutLoveseat, isChampagneDaybed, isScreenXPit, isMultiplexScreenXRocker, isMandapSeat, isParametricPurpleSeat, isBiophilicMossSeat, isTreeOfLifeSeat, isCrimson4dxPod, isArctic4dxPod, isThunder4dxPod, isExoskeleton4dxPod, isKinetic4dxPod, isAny4dxPod, isMultiplexStadium, isVolcanicCopperSeat, isImaxRocker, isImaxAuroraSeat, isImaxSolarSeat, isImaxVipTwoTone, isDolbyObsidianSeat, isDolbyCobaltSeat, isDolbyVeilSeat, isDolbyKakatiyaSeat]);
 
   useFrame((state, delta) => {
     const grp = seatGroupRef.current;
@@ -3020,7 +3096,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
           args={[geometries.pipingGeo, materials.pipingMat, count]}
         />
       )}
-      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && (
+      {(isMultiplexStadium || isMultiplexScreenXRocker || isMandapSeat || isParametricPurpleSeat || isBiophilicMossSeat || isImaxRocker || isTreeOfLifeSeat || isThunder4dxPod || isExoskeleton4dxPod || isKinetic4dxPod) && (
         <instancedMesh
           ref={backShellRef}
           args={[
@@ -3148,6 +3224,13 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
             </group>
           ))}
         </>
+      )}
+
+      {isTreeOfLifeSeat && (
+        <instancedMesh
+          ref={aisleArmLightRef}
+          args={[geometries.aisleArmLightGeo, materials.aisleArmLightMat, count]}
+        />
       )}
 
       {/* Metallic Tactile Seat-Number Plates (A1, C7, D8...) Mounted on Every Seat Armrest */}

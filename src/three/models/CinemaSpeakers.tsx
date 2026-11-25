@@ -13,6 +13,10 @@ import {
   getDolbyVeilWaveHeights,
   getExoskeletonSpeakerPositions,
 } from './SideWallLighting';
+import {
+  getTreeOfLifeCeilingSpeakerPositions,
+  getTreeOfLifeSideSpeakerPositions,
+} from './TreeOfLifeImaxArchitecture';
 
 interface CinemaSpeakersProps {
   config: TheaterConfiguration;
@@ -562,10 +566,12 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
   const isPrivateVolcanic = config.sideLightStyle === 'private_volcanic_copper_ribbons';
   const isPrivateChampagne = config.sideLightStyle === 'champagne_fluted_oak_alcoves';
   const isCobaltHorizonImax = config.sideLightStyle === 'imax_cobalt_wave';
+  const isTreeOfLifeImax = config.sideLightStyle === 'imax_tree_of_life';
   const isImaxLaser =
     config.sideLightStyle === 'imax_cobalt_wave' ||
     config.sideLightStyle === 'aurora_ribbon_waves' ||
-    config.sideLightStyle === 'horizon_tier_strips';
+    config.sideLightStyle === 'horizon_tier_strips' ||
+    isTreeOfLifeImax;
   const isAuroraMinimal = config.sideLightStyle === 'aurora_ribbon_waves';
   const isAmberHorizontal = config.sideLightStyle === 'horizon_tier_strips';
   const isCrimson4dx = config.sideLightStyle === 'crimson_velocity_4dx';
@@ -1171,6 +1177,10 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       return arr;
     }
 
+    if (isTreeOfLifeImax) {
+      return getTreeOfLifeSideSpeakerPositions(config);
+    }
+
     if (isModernMultiplex || isVolcanicCopper2d || isImaxLaser) {
       // Symmetrical horizontal rows of black surrounds mounted along the upper side walls
       const countPerSide = L > 32 ? 7 : 6;
@@ -1321,7 +1331,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return arr;
-  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, isKinetic4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
+  }, [isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isIce, isScreenX, isMandap2d, isParametricObsidian, isBiophilicMoss, isArtDecoSunburst, isModernMultiplex, isVolcanicCopper2d, isCobaltHorizonImax, isTreeOfLifeImax, isImaxLaser, isCrimson4dx, isArctic4dx, isThunder4dx, isExoskeleton4dx, isKinetic4dx, config, wallBayZs, frontZ, backZ, H, topTierY, W, L]);
 
   // Rear-wall surround speakers: dedicated speakers flanking the projector booth window & back wall (omitted on concealed Deccan rear topography, private salons & ScreenX 3-wall halls)
   const rearSpeakerPositions = useMemo(() => {
@@ -1407,6 +1417,9 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
     if (isCobaltHorizonImax) {
       // IMAX Cobalt Horizon mounts curved line-array clusters & angled canisters directly beneath its central box-truss
       return pts;
+    }
+    if (isTreeOfLifeImax) {
+      return getTreeOfLifeCeilingSpeakerPositions(config);
     }
     if (isExoskeleton4dx) {
       // 12 heavy-duty Dolby Atmos speaker pods clamped directly under the open matte-black industrial trusses
@@ -1667,7 +1680,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
       });
     });
     return pts;
-  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, isKinetic4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
+  }, [isScreenX, isPrivateVolcanic, isPrivateChampagne, isDolbyMediumLuxury, isCobaltVeilDolby, isKakatiyaDolby, isDeccanDolby, isCobaltHorizonImax, isTreeOfLifeImax, isIce, isModernMultiplex, isVolcanicCopper2d, isMandap2d, isParametricObsidian, isBiophilicMoss, isImaxLaser, isAuroraMinimal, isAmberHorizontal, isCrimson4dx, isArctic4dx, isThunder4dx, isKinetic4dx, W, L, H, frontZ, backZ, config.ceilingLightStyle, config.firstRowZ, config.seatingRows, config.rowSpacing]);
 
   // Front Proscenium / Behind-Screen Dual-18" Cinema Subwoofers + 3-Way Line-Array Towers (all bottom/front-of-screen speakers omitted across every theater to prevent clipping through floating or wall-to-wall screens)
   const frontTowerPositions = useMemo(() => {
@@ -1761,7 +1774,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
         ))}
 
         {/* Subtle Cinema Power Status Badge LED (omitted on clean matte-black surround halls) */}
-        {!isBiophilicMoss && !isCobaltVeilDolby && !isKakatiyaDolby && !isDeccanDolby && !isCobaltHorizonImax && !isExoskeleton4dx && !isArctic4dx && !isKinetic4dx && (
+        {!isBiophilicMoss && !isCobaltVeilDolby && !isKakatiyaDolby && !isDeccanDolby && !isCobaltHorizonImax && !isTreeOfLifeImax && !isExoskeleton4dx && !isArctic4dx && !isKinetic4dx && (
           <mesh position={[0, -0.285, 0.186]} material={materials.statusLedMat}>
             <boxGeometry args={[0.045, 0.012, 0.008]} />
           </mesh>
@@ -1837,7 +1850,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
               />
             </group>
           </group>
-        ) : isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d || isKinetic4dx ? (
+        ) : isPrivateVolcanic || isPrivateChampagne || isIce || isScreenX || isMandap2d || isKinetic4dx || isTreeOfLifeImax ? (
           <group
             key={`atmos-flush-${i}`}
             position={[ap.x, ap.y, ap.z]}
@@ -1846,7 +1859,7 @@ const IndoorCinemaSpeakers: React.FC<CinemaSpeakersProps> = ({
             <mesh
               position={[0, 0.004, 0]}
               geometry={geometries.flushCeilingTrimGeo}
-              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d || isKinetic4dx ? materials.cabinetMat : materials.darkSteelMat}
+              material={isPrivateChampagne || isPrivateVolcanic || isIce || isScreenX || isMandap2d || isKinetic4dx || isTreeOfLifeImax ? materials.cabinetMat : materials.darkSteelMat}
             />
             <mesh
               position={[0, 0.001, 0]}

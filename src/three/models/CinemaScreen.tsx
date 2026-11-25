@@ -239,6 +239,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     sideLightStyle === 'imax_cobalt_wave' ||
     sideLightStyle === 'aurora_ribbon_waves' ||
     sideLightStyle === 'horizon_tier_strips';
+  const isTreeOfLifeImax = sideLightStyle === 'imax_tree_of_life';
   const isCrimson4dx = sideLightStyle === 'crimson_velocity_4dx';
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
@@ -525,7 +526,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
             ? 0.04
             : isIceFlagship
               ? 0.09
-              : isZeroStageImax || isIceCobalt || isKinetic4dx
+              : isZeroStageImax || isTreeOfLifeImax || isIceCobalt || isKinetic4dx
                 ? 0.12
                 : isIceAmber
                   ? 0.16
@@ -539,7 +540,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
             ? 0.04
             : isIceFlagship
               ? 0.06
-              : isZeroStageImax || isIceCobalt || isKinetic4dx
+              : isZeroStageImax || isTreeOfLifeImax || isIceCobalt || isKinetic4dx
                 ? 0.1
                 : isIceAmber
                   ? 0.12
@@ -552,19 +553,19 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         48,
         4,
       ),
-    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isVolcanicCopper2d, isPrivateVolcanic, isPrivateChampagne],
+    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isTreeOfLifeImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isVolcanicCopper2d, isPrivateVolcanic, isPrivateChampagne],
   );
 
   const velvetMaskGeo = useMemo(
     () =>
       buildCurvedScreenGeometry(
-        screenWidth + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.045 : isZeroStageImax || isIceCobalt || isKinetic4dx ? 0.06 : isIceAmber ? 0.1 : isPrivateChampagne || isPrivateVolcanic ? 0.09 : 0.3),
-        screenHeight + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.035 : isZeroStageImax || isIceCobalt || isKinetic4dx ? 0.04 : isIceAmber ? 0.08 : isPrivateChampagne || isPrivateVolcanic ? 0.07 : 0.24),
+        screenWidth + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.045 : isZeroStageImax || isTreeOfLifeImax || isIceCobalt || isKinetic4dx ? 0.06 : isIceAmber ? 0.1 : isPrivateChampagne || isPrivateVolcanic ? 0.09 : 0.3),
+        screenHeight + (isDolbyFloating ? 0.02 : isIceFlagship ? 0.035 : isZeroStageImax || isTreeOfLifeImax || isIceCobalt || isKinetic4dx ? 0.04 : isIceAmber ? 0.08 : isPrivateChampagne || isPrivateVolcanic ? 0.07 : 0.24),
         screenCurvature,
         48,
         4,
       ),
-    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isPrivateChampagne, isPrivateVolcanic],
+    [screenWidth, screenHeight, screenCurvature, isZeroStageImax, isTreeOfLifeImax, isDolbyFloating, isIceFlagship, isIceCobalt, isIceAmber, isKinetic4dx, isPrivateChampagne, isPrivateVolcanic],
   );
 
   const brassTrimGeo = useMemo(
@@ -1646,6 +1647,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
           !isIce &&
           !isScreenX &&
           !isZeroStageImax &&
+          !isTreeOfLifeImax &&
           !isCrimson4dx &&
           !isArctic4dx &&
           !isThunder4dx &&

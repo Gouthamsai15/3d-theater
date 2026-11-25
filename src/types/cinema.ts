@@ -18,6 +18,7 @@ export type TheaterId =
   | 'imax'
   | 'imax_aurora'
   | 'imax_solar'
+  | 'imax_tree_of_life'
   | '4dx'
   | '4dx_crimson'
   | '4dx_arctic'
@@ -44,6 +45,7 @@ export type SeatModelType =
   | 'standard'
   | 'imax_stadium'
   | 'imax_rocker'
+  | 'imax_tree_walnut'
   | 'multiplex_stadium'
   | 'mandap_royal_stadium'
   | 'charcoal_purple_stadium'
@@ -80,6 +82,7 @@ export type SideLightStyle =
   | 'imax_cobalt_wave'
   | 'aurora_ribbon_waves'
   | 'horizon_tier_strips'
+  | 'imax_tree_of_life'
   | 'kinetic_chevron_blades'
   | 'velocity_racing_stripes'
   | 'crimson_velocity_4dx'
@@ -131,6 +134,7 @@ export type CeilingLightStyle =
   | 'imax_starlight_coves'
   | 'imax_angular_grid'
   | 'imax_v_baffle_grid'
+  | 'imax_tree_of_life_canopy'
   | 'vaulted_ribs'
   | 'ice_truss_ribs'
   | 'ice_origami_baffles'
@@ -317,6 +321,8 @@ export type FourDxCameraPresetId =
   | 'aisle'
   | 'screen_stage'
   | 'wall_speaker_rig';
+
+export type PreviewCameraPreset = 'overview' | 'sweet_spot' | 'side_wall';
 
 export type AppRoute =
   | 'home'

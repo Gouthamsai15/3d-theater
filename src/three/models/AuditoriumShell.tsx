@@ -22,6 +22,7 @@ import { BeachEnvironment } from './BeachEnvironment';
 import { ScreenBounceSample } from './CinemaScreen';
 import { getPortalLayoutMetrics } from './corridorThemes';
 import { FourDxLiveTelemetry } from './fourDxTelemetry';
+import { TreeOfLifeImaxCeilingAndStage } from './TreeOfLifeImaxArchitecture';
 
 interface AuditoriumShellProps {
   config: TheaterConfiguration;
@@ -428,6 +429,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
     sideLightStyle === 'imax_cobalt_wave' ||
     sideLightStyle === 'aurora_ribbon_waves' ||
     sideLightStyle === 'horizon_tier_strips';
+  const isTreeOfLifeImax = sideLightStyle === 'imax_tree_of_life';
   const isCrimson4dx = sideLightStyle === 'crimson_velocity_4dx';
   const isArctic4dx = sideLightStyle === 'arctic_parametric_fins';
   const isThunder4dx = sideLightStyle === 'thunder_emerald_waves';
@@ -1837,21 +1839,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 <>
                   <mesh
                     position={[ax, tier.y + 0.005, tier.z - tier.depth / 2 + 0.03]}
-                    material={
-                      isPrivateChampagne || isPrivateVolcanic
-                        ? materials.walnutCofferMat
-                        : isDolbyVeil
-                          ? materials.espressoTrimMat
-                          : isDeccanDolby
-                            ? materials.darkBronzeTrimMat
-                            : isScreenX || isParametricObsidian
-                              ? materials.matteTitaniumMat
-                              : isMandap2d || isBiophilicMoss
-                                ? materials.darkBronzeTrimMat
-                                : materials.nosingMat
-                    }
+                      material={
+                        isPrivateChampagne || isPrivateVolcanic
+                          ? materials.walnutCofferMat
+                          : isDolbyVeil || isTreeOfLifeImax
+                            ? materials.espressoTrimMat
+                            : isDeccanDolby
+                              ? materials.darkBronzeTrimMat
+                              : isScreenX || isParametricObsidian
+                                ? materials.matteTitaniumMat
+                                : isMandap2d || isBiophilicMoss
+                                  ? materials.darkBronzeTrimMat
+                                  : materials.nosingMat
+                      }
                   >
-                    <boxGeometry args={[isDeccanDolby ? 2.26 : isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isKinetic4dx ? 1.42 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx ? 1.28 : 0.96, 0.022, 0.06]} />
+                    <boxGeometry args={[isDeccanDolby ? 2.26 : isPrivateChampagne || isPrivateVolcanic || isDolbyVeil ? 1.5 : isKinetic4dx ? 1.42 : isScreenX || isMandap2d || isParametricObsidian || isBiophilicMoss || isArctic4dx || isTreeOfLifeImax ? 1.24 : 0.96, 0.022, 0.06]} />
                   </mesh>
 
                   {/* Always-on recessed safety step LED line */}
@@ -1862,11 +1864,11 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                       tier.z - tier.depth / 2 + (isPrivateChampagne || isPrivateVolcanic ? 0.018 : isDeccanDolby ? 0.022 : 0.026),
                     ]}
                   >
-                    <boxGeometry args={[isDeccanDolby ? 2.14 : isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isKinetic4dx ? 1.34 : isScreenX || isBiophilicMoss || isArctic4dx ? 1.16 : 0.88, isDolbyVeil ? 0.012 : isKinetic4dx ? 0.016 : isDeccanDolby ? 0.009 : 0.014, isDolbyVeil ? 0.011 : isKinetic4dx ? 0.028 : isDeccanDolby ? 0.020 : 0.026]} />
+                    <boxGeometry args={[isDeccanDolby ? 2.14 : isDolbyVeil ? 1.44 : isPrivateChampagne || isPrivateVolcanic ? 1.36 : isKinetic4dx ? 1.34 : isScreenX || isBiophilicMoss || isArctic4dx || isTreeOfLifeImax ? 1.14 : 0.88, isDolbyVeil || isTreeOfLifeImax ? 0.012 : isKinetic4dx ? 0.016 : isDeccanDolby ? 0.009 : 0.014, isDolbyVeil || isTreeOfLifeImax ? 0.014 : isKinetic4dx ? 0.028 : isDeccanDolby ? 0.020 : 0.026]} />
                     <meshStandardMaterial
-                      color={isDeccanDolby ? '#f2cfa0' : lightingProfile.stepLightColor}
+                      color={isDeccanDolby ? '#f2cfa0' : isTreeOfLifeImax ? '#ffd28a' : lightingProfile.stepLightColor}
                       emissive={isDeccanDolby ? '#d4a36a' : lightingProfile.stepLightColor}
-                      emissiveIntensity={isDeccanDolby ? stepEmissiveIntensity * 0.95 : isKinetic4dx ? stepEmissiveIntensity * 1.45 : isDolbyVeil ? stepEmissiveIntensity * 1.45 : stepEmissiveIntensity}
+                      emissiveIntensity={isDeccanDolby ? stepEmissiveIntensity * 0.95 : isKinetic4dx || isDolbyVeil ? stepEmissiveIntensity * 1.45 : isTreeOfLifeImax ? stepEmissiveIntensity * 0.9 : stepEmissiveIntensity}
                       toneMapped={false}
                       roughness={0.22}
                     />
@@ -1919,8 +1921,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 </group>
               )}
 
-              {/* End-of-Row Light Totems Showing Row Letter on Pillar Housing & Floor (Omitted on Dolby Kakatiya Heritage, The Deccan & Kinetic 4DX clean stepped aisles) */}
-              {!isKakatiyaDolby && !isDeccanDolby && !isKinetic4dx && rowMarkerTextures[tier.row] && totemFloorTextures[tier.row] && (() => {
+              {/* End-of-Row Light Totems Showing Row Letter on Pillar Housing & Floor (Omitted on Dolby Kakatiya Heritage, The Deccan, Tree of Life IMAX & Kinetic 4DX clean stepped aisles) */}
+              {!isKakatiyaDolby && !isDeccanDolby && !isKinetic4dx && !isTreeOfLifeImax && rowMarkerTextures[tier.row] && totemFloorTextures[tier.row] && (() => {
                 const totemSide =
                   config.aisleAfterSeats.length === 0
                     ? ax < 0
@@ -1997,8 +1999,8 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 );
               })()}
 
-              {/* Compact aisle safety handrail posts (omitted on The Deccan and Kinetic 4DX clean open stepped aisles) */}
-              {!isDeccanDolby && !isKinetic4dx && (isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
+              {/* Compact aisle safety handrail posts (omitted on The Deccan, Tree of Life IMAX and Kinetic 4DX clean open stepped aisles) */}
+              {!isDeccanDolby && !isKinetic4dx && !isTreeOfLifeImax && (isCrimson4dx || isArctic4dx || isThunder4dx || isExoskeleton4dx || (rowElevationStep >= 0.4 && tier.row >= 2 && tier.row % 2 === 0)) && (
                 <group position={[ax + (ax >= 0 ? 0.52 : -0.52), tier.y, tier.z - tier.depth / 2 + 0.14]}>
                   <mesh
                     position={[0, 0.38, 0]}
@@ -2061,20 +2063,21 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
                 isMandap2d ||
                 isParametricObsidian ||
                 isDolbyVeil ||
-                isKakatiyaDolby) &&
+                isKakatiyaDolby ||
+                isTreeOfLifeImax) &&
                 [
-                  isKakatiyaDolby ? -0.78 : isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian ? -0.64 : isScreenX ? -0.58 : isKinetic4dx ? -0.68 : -0.46,
-                  isKakatiyaDolby ? 0.78 : isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian ? 0.64 : isScreenX ? 0.58 : isKinetic4dx ? 0.68 : 0.46,
+                  isKakatiyaDolby ? -0.78 : isDolbyVeil ? -0.72 : isPrivateVolcanic || isMandap2d ? -0.66 : isMultiplexScreenX || isParametricObsidian || isTreeOfLifeImax ? -0.64 : isScreenX ? -0.58 : isKinetic4dx ? -0.68 : -0.46,
+                  isKakatiyaDolby ? 0.78 : isDolbyVeil ? 0.72 : isPrivateVolcanic || isMandap2d ? 0.66 : isMultiplexScreenX || isParametricObsidian || isTreeOfLifeImax ? 0.64 : isScreenX ? 0.58 : isKinetic4dx ? 0.68 : 0.46,
                 ].map((ex, ei) => (
                   <mesh
                     key={`aisle-edge-${tier.row}-${aIdx}-${ei}`}
                     position={[ax + ex, tier.y + 0.015, tier.z]}
                   >
-                    <boxGeometry args={[isDolbyVeil || isKakatiyaDolby || isDeccanDolby ? 0.012 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil || isKakatiyaDolby || isDeccanDolby ? 0.008 : 0.014, Math.max(0.4, tier.depth - 0.02)]} />
+                    <boxGeometry args={[isDolbyVeil || isKakatiyaDolby || isDeccanDolby || isTreeOfLifeImax ? 0.012 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 0.026 : isScreenX ? 0.016 : 0.026, isDolbyVeil || isKakatiyaDolby || isDeccanDolby || isTreeOfLifeImax ? 0.008 : 0.014, Math.max(0.4, tier.depth - 0.02)]} />
                     <meshStandardMaterial
                       color={lightingProfile.stepLightColor}
                       emissive={lightingProfile.stepLightColor}
-                      emissiveIntensity={stepEmissiveIntensity * (isDeccanDolby ? 1.05 : isDolbyVeil || isKakatiyaDolby ? 1.45 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
+                      emissiveIntensity={stepEmissiveIntensity * (isDeccanDolby ? 1.05 : isTreeOfLifeImax ? 0.75 : isDolbyVeil || isKakatiyaDolby ? 1.45 : isMultiplexScreenX || isMandap2d || isParametricObsidian ? 1.15 : isScreenX ? 0.72 : 0.94)}
                       toneMapped={false}
                       roughness={0.22}
                     />
@@ -2363,6 +2366,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       {!isIce &&
         !isScreenX &&
         !isZeroStageImax &&
+        !isTreeOfLifeImax &&
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
@@ -3067,6 +3071,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isScreenX &&
         !isModernMultiplex &&
         !isZeroStageImax &&
+        !isTreeOfLifeImax &&
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
@@ -3118,6 +3123,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isScreenX &&
         !isModernMultiplex &&
         !isZeroStageImax &&
+        !isTreeOfLifeImax &&
         !isCrimson4dx &&
         !isArctic4dx &&
         !isThunder4dx &&
@@ -3386,6 +3392,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isDolbyVeil &&
         !isKakatiyaDolby &&
         !isDeccanDolby &&
+        !isTreeOfLifeImax &&
         [-1, 1].map((side) => (
           <group key={`wall-molding-${side}`}>
             <mesh position={[side * (W / 2 - 0.22), 0.12, 0]} material={materials.nosingMat}>
@@ -3396,7 +3403,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             </mesh>
           </group>
         ))}
-      {!isScreenX && !isDolbyVeil && !isKakatiyaDolby && !isDeccanDolby && (
+      {!isScreenX && !isDolbyVeil && !isKakatiyaDolby && !isDeccanDolby && !isTreeOfLifeImax && (
         <mesh position={[0, H - 0.22, backZ - 0.22]} material={materials.trimMetalMat}>
           <boxGeometry args={[W - 0.4, 0.12, 0.14]} />
         </mesh>
@@ -3413,6 +3420,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isDeccanDolby &&
         !isExoskeleton4dx &&
         !isArctic4dx &&
+        !isTreeOfLifeImax &&
         [-1, 1].map((side) =>
           Array.from({ length: 4 }, (_, si) => {
             const slatX = side * (boothWinW / 2 + 1.55 + si * 0.42);
@@ -3465,6 +3473,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             !isDeccanDolby &&
             !isExoskeleton4dx &&
             !isArctic4dx &&
+            !isTreeOfLifeImax &&
             [-1, 1].map((pside) => {
               const px = pside * Math.min(2.25, W * 0.22);
               if (Math.abs(px - portal.portalX) - 0.54 <= portal.portalW * 0.5) {
@@ -4088,6 +4097,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isParametricObsidian &&
         !isBiophilicMoss &&
         !isCobaltHorizonImax &&
+        !isTreeOfLifeImax &&
         [-0.22, 0.22].map((lzFactor, li) => (
           <mesh
             key={`hvac-vent-${li}`}
@@ -4117,6 +4127,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
         !isDeccanDolby &&
         !isCobaltHorizonImax &&
         !isKinetic4dx &&
+        !isTreeOfLifeImax &&
         [-1, 1].map((side) => (
           <group
             key={`exit-${side}`}
@@ -6709,6 +6720,15 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
             receiveShadow
           />
         </group>
+      )}
+
+      {isTreeOfLifeImax && (
+        <TreeOfLifeImaxCeilingAndStage
+          config={config}
+          lightFactor={lightFactor}
+          screenBounceUniforms={screenBounceUniforms}
+          exitSignMap={textures.exitSignMap}
+        />
       )}
     </group>
   );

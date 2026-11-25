@@ -39,6 +39,7 @@ import { screenWakeLock } from '../../utils/wakeLock';
 import {
   AuditoriumLightingPreset,
   CameraViewMode,
+  PreviewCameraPreset,
   WalkInputState,
 } from '../../types/cinema';
 import { CorridorPhase } from '../../three/models/corridorThemes';
@@ -103,6 +104,8 @@ export const VirtualCinemaPage: React.FC = () => {
   const [sceneReady, setSceneReady] = useState(false);
   const [entranceComplete, setEntranceComplete] = useState(false);
   const [viewMode, setViewMode] = useState<CameraViewMode>('seat');
+  const [hallPreset, setHallPreset] = useState<PreviewCameraPreset>('overview');
+  const [hallPresetSignal, setHallPresetSignal] = useState(0);
   const walkInputRef = useRef<WalkInputState>({
     forward: 0,
     right: 0,
@@ -1373,6 +1376,8 @@ export const VirtualCinemaPage: React.FC = () => {
         onRequestScanTicket={handleRequestScanTicket}
         onCorridorPhaseChange={setCorridorPhase}
         walkInputRef={walkInputRef}
+        hallPreset={hallPreset}
+        hallPresetSignal={hallPresetSignal}
         onSceneReady={handleSceneReady}
       />
 
@@ -1698,6 +1703,48 @@ export const VirtualCinemaPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Hall Orbit Camera Preset Switcher */}
+      {!showCompleted && entranceComplete && viewMode === 'hall' && effectiveHudVisible && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            bumpHudActivity();
+          }}
+          className="absolute top-14 right-3 sm:top-16 sm:right-4 z-20 flex items-center gap-1 rounded-md border border-white/12 bg-[#090A0E]/92 p-1 text-[11px] shadow-lg"
+        >
+          {(
+            [
+              { id: 'overview', label: 'Overview' },
+              { id: 'sweet_spot', label: 'Sweet Spot' },
+              {
+                id: 'side_wall',
+                label:
+                  selectedTheaterConfig.theaterId === 'imax_tree_of_life'
+                    ? 'Tree Wall'
+                    : 'Side Wall',
+              },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setHallPreset(item.id);
+                setHallPresetSignal((n) => n + 1);
+              }}
+              className={`rounded px-2.5 py-1 font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                hallPreset === item.id
+                  ? 'bg-[#D4AF37] text-[#070709]'
+                  : 'text-neutral-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Show Controls Toggle Button when Manually Hidden (icon-only) */}
       {controlsManuallyHidden && !showCompleted && entranceComplete && (

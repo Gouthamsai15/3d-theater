@@ -46,6 +46,7 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
   const isCobaltVeil = config.sideLightStyle === 'cobalt_veil_laser_recess';
   const isKakatiyaDolby = config.sideLightStyle === 'telugu_kakatiya_dolby';
   const isDeccanDolby = config.sideLightStyle === 'deccan_basalt_monsoon';
+  const isTreeOfLifeImax = config.sideLightStyle === 'imax_tree_of_life';
   const isKinetic4dx = config.sideLightStyle === 'kinetic_slate_baffles_4dx';
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
   const isBioluminescentBeach = config.theaterId === 'beach_bioluminescent';
@@ -168,6 +169,9 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isDeccanDolby) {
         wallFillLeftRef.current.intensity = f * 0.62;
         wallFillLeftRef.current.color.set('#96e2c8');
+      } else if (isTreeOfLifeImax) {
+        wallFillLeftRef.current.intensity = f * 0.58;
+        wallFillLeftRef.current.color.set('#ffdcb0');
       } else if (isKinetic4dx) {
         wallFillLeftRef.current.intensity = f * 0.72 * fxScale;
         wallFillLeftRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.35);
@@ -191,6 +195,9 @@ export const CinemaLightingRig: React.FC<CinemaLightingRigProps> = ({
       } else if (isDeccanDolby) {
         wallFillRightRef.current.intensity = f * 0.62;
         wallFillRightRef.current.color.set('#aee2ee');
+      } else if (isTreeOfLifeImax) {
+        wallFillRightRef.current.intensity = f * 0.58;
+        wallFillRightRef.current.color.set('#ffdcb0');
       } else if (isKinetic4dx) {
         wallFillRightRef.current.intensity = f * 0.7 * fxScale;
         wallFillRightRef.current.color.set(kineticWallColor).lerp(NEUTRAL_WALL_FILL_TINT, 0.35);

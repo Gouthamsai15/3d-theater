@@ -387,6 +387,30 @@ export function getCorridorThemeConfig(config: TheaterConfiguration): CorridorTh
         gateTrimColor: '#f59e0b',
       };
 
+    case 'imax_tree_of_life':
+      return {
+        ...base,
+        corridorWidth: 3.8,
+        corridorHeight: 4.0,
+        wallPattern: 'imax_slanted',
+        primaryWallColor: '#2d1c13',
+        secondaryWallColor: '#4e3322',
+        trimColor: '#1f1510',
+        metalColor: '#8d6e47',
+        accentColor: '#ffaa44',
+        secondaryAccentColor: '#ffd28a',
+        runnerColor: '#1a2f28',
+        runnerBorderColor: '#ffaa44',
+        doorPrimaryColor: '#3a2316',
+        doorSecondaryColor: '#243d35',
+        doorHandleColor: '#ffd28a',
+        ticketBgPrimary: '#1a120d',
+        ticketBgSecondary: '#243d35',
+        ticketAccent: '#ffaa44',
+        gateBodyColor: '#1f1611',
+        gateTrimColor: '#ffaa44',
+      };
+
     case 'thunder_emerald_waves':
       return {
         ...base,

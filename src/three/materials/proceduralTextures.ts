@@ -448,6 +448,31 @@ export function createCarpetTexture(
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+  } else if (sideLightStyle === 'imax_tree_of_life') {
+    // Deep charcoal-espresso low-pile carpet with subtle warm sandstone-taupe woven geometric bands
+    ctx.fillStyle = '#151517';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 9000; i++) {
+      const px = (i * 89 + (i % 17) * 11) % 512;
+      const py = (i * 139 + (i % 13) * 19) % 512;
+      ctx.fillStyle =
+        i % 5 === 0
+          ? 'rgba(72, 63, 52, 0.28)'
+          : i % 2 === 0
+            ? 'rgba(30, 29, 32, 0.42)'
+            : 'rgba(10, 10, 12, 0.48)';
+      ctx.fillRect(px, py, 2.5, 2.5);
+    }
+    ctx.globalAlpha = 0.26;
+    ctx.strokeStyle = '#4a4035';
+    ctx.lineWidth = 10;
+    for (let y = 32; y < 512; y += 96) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(160, y - 16, 352, y + 16, 512, y);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   } else if (sideLightStyle === 'thunder_emerald_waves') {
     // Dark speckled rubberized acoustic flooring (matte charcoal rubber base + fine mineral speckles)
     ctx.fillStyle = '#0e1014';
@@ -1191,6 +1216,25 @@ export function createAcousticWallTexture(
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(3, 1);
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  if (sideLightStyle === 'imax_tree_of_life') {
+    // Deep warm espresso-walnut matte acoustic backing behind sculpted Tree of Life bays
+    ctx.fillStyle = '#1f1510';
+    ctx.fillRect(0, 0, 512, 512);
+    for (let x = 0; x < 512; x += 12) {
+      ctx.fillStyle = '#0c0806';
+      ctx.fillRect(x, 0, 4, 512);
+      ctx.fillStyle = '#2d1e15';
+      ctx.fillRect(x + 4, 0, 8, 512);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(4, 1);
     tex.anisotropy = 8;
     return tex;
   }
@@ -2007,6 +2051,14 @@ export function createAcousticWallBumpTexture(
     ctx.moveTo(155, 125);
     ctx.lineTo(190, 256);
     ctx.stroke();
+  } else if (sideLightStyle === 'imax_tree_of_life') {
+    // Vertical acoustic wood slat shadow channels
+    for (let x = 0; x < 256; x += 12) {
+      ctx.fillStyle = '#242424';
+      ctx.fillRect(x, 0, 4, 256);
+      ctx.fillStyle = '#b4b4b4';
+      ctx.fillRect(x + 4, 0, 8, 256);
+    }
   } else if (sideLightStyle === 'crimson_velocity_4dx') {
     // Micro-perforated matte carbon/gunmetal acoustic texture + angular seam grooves
     ctx.fillStyle = '#606060';
@@ -2170,7 +2222,7 @@ export function createSeatUpholsteryTextures(
   isLeather: boolean,
   isQuilted = false,
   isRedStitched = false,
-  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' | 'crimson_tech_leather' | 'maroon_gold_leather' | 'forest_emerald_bronze_leather' = 'default',
+  styleVariant: 'default' | 'perforated' | 'suede' | 'violet_stitched' | 'orange_stitched' | 'blue_stitched' | 'boucle' | 'charcoal_knit' | 'crimson_tech_leather' | 'maroon_gold_leather' | 'forest_emerald_bronze_leather' | 'forest_green_weave' = 'default',
 ): SeatUpholsteryTextureSet {
   const mapCanvas = document.createElement('canvas');
   mapCanvas.width = 256;
@@ -2398,6 +2450,23 @@ export function createSeatUpholsteryTextures(
       mCtx.fillStyle = 'rgba(0,0,0,0.22)';
       mCtx.fillRect(sx, 0, 2.5, 256);
       bCtx.fillStyle = '#303030';
+      bCtx.fillRect(sx, 0, 2.5, 256);
+    });
+  } else if (styleVariant === 'forest_green_weave') {
+    // Rich heavy architectural wool-linen upholstery weave for Arbor Sanctuary IMAX
+    for (let y = 0; y < 256; y += 3) {
+      for (let x = 0; x < 256; x += 3) {
+        const warp = ((x / 3) + (y / 3)) % 2 === 0;
+        mCtx.fillStyle = warp ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.11)';
+        mCtx.fillRect(x, y, 2, 2);
+        bCtx.fillStyle = warp ? '#a2a2a2' : '#5e5e5e';
+        bCtx.fillRect(x, y, 2, 2);
+      }
+    }
+    [40, 216].forEach((sx) => {
+      mCtx.fillStyle = 'rgba(0,0,0,0.24)';
+      mCtx.fillRect(sx, 0, 2.5, 256);
+      bCtx.fillStyle = '#2d2d2d';
       bCtx.fillRect(sx, 0, 2.5, 256);
     });
   } else {
@@ -3143,7 +3212,63 @@ export function createStandbyScreenTexture(
       return;
     }
 
-    // 6. All Remaining IMAX Halls
+    // 6. Arbor Sanctuary IMAX (Tree of Life): Warm glowing golden-amber canopy crest on deep walnut-espresso backdrop
+    if (sideLightStyle === 'imax_tree_of_life') {
+      const bgGrad = ctx.createRadialGradient(cx, cy - 20, 30, cx, cy, 1180);
+      bgGrad.addColorStop(0, '#3a2515');
+      bgGrad.addColorStop(0.38, '#1a1410');
+      bgGrad.addColorStop(0.76, '#0b0a09');
+      bgGrad.addColorStop(1, '#040404');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      const canopyGlow = ctx.createRadialGradient(cx, cy - 40, 20, cx, cy - 20, 620);
+      canopyGlow.addColorStop(0, 'rgba(255, 210, 138, 0.28)');
+      canopyGlow.addColorStop(0.5, 'rgba(255, 170, 68, 0.1)');
+      canopyGlow.addColorStop(1, 'rgba(255, 170, 68, 0)');
+      ctx.fillStyle = canopyGlow;
+      ctx.fillRect(cx - 640, cy - 480, 1280, 960);
+
+      // Symmetrical branching Tree of Life silhouette framing the focal crest
+      ctx.strokeStyle = 'rgba(255, 196, 112, 0.34)';
+      ctx.lineWidth = 4;
+      [-1, 1].forEach((side) => {
+        ctx.beginPath();
+        ctx.moveTo(cx + side * 420, H - 80);
+        ctx.bezierCurveTo(
+          cx + side * 400,
+          cy + 140,
+          cx + side * 380,
+          cy - 120,
+          cx + side * 140,
+          cy - 320,
+        );
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cx + side * 365, cy + 40);
+        ctx.quadraticCurveTo(cx + side * 520, cy - 110, cx + side * 660, cy - 230);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(cx + side * 315, cy - 110);
+        ctx.quadraticCurveTo(cx + side * 450, cy - 220, cx + side * 590, cy - 330);
+        ctx.stroke();
+      });
+
+      drawTitleBlock(
+        'IMAX WITH LASER · BIOPHILIC SANCTUARY',
+        'ARBOR SANCTUARY IMAX',
+        'TREE OF LIFE · FOREST GREEN · WARM WALNUT',
+        '#FFF4DE',
+        '#FFBF69',
+        'rgba(255, 170, 68, 0.56)',
+        false,
+      );
+      return;
+    }
+
+    // 7. All Remaining IMAX Halls
     if (architectureStyle === 'imax') {
       const isAurora = sideLightStyle === 'aurora_ribbon_waves';
       const isAmber = sideLightStyle === 'horizon_tier_strips';
@@ -5109,6 +5234,411 @@ export function createDeccanWaterfallTextures(): DeccanWaterfallTextureSet {
     },
   };
 }
+
+export interface WalnutWoodTextureSet {
+  map: THREE.CanvasTexture;
+  bumpMap: THREE.CanvasTexture;
+  dispose: () => void;
+}
+
+/**
+ * Generates rich satin dark walnut wood grain diffuse & bump maps for sculpted Tree of Life trunks, boughs, dado rail, and seat shells.
+ */
+export function createWalnutWoodTextures(): WalnutWoodTextureSet {
+  const W = 512;
+  const H = 512;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  const baseGrad = ctx.createLinearGradient(0, 0, W, 0);
+  baseGrad.addColorStop(0, '#3e2315');
+  baseGrad.addColorStop(0.35, '#54301d');
+  baseGrad.addColorStop(0.7, '#472818');
+  baseGrad.addColorStop(1, '#3b2013');
+  ctx.fillStyle = baseGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  bCtx.fillStyle = '#808080';
+  bCtx.fillRect(0, 0, W, H);
+
+  // Flowing longitudinal walnut grain ribbons
+  for (let i = 0; i < 160; i++) {
+    const x = (i * 19 + (i % 7) * 5) % W;
+    const w = 1.2 + (i % 4) * 0.8;
+    const isDark = i % 3 !== 0;
+    ctx.strokeStyle = isDark ? 'rgba(22, 10, 5, 0.36)' : 'rgba(132, 82, 50, 0.22)';
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.bezierCurveTo(
+      x + Math.sin(i * 0.7) * 14,
+      H * 0.33,
+      x - Math.cos(i * 0.9) * 14,
+      H * 0.66,
+      x,
+      H,
+    );
+    ctx.stroke();
+
+    bCtx.strokeStyle = isDark ? '#545454' : '#a6a6a6';
+    bCtx.lineWidth = w;
+    bCtx.beginPath();
+    bCtx.moveTo(x, 0);
+    bCtx.bezierCurveTo(
+      x + Math.sin(i * 0.7) * 14,
+      H * 0.33,
+      x - Math.cos(i * 0.9) * 14,
+      H * 0.66,
+      x,
+      H,
+    );
+    bCtx.stroke();
+  }
+
+  // Fine porous wood vessel flecks
+  for (let i = 0; i < 2400; i++) {
+    const px = (i * 83) % W;
+    const py = (i * 137) % H;
+    ctx.fillStyle = 'rgba(16, 7, 3, 0.25)';
+    ctx.fillRect(px, py, 1, 5);
+    bCtx.fillStyle = '#484848';
+    bCtx.fillRect(px, py, 1, 5);
+  }
+
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(2, 2);
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(2, 2);
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Generates mottled warm taupe/sandstone earth-plaster textures for oval speaker bays and the central ceiling spine.
+ */
+export function createTaupeEarthPlasterTextures(): WalnutWoodTextureSet {
+  const W = 512;
+  const H = 512;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  ctx.fillStyle = '#6b5642';
+  ctx.fillRect(0, 0, W, H);
+  bCtx.fillStyle = '#808080';
+  bCtx.fillRect(0, 0, W, H);
+
+  // Subtle hand-troweled mineral plaster clouding
+  for (let i = 0; i < 90; i++) {
+    const cx = (i * 97 + 31) % W;
+    const cy = (i * 149 + 53) % H;
+    const r = 42 + (i % 5) * 18;
+    const light = i % 2 === 0;
+    const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, r);
+    g.addColorStop(0, light ? 'rgba(136, 110, 84, 0.24)' : 'rgba(66, 51, 38, 0.26)');
+    g.addColorStop(1, 'rgba(107, 86, 66, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    bCtx.fillStyle = light ? 'rgba(165, 165, 165, 0.14)' : 'rgba(95, 95, 95, 0.14)';
+    bCtx.beginPath();
+    bCtx.arc(cx, cy, r * 0.7, 0, Math.PI * 2);
+    bCtx.fill();
+  }
+
+  for (let i = 0; i < 6500; i++) {
+    const px = (i * 71) % W;
+    const py = (i * 131) % H;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(164, 138, 110, 0.16)' : 'rgba(38, 28, 20, 0.22)';
+    ctx.fillRect(px, py, 2, 2);
+    bCtx.fillStyle = i % 2 === 0 ? '#9c9c9c' : '#646464';
+    bCtx.fillRect(px, py, 2, 2);
+  }
+
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(2, 2);
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(2, 2);
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Generates dark acoustic vertical walnut slat textures with recessed acoustic felt shadow channels.
+ */
+export function createWalnutAcousticSlatTextures(): WalnutWoodTextureSet {
+  const W = 512;
+  const H = 512;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  ctx.fillStyle = '#090706';
+  ctx.fillRect(0, 0, W, H);
+  bCtx.fillStyle = '#181818';
+  bCtx.fillRect(0, 0, W, H);
+
+  const pitch = 16;
+  const slatW = 10;
+  for (let x = 0; x < W; x += pitch) {
+    const tone = ((x / pitch) % 3) * 6;
+    const g = ctx.createLinearGradient(x, 0, x + slatW, 0);
+    g.addColorStop(0, `rgb(${48 + tone}, ${28 + tone}, ${17 + tone})`);
+    g.addColorStop(0.5, `rgb(${78 + tone}, ${46 + tone}, ${28 + tone})`);
+    g.addColorStop(1, `rgb(${44 + tone}, ${25 + tone}, ${15 + tone})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x + 3, 0, slatW, H);
+
+    // Subtle wood grain lines along each slat
+    ctx.fillStyle = 'rgba(20, 10, 5, 0.25)';
+    ctx.fillRect(x + 6, 0, 1.5, H);
+
+    bCtx.fillStyle = '#d4d4d4';
+    bCtx.fillRect(x + 3, 0, slatW, H);
+  }
+
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(3, 2);
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(3, 2);
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Generates dark honed grey-slate stone floor textures for the semi-circular front IMAX stage.
+ */
+export function createDarkSlateStoneStageTextures(): WalnutWoodTextureSet {
+  const W = 512;
+  const H = 512;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  ctx.fillStyle = '#252629';
+  ctx.fillRect(0, 0, W, H);
+  bCtx.fillStyle = '#808080';
+  bCtx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < 65; i++) {
+    const cx = (i * 103) % W;
+    const cy = (i * 149) % H;
+    const r = 30 + (i % 5) * 14;
+    ctx.fillStyle = i % 2 === 0 ? 'rgba(62, 65, 70, 0.24)' : 'rgba(20, 21, 24, 0.3)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  for (let i = 0; i < 4200; i++) {
+    const px = (i * 89) % W;
+    const py = (i * 131) % H;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(96, 98, 102, 0.16)' : 'rgba(12, 13, 15, 0.28)';
+    ctx.fillRect(px, py, 2, 2);
+    bCtx.fillStyle = i % 2 === 0 ? '#9e9e9e' : '#626262';
+    bCtx.fillRect(px, py, 2, 2);
+  }
+
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.wrapS = THREE.RepeatWrapping;
+  map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(3, 2);
+  map.anisotropy = 8;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.wrapS = THREE.RepeatWrapping;
+  bumpMap.wrapT = THREE.RepeatWrapping;
+  bumpMap.repeat.set(3, 2);
+  bumpMap.anisotropy = 8;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Generates aged bronze and olive patina leaf textures for sculpted 3D Tree of Life leaves.
+ */
+export function createBronzePatinaLeafTextures(): WalnutWoodTextureSet {
+  const W = 256;
+  const H = 256;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+
+  const bumpCanvas = document.createElement('canvas');
+  bumpCanvas.width = W;
+  bumpCanvas.height = H;
+  const bCtx = bumpCanvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#5a5837');
+  grad.addColorStop(0.5, '#7c6b42');
+  grad.addColorStop(1, '#48492e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  bCtx.fillStyle = '#787878';
+  bCtx.fillRect(0, 0, W, H);
+
+  // Central spine & lateral leaf veins
+  ctx.strokeStyle = 'rgba(205, 175, 108, 0.42)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.5, 8);
+  ctx.lineTo(W * 0.5, H - 8);
+  ctx.stroke();
+
+  bCtx.strokeStyle = '#d8d8d8';
+  bCtx.lineWidth = 4;
+  bCtx.beginPath();
+  bCtx.moveTo(W * 0.5, 8);
+  bCtx.lineTo(W * 0.5, H - 8);
+  bCtx.stroke();
+
+  for (let y = 36; y < H - 24; y += 26) {
+    [-1, 1].forEach((dir) => {
+      ctx.strokeStyle = 'rgba(195, 165, 100, 0.28)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.5, y);
+      ctx.quadraticCurveTo(W * 0.5 + dir * 48, y - 10, W * 0.5 + dir * 92, y - 28);
+      ctx.stroke();
+
+      bCtx.strokeStyle = '#bcbcbc';
+      bCtx.lineWidth = 2;
+      bCtx.beginPath();
+      bCtx.moveTo(W * 0.5, y);
+      bCtx.quadraticCurveTo(W * 0.5 + dir * 48, y - 10, W * 0.5 + dir * 92, y - 28);
+      bCtx.stroke();
+    });
+  }
+
+  const map = new THREE.CanvasTexture(canvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 4;
+
+  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+  bumpMap.anisotropy = 4;
+
+  return {
+    map,
+    bumpMap,
+    dispose: () => {
+      map.dispose();
+      bumpMap.dispose();
+    },
+  };
+}
+
+/**
+ * Soft warm amber-to-gold gradient texture for Tree of Life backlit cove aura washes.
+ */
+export function createTreeOfLifeAmberWashTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createLinearGradient(0, 128, 0, 0);
+  grad.addColorStop(0.0, 'rgba(255, 224, 160, 0.92)');
+  grad.addColorStop(0.28, 'rgba(255, 170, 68, 0.45)');
+  grad.addColorStop(0.68, 'rgba(218, 122, 34, 0.14)');
+  grad.addColorStop(1.0, 'rgba(180, 90, 20, 0.0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 128);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
 
 
 

@@ -27,6 +27,7 @@ import {
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getIceTheaterLayout } from './iceLayoutUtils';
 import { FourDxLiveTelemetry } from './fourDxTelemetry';
+import { TreeOfLifeImaxWalls } from './TreeOfLifeImaxArchitecture';
 
 const _kineticCovePrimaryBase = new THREE.Color('#9ff5f2');
 const _kineticCoveSecondaryBase = new THREE.Color('#ffd386');
@@ -6369,6 +6370,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'telugu_kakatiya_dolby' &&
         sideLightStyle !== 'parametric_obsidian_waves' &&
         sideLightStyle !== 'biophilic_crystalline_moss' &&
+        sideLightStyle !== 'imax_tree_of_life' &&
         wallBayZs.map((bz, idx) => {
           const nextBz = wallBayZs[idx + 1];
           const allowTile = idx < wallBayZs.length - 1;
@@ -9249,6 +9251,7 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
         sideLightStyle !== 'crisscross_geometric' &&
         sideLightStyle !== 'screenx_panoramic_walls' &&
         sideLightStyle !== 'screenx_silver_baffles' &&
+        sideLightStyle !== 'imax_tree_of_life' &&
         wallBayZs.map((bz, idx) => {
           return [-1, 1].map((side) => {
             const xBase = side * (wallInnerX - 0.08);
@@ -9543,6 +9546,14 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
             );
           });
         })}
+
+      {sideLightStyle === 'imax_tree_of_life' && (
+        <TreeOfLifeImaxWalls
+          config={config}
+          lightFactor={lightFactor}
+          screenBounceUniforms={screenBounceUniforms}
+        />
+      )}
 
     </group>
   );

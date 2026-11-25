@@ -7,6 +7,7 @@ import {
   CameraViewMode,
   FourDxSettings,
   GraphicsQuality,
+  PreviewCameraPreset,
   ScreenFramingMode,
   SeatData,
   ShowState,
@@ -68,6 +69,8 @@ interface CinemaAuditoriumCanvasProps {
   onRequestScanTicket: () => void;
   onCorridorPhaseChange?: (phase: CorridorPhase) => void;
   walkInputRef?: React.MutableRefObject<WalkInputState>;
+  hallPreset?: PreviewCameraPreset;
+  hallPresetSignal?: number;
   onSceneReady: () => void;
 }
 
@@ -99,6 +102,8 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
   onRequestScanTicket,
   onCorridorPhaseChange,
   walkInputRef,
+  hallPreset = 'overview',
+  hallPresetSignal = 0,
   onSceneReady,
 }) => {
   const webglInfo = useMemo(() => detectWebGLSupport(), []);
@@ -353,6 +358,8 @@ export const CinemaAuditoriumCanvas: React.FC<CinemaAuditoriumCanvasProps> = Rea
           fourDxCameraIntensity={active4dxCamera}
           fourDxTelemetryRef={fourDxTelemetryRef}
           walkInputRef={walkInputRef}
+          hallPreset={hallPreset}
+          hallPresetSignal={hallPresetSignal}
         />
 
         {config.categoryId === 'beach' && (

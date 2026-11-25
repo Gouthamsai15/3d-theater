@@ -1,14 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { ComponentRef, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import gsap from 'gsap';
 import {
   CameraViewMode,
+  PreviewCameraPreset,
   SeatData,
   TheaterConfiguration,
   WalkInputState,
 } from '../../types/cinema';
+import { getTheaterCameraPresetPose } from './cameraPresets';
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 import { computeAdaptiveCinemaFov, isMobileDevice } from '../../utils/formatters';
 import {
@@ -55,6 +57,8 @@ interface FirstPersonCameraRigProps {
   fourDxCameraIntensity: number; // 0..1
   fourDxTelemetryRef?: React.MutableRefObject<FourDxLiveTelemetry>;
   walkInputRef?: React.MutableRefObject<WalkInputState>;
+  hallPreset?: PreviewCameraPreset;
+  hallPresetSignal?: number;
 }
 
 function getWalkFloorHeight(
@@ -731,26 +735,17 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
         stridePhase: 0,
       };
     } else if (viewMode === 'hall') {
-      const topTierY = (config.seatingRows - 1) * config.rowElevationStep;
-      const isDeccan = config.theaterId === 'dolby_deccan';
-      targetPos = isDeccan
-        ? [0, 6.05, 13.85]
-        : [
-            config.auditoriumWidth * 0.24,
-            Math.min(config.auditoriumHeight - 1.1, topTierY + 2.4),
-            config.auditoriumLength * 0.3,
-          ];
-      const clampedHall = { x: targetPos[0], y: targetPos[1], z: targetPos[2] };
+      const pose = getTheaterCameraPresetPose(config, hallPreset);
+      const clampedHall = { x: pose.position[0], y: pose.position[1], z: pose.position[2] };
       clampInsideHall(clampedHall, config);
       targetPos = [clampedHall.x, clampedHall.y, clampedHall.z];
       const dummy = new THREE.PerspectiveCamera();
       dummy.position.set(...targetPos);
-      dummy.lookAt(
-        0,
-        isDeccan ? 4.75 : Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
-        isDeccan ? -7.5 : -config.auditoriumLength * 0.06,
-      );
+      dummy.lookAt(...pose.target);
       targetQuat.copy(dummy.quaternion);
+      hallTargetPosRef.current.set(...targetPos);
+      hallTargetLookRef.current.set(...pose.target);
+      isHallPresetTransitioningRef.current = false;
     } else if (viewMode === 'screen_full') {
       const fov = computeAdaptiveCinemaFov(config.categoryId, size.width, size.height);
       const fovRad = THREE.MathUtils.degToRad(fov);
@@ -1046,6 +1041,22 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
     }
 
     if (viewMode === 'hall' || isGlidingRef.current) {
+      if (viewMode === 'hall' && !isGlidingRef.current && isHallPresetTransitioningRef.current && orbitControlsRef.current) {
+        const dtHall = Math.min(delta, 0.05);
+        camera.position.x = THREE.MathUtils.damp(camera.position.x, hallTargetPosRef.current.x, 5.5, dtHall);
+        camera.position.y = THREE.MathUtils.damp(camera.position.y, hallTargetPosRef.current.y, 5.5, dtHall);
+        camera.position.z = THREE.MathUtils.damp(camera.position.z, hallTargetPosRef.current.z, 5.5, dtHall);
+        orbitControlsRef.current.target.x = THREE.MathUtils.damp(orbitControlsRef.current.target.x, hallTargetLookRef.current.x, 5.5, dtHall);
+        orbitControlsRef.current.target.y = THREE.MathUtils.damp(orbitControlsRef.current.target.y, hallTargetLookRef.current.y, 5.5, dtHall);
+        orbitControlsRef.current.target.z = THREE.MathUtils.damp(orbitControlsRef.current.target.z, hallTargetLookRef.current.z, 5.5, dtHall);
+        orbitControlsRef.current.update();
+        if (
+          camera.position.distanceTo(hallTargetPosRef.current) < 0.04 &&
+          orbitControlsRef.current.target.distanceTo(hallTargetLookRef.current) < 0.04
+        ) {
+          isHallPresetTransitioningRef.current = false;
+        }
+      }
       clampInsideHall(camera.position, config);
       syncAudioListener();
       return;
@@ -1203,21 +1214,24 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
   });
 
   if (entranceComplete && viewMode === 'hall' && !isGlidingRef.current) {
+    const isLongHall =
+      config.theaterId === 'imax_tree_of_life' ||
+      config.theaterId === 'dolby_deccan' ||
+      config.theaterId === '4dx_kinetic_250';
     const hallMaxDistance =
       config.environmentProfile.architectureStyle === 'beach'
         ? 24
-        : Math.max(
-            3.5,
-            Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
-          );
+        : isLongHall
+          ? 25
+          : Math.max(
+              3.5,
+              Math.min(config.auditoriumWidth * 0.45, config.auditoriumLength * 0.48),
+            );
     const mobile = isMobileDevice();
     return (
       <OrbitControls
-        target={[
-          0,
-          Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
-          -config.auditoriumLength * 0.06,
-        ]}
+        ref={orbitControlsRef}
+        target={hallInitialPose.target}
         enablePan={false}
         enableDamping={!isSoftwareGl}
         dampingFactor={0.075}
@@ -1228,6 +1242,9 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
         maxAzimuthAngle={Infinity}
         maxPolarAngle={Math.PI * 0.58}
         minPolarAngle={0.22}
+        onStart={() => {
+          isHallPresetTransitioningRef.current = false;
+        }}
         onChange={() => clampInsideHall(camera.position, config)}
       />
     );
