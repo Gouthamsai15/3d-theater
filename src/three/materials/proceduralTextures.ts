@@ -19,6 +19,8 @@ export interface AuditoriumTextureSet {
 export interface SeatUpholsteryTextureSet {
   map: THREE.CanvasTexture;
   bumpMap: THREE.CanvasTexture;
+  normalMap: THREE.DataTexture;
+  roughnessMap: THREE.DataTexture;
   dispose: () => void;
 }
 
@@ -2498,14 +2500,108 @@ export function createSeatUpholsteryTextures(
   bumpMap.repeat.set(2, 2);
   bumpMap.anisotropy = 4;
 
+  // Derive tangent-space Sobel normalMap + calibrated linear roughnessMap from bump heightfield
+  const texW = 256;
+  const texH = 256;
+  const bData = bCtx.getImageData(0, 0, texW, texH).data;
+  const normBytes = new Uint8Array(texW * texH * 4);
+  const roughBytes = new Uint8Array(texW * texH * 4);
+  const normalStrength =
+    styleVariant === 'suede' || styleVariant === 'boucle' || styleVariant === 'forest_green_weave'
+      ? 1.75
+      : isLeather
+        ? 2.25
+        : 1.55;
+  const isMatteNap =
+    !isLeather ||
+    styleVariant === 'suede' ||
+    styleVariant === 'boucle' ||
+    styleVariant === 'charcoal_knit' ||
+    styleVariant === 'forest_green_weave';
+
+  const hAt = (x: number, y: number) => {
+    const wx = (x + texW) % texW;
+    const wy = (y + texH) % texH;
+    return bData[(wy * texW + wx) * 4] / 255;
+  };
+
+  for (let y = 0; y < texH; y++) {
+    for (let x = 0; x < texW; x++) {
+      const idx = (y * texW + x) * 4;
+      const hL = hAt(x - 1, y);
+      const hR = hAt(x + 1, y);
+      const hD = hAt(x, y - 1);
+      const hU = hAt(x, y + 1);
+      const dx = (hL - hR) * normalStrength;
+      const dy = (hD - hU) * normalStrength;
+      const dz = 1.0;
+      const invLen = 1.0 / Math.hypot(dx, dy, dz);
+      normBytes[idx] = Math.round((dx * invLen * 0.5 + 0.5) * 255);
+      normBytes[idx + 1] = Math.round((dy * invLen * 0.5 + 0.5) * 255);
+      normBytes[idx + 2] = Math.round((dz * invLen * 0.5 + 0.5) * 255);
+      normBytes[idx + 3] = 255;
+
+      // Raised pebbles/tufts catch slightly crisper speculars; recessed seams/pores stay deeply matte
+      const h = hAt(x, y);
+      const roughVal = isMatteNap
+        ? THREE.MathUtils.clamp(0.95 - (h - 0.5) * 0.24, 0.72, 0.98)
+        : THREE.MathUtils.clamp(0.88 - h * 0.34, 0.52, 0.96);
+      const rByte = Math.round(roughVal * 255);
+      roughBytes[idx] = rByte;
+      roughBytes[idx + 1] = rByte;
+      roughBytes[idx + 2] = rByte;
+      roughBytes[idx + 3] = 255;
+    }
+  }
+
+  const normalMap = new THREE.DataTexture(normBytes, texW, texH, THREE.RGBAFormat);
+  normalMap.colorSpace = THREE.NoColorSpace;
+  normalMap.wrapS = THREE.RepeatWrapping;
+  normalMap.wrapT = THREE.RepeatWrapping;
+  normalMap.repeat.set(2, 2);
+  normalMap.anisotropy = 4;
+  normalMap.needsUpdate = true;
+
+  const roughnessMap = new THREE.DataTexture(roughBytes, texW, texH, THREE.RGBAFormat);
+  roughnessMap.colorSpace = THREE.NoColorSpace;
+  roughnessMap.wrapS = THREE.RepeatWrapping;
+  roughnessMap.wrapT = THREE.RepeatWrapping;
+  roughnessMap.repeat.set(2, 2);
+  roughnessMap.anisotropy = 4;
+  roughnessMap.needsUpdate = true;
+
   return {
     map,
     bumpMap,
+    normalMap,
+    roughnessMap,
     dispose: () => {
       map.dispose();
       bumpMap.dispose();
+      normalMap.dispose();
+      roughnessMap.dispose();
     },
   };
+}
+
+export function createPedestalContactShadowTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+  const grad = ctx.createRadialGradient(64, 64, 10, 64, 64, 60);
+  grad.addColorStop(0, 'rgba(0, 0, 0, 0.78)');
+  grad.addColorStop(0.45, 'rgba(0, 0, 0, 0.42)');
+  grad.addColorStop(0.78, 'rgba(0, 0, 0, 0.12)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 export function createSconceWashTexture(): THREE.CanvasTexture {

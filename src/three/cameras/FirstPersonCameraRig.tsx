@@ -256,11 +256,18 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
   fourDxCameraIntensity,
   fourDxTelemetryRef,
   walkInputRef,
+  hallPreset = 'overview',
+  hallPresetSignal = 0,
 }) => {
   const { camera, gl, size } = useThree();
   const walkTimelineRef = useRef<gsap.core.Timeline | null>(null);
   const glideTweenRef = useRef<gsap.core.Tween | null>(null);
   const isGlidingRef = useRef(false);
+  const orbitControlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null);
+  const hallTargetPosRef = useRef(new THREE.Vector3());
+  const hallTargetLookRef = useRef(new THREE.Vector3());
+  const isHallPresetTransitioningRef = useRef(false);
+  const hallInitialPose = getTheaterCameraPresetPose(config, hallPreset);
 
   // Unlimited 360-degree yaw + comfortable pitch offset while seated or walking, with smooth inertia momentum
   const lookOffsetRef = useRef({
@@ -799,6 +806,17 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
       glideTweenRef.current?.kill();
     };
   }, [seat, viewMode, entranceComplete, camera, config, size.width, size.height]);
+
+  // Smoothly animate OrbitControls camera & target when switching Hall camera presets
+  useEffect(() => {
+    if (!entranceComplete || viewMode !== 'hall' || hallPresetSignal === 0) return;
+    const pose = getTheaterCameraPresetPose(config, hallPreset);
+    const clampedPos = { x: pose.position[0], y: pose.position[1], z: pose.position[2] };
+    clampInsideHall(clampedPos, config);
+    hallTargetPosRef.current.set(clampedPos.x, clampedPos.y, clampedPos.z);
+    hallTargetLookRef.current.set(pose.target[0], pose.target[1], pose.target[2]);
+    isHallPresetTransitioningRef.current = true;
+  }, [hallPreset, hallPresetSignal, entranceComplete, viewMode, config]);
 
   // Allow skipping entrance walk directly into exact seat
   useEffect(() => {

@@ -14,7 +14,6 @@ import {
   createDeccanBasaltWallTextures,
   createDeccanWaterfallTextures,
   createImaxCyanChannelWashTexture,
-  createImaxWithLaserSignTexture,
   createJaliLatticeTexture,
   createMossFoliageTextures,
   createTeluguHeritageWallPanelTextures,
@@ -1788,11 +1787,10 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
     };
   }, [biophilicMossResources]);
 
-  // Dedicated IMAX Cobalt Horizon resources: matte obsidian/charcoal/slate wave-rib finishes, cyan slot wash, bright cyan core LEDs & backlit IMAX with Laser plaque
+  // Dedicated IMAX Cobalt Horizon resources: matte obsidian/charcoal/slate wave-rib finishes, cyan slot wash & bright cyan core LEDs
   const imaxCobaltResources = useMemo(() => {
     if (sideLightStyle !== 'imax_cobalt_wave') return null;
     const cyanWashTex = createImaxCyanChannelWashTexture();
-    const plaqueTex = createImaxWithLaserSignTexture();
 
     const obsidianRibMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
@@ -1818,14 +1816,6 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       }),
       screenBounceUniforms,
     );
-    const plaqueFrameMat = applyScreenBounceToMaterial(
-      new THREE.MeshStandardMaterial({
-        color: '#0d1017',
-        roughness: 0.58,
-        metalness: 0.34,
-      }),
-      screenBounceUniforms,
-    );
     const cyanWashMat = new THREE.MeshStandardMaterial({
       map: cyanWashTex,
       emissive: '#38bdf8',
@@ -1842,26 +1832,14 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       roughness: 0.18,
       toneMapped: false,
     });
-    const imaxPlaqueMat = new THREE.MeshStandardMaterial({
-      map: plaqueTex,
-      emissive: '#ffffff',
-      emissiveMap: plaqueTex,
-      emissiveIntensity: 0.96,
-      roughness: 0.34,
-      metalness: 0.1,
-      toneMapped: false,
-    });
 
     return {
       cyanWashTex,
-      plaqueTex,
       obsidianRibMat,
       charcoalRibMat,
       slateRibMat,
-      plaqueFrameMat,
       cyanWashMat,
       cyanCoreLedMat,
-      imaxPlaqueMat,
     };
   }, [sideLightStyle, screenBounceUniforms]);
 
@@ -1870,12 +1848,9 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
       imaxCobaltResources?.obsidianRibMat.dispose();
       imaxCobaltResources?.charcoalRibMat.dispose();
       imaxCobaltResources?.slateRibMat.dispose();
-      imaxCobaltResources?.plaqueFrameMat.dispose();
       imaxCobaltResources?.cyanWashMat.dispose();
       imaxCobaltResources?.cyanCoreLedMat.dispose();
-      imaxCobaltResources?.imaxPlaqueMat.dispose();
       imaxCobaltResources?.cyanWashTex.dispose();
-      imaxCobaltResources?.plaqueTex.dispose();
     };
   }, [imaxCobaltResources]);
 
@@ -2063,7 +2038,6 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
   if (imaxCobaltResources) {
     imaxCobaltResources.cyanWashMat.emissiveIntensity = lightFactor * 1.42;
     imaxCobaltResources.cyanCoreLedMat.emissiveIntensity = lightFactor * 2.45;
-    imaxCobaltResources.imaxPlaqueMat.emissiveIntensity = 0.06 + lightFactor * 0.9;
   }
   if (exoskeletonResources) {
     exoskeletonResources.crimsonStormLedMat.emissiveIntensity = lightFactor * 1.95;
@@ -6891,21 +6865,6 @@ export const SideWallLighting: React.FC<SideWallLightingProps> = ({
                   >
                     <boxGeometry args={[0.09, H * 0.94, imaxWaveWall.frontMarginLen - 0.12]} />
                   </mesh>
-
-                  {/* Illuminated Backlit "IMAX with Laser" Wall Plaque Mounted Cleanly on Left Front Acoustic Margin */}
-                  {side === -1 && (
-                    <group
-                      position={[inDir * 0.115, Math.min(H * 0.42, 4.7), frontZ + 2.08]}
-                      rotation={[0, Math.PI / 2, 0]}
-                    >
-                      <mesh position={[0, 0, -0.025]} material={imaxCobaltResources.plaqueFrameMat}>
-                        <boxGeometry args={[2.55, 0.98, 0.05]} />
-                      </mesh>
-                      <mesh position={[0, 0, 0.004]} material={imaxCobaltResources.imaxPlaqueMat}>
-                        <planeGeometry args={[2.46, 0.9]} />
-                      </mesh>
-                    </group>
-                  )}
 
                   {/* Sculpted Slanted Curved Acoustic Wave-Rib Bays */}
                   <mesh geometry={wall.obsidianGeo} material={imaxCobaltResources.obsidianRibMat} castShadow receiveShadow />

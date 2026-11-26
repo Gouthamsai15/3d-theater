@@ -281,6 +281,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
   const lensFlareMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const beachOuterBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const beachInnerBeamMatRef = useRef<THREE.ShaderMaterial | null>(null);
+  const isDualLaser = config.categoryId === 'imax' || config.categoryId === 'dolby';
 
   const texARef = useRef<THREE.VideoTexture | null>(null);
   const texBRef = useRef<THREE.VideoTexture | null>(null);
@@ -599,16 +600,38 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     };
   }, [outerFrameGeo, velvetMaskGeo, brassTrimGeo, screenGeo, silverBezelGeo]);
 
-  // Projector booth lens origin coordinates aligned directly with the 3D booth glass & projector lens
-  const boothLensPos = useMemo<[number, number, number]>(() => {
+  // Projector booth lens origin coordinates aligned directly with the pitched 3D projector lens barrel(s)
+  const indoorLensOrigins = useMemo<[number, number, number][]>(() => {
     const topTierY = (seatingRows - 1) * rowElevationStep;
-    const isIce = config.environmentProfile.architectureStyle === 'ice';
-    const boothY = isIce
+    const isIceArch = config.environmentProfile.architectureStyle === 'ice';
+    const boothY = isIceArch
       ? Math.min(auditoriumHeight - 1.65, Math.max(10.35, topTierY + 5.6))
       : Math.min(auditoriumHeight - 1.4, topTierY + 3.25);
-    const boothZ = auditoriumLength / 2 - 0.04;
-    return [0, boothY, boothZ];
-  }, [auditoriumHeight, auditoriumLength, seatingRows, rowElevationStep, config.environmentProfile.architectureStyle]);
+    const backZ = auditoriumLength / 2;
+    const projectorPivotZ = backZ + 0.78;
+    const throwPitch = Math.atan2(
+      boothY - screenPosition[1],
+      Math.max(2.0, projectorPivotZ - screenPosition[2]),
+    );
+    const beamExitZ = backZ - 0.04;
+    const tGlass = (projectorPivotZ - beamExitZ) / Math.max(0.2, Math.cos(throwPitch));
+    const beamExitY = boothY - tGlass * Math.sin(throwPitch);
+    if (isDualLaser) {
+      return [
+        [-0.22, beamExitY, beamExitZ],
+        [0.22, beamExitY, beamExitZ],
+      ];
+    }
+    return [[0, beamExitY, beamExitZ]];
+  }, [
+    auditoriumHeight,
+    auditoriumLength,
+    seatingRows,
+    rowElevationStep,
+    config.environmentProfile.architectureStyle,
+    screenPosition,
+    isDualLaser,
+  ]);
 
   const screenAspect = effectiveScreenWidth / screenHeight;
   const safeVideoAspect = videoAspectRatio > 0.1 ? videoAspectRatio : screenAspect;
@@ -712,30 +735,43 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     };
   }, [screenFraming, safeVideoAspect, screenAspect, isScreenX, effectiveScreenWidth]);
 
-  // Dual volumetric frustum geometries (outer atmospheric cone + inner concentrated ray core)
-  const outerBeamGeo = useMemo(
-    () =>
-      buildProjectorFrustumGeometry(
-        boothLensPos,
+  // Dual volumetric frustum geometries (supports Dual-Laser IMAX/Dolby twin optics + single laser rigs)
+  const indoorBeamAssets = useMemo(() => {
+    if (isBeach) return null;
+    const lensHalfW = isDualLaser ? 0.14 : 0.18;
+    const lensHalfH = isDualLaser ? 0.09 : 0.11;
+    const frustums = indoorLensOrigins.map((origin) => ({
+      origin,
+      outerGeo: buildProjectorFrustumGeometry(
+        origin,
         screenPosition,
         effectiveScreenWidth * scaleX,
         screenHeight * scaleY,
         1.0,
+        lensHalfW,
+        lensHalfH,
       ),
-    [boothLensPos, screenPosition, effectiveScreenWidth, screenHeight, scaleX, scaleY],
-  );
-
-  const innerBeamGeo = useMemo(
-    () =>
-      buildProjectorFrustumGeometry(
-        boothLensPos,
+      innerGeo: buildProjectorFrustumGeometry(
+        origin,
         screenPosition,
         effectiveScreenWidth * scaleX,
         screenHeight * scaleY,
         0.62,
+        lensHalfW,
+        lensHalfH,
       ),
-    [boothLensPos, screenPosition, effectiveScreenWidth, screenHeight, scaleX, scaleY],
-  );
+    }));
+    return { frustums };
+  }, [
+    isBeach,
+    isDualLaser,
+    indoorLensOrigins,
+    screenPosition,
+    effectiveScreenWidth,
+    screenHeight,
+    scaleX,
+    scaleY,
+  ]);
 
   const createBeamMaterial = (edgePow: number) =>
     new THREE.ShaderMaterial({
@@ -805,31 +841,61 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       uniforms: {
         uScreenLightTex: { value: gpuLightSampler.rt.texture },
         uOpacity: { value: 0 },
+        uBeamDir: { value: new THREE.Vector3(0, -0.1, -1) },
       },
       vertexShader: `
         varying vec2 vUv;
+        varying float vViewAlign;
+        uniform vec3 uBeamDir;
         void main() {
           vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 worldCenter = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          vec3 toCam = normalize(cameraPosition - worldCenter.xyz);
+          vViewAlign = clamp(dot(toCam, normalize(uBeamDir)), 0.0, 1.0);
+
+          // View-aligned billboard so the horizontal anamorphic streak remains crisp from every seat
+          vec4 mvCenter = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          mvCenter.xy += position.xy;
+          gl_Position = projectionMatrix * mvCenter;
         }
       `,
       fragmentShader: `
         varying vec2 vUv;
+        varying float vViewAlign;
         uniform sampler2D uScreenLightTex;
         uniform float uOpacity;
         void main() {
-          vec3 c1 = pow(max(texture2D(uScreenLightTex, vec2(0.35, 0.5)).rgb, vec3(1e-4)), vec3(2.2));
-          vec3 c2 = pow(max(texture2D(uScreenLightTex, vec2(0.65, 0.5)).rgb, vec3(1e-4)), vec3(2.2));
-          vec3 col = (c1 + c2) * 0.5;
-          float d = distance(vUv, vec2(0.5)) * 2.0;
-          float glow = pow(max(0.0, 1.0 - d), 3.0);
-          gl_FragColor = vec4(col * 0.95, glow * uOpacity);
+          vec3 c1 = pow(max(texture2D(uScreenLightTex, vec2(0.32, 0.5)).rgb, vec3(1e-4)), vec3(2.2));
+          vec3 c2 = pow(max(texture2D(uScreenLightTex, vec2(0.68, 0.5)).rgb, vec3(1e-4)), vec3(2.2));
+          vec3 cMid = pow(max(texture2D(uScreenLightTex, vec2(0.5, 0.5)).rgb, vec3(1e-4)), vec3(2.2));
+          vec3 videoCol = (c1 + c2 + cMid) / 3.0;
+
+          vec2 p = (vUv - 0.5) * 2.0;
+          float edgeMask = smoothstep(1.0, 0.62, abs(p.x)) * smoothstep(1.0, 0.56, abs(p.y));
+          float rCore = length(p * vec2(1.15, 0.65));
+          float core = exp(-rCore * 6.8) * 0.92;
+          float halo = exp(-rCore * 2.8) * 0.32;
+
+          float alignPow = pow(vViewAlign, 2.0);
+          float streak = exp(-abs(p.y) * 20.0) * exp(-abs(p.x) * 2.2) * (0.32 + 0.95 * alignPow);
+
+          vec3 streakCol = mix(videoCol, vec3(0.42, 0.78, 1.0), 0.45);
+          vec3 finalRgb =
+            mix(videoCol, vec3(1.0), 0.45) * core +
+            videoCol * halo +
+            streakCol * streak;
+
+          float angleBoost = mix(0.28, 1.45, alignPow);
+          float alpha = edgeMask * (core + halo + streak * 0.85) * angleBoost * uOpacity;
+          if (alpha < 0.002) discard;
+          gl_FragColor = vec4(finalRgb * 1.15, alpha);
         }
       `,
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
+      toneMapped: false,
     });
     lensFlareMatRef.current = mat;
     return mat;
@@ -837,13 +903,22 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
 
   useEffect(() => {
     return () => {
-      outerBeamGeo.dispose();
-      innerBeamGeo.dispose();
+      if (indoorBeamAssets) {
+        indoorBeamAssets.frustums.forEach((f) => {
+          f.outerGeo.dispose();
+          f.innerGeo.dispose();
+        });
+      }
+    };
+  }, [indoorBeamAssets]);
+
+  useEffect(() => {
+    return () => {
       outerBeamMaterial.dispose();
       innerBeamMaterial.dispose();
       lensFlareMaterial.dispose();
     };
-  }, [outerBeamGeo, innerBeamGeo, outerBeamMaterial, innerBeamMaterial, lensFlareMaterial]);
+  }, [outerBeamMaterial, innerBeamMaterial, lensFlareMaterial]);
 
   // Outdoor Beach Theater real-time video-mapped rectangular projector frustums (per-pixel synced to playing movie)
   const beachLensOrigins = useMemo<[number, number, number][]>(() => {
@@ -924,6 +999,19 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
       beachInnerBeamMaterial.dispose();
     };
   }, [beachOuterBeamMaterial, beachInnerBeamMaterial]);
+
+  const beamForwardVec = useMemo(() => {
+    const refOrigin = isBeach
+      ? beachLensOrigins[0] || [0, 6, 12]
+      : indoorLensOrigins[0] || [0, 6, 12];
+    const dir = new THREE.Vector3(
+      screenPosition[0] - refOrigin[0],
+      screenPosition[1] - refOrigin[1],
+      screenPosition[2] - refOrigin[2],
+    );
+    if (dir.lengthSq() < 0.001) return new THREE.Vector3(0, -0.1, -1);
+    return dir.normalize();
+  }, [isBeach, beachLensOrigins, indoorLensOrigins, screenPosition]);
 
   // Unified cinema projection shader (exact sRGB decode + optical lens uniformity + optional inverse-ACES HDR calibration)
   const screenShaderMaterial = useMemo(() => {
@@ -1413,14 +1501,11 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
 
     // Calibrated volumetric projector beam: strictly zero on beach standby, RGB-synced during playback
     const beamActive = showState === 'SHOW_PLAYING' && isVideo;
-    const outerTarget = beamActive ? (isPaused ? 0.045 : isMobile ? 0.075 : 0.185) : 0.0;
-    const innerTarget = beamActive ? (isPaused ? 0.03 : isMobile ? 0.052 : 0.135) : 0.0;
+    const dualScale = !isBeach && isDualLaser ? 0.62 : 1.0;
+    const outerTarget = beamActive ? (isPaused ? 0.045 : isMobile ? 0.075 : 0.185) * dualScale : 0.0;
+    const innerTarget = beamActive ? (isPaused ? 0.03 : isMobile ? 0.052 : 0.135) * dualScale : 0.0;
     const flareTarget = beamActive
-      ? isPaused
-        ? 0.16
-        : isMobile
-          ? 0.24
-          : 0.48
+      ? (isPaused ? 0.16 : isMobile ? 0.26 : 0.52) * (!isBeach && isDualLaser ? 0.78 : 1.0)
       : isBeach
         ? 0.0
         : 0.04;
@@ -1445,6 +1530,7 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
     }
     if (lensFlareMatRef.current) {
       lensFlareMatRef.current.uniforms.uScreenLightTex.value = gpuLightSampler.rt.texture;
+      lensFlareMatRef.current.uniforms.uBeamDir.value.copy(beamForwardVec);
       lensFlareMatRef.current.uniforms.uOpacity.value = THREE.MathUtils.damp(
         lensFlareMatRef.current.uniforms.uOpacity.value,
         flareTarget,
@@ -1704,22 +1790,34 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
         />
       )}
 
-      {/* Real-Time Video-Matched Volumetric Projector Frustum Beam (Indoor Booth -> Screen) */}
-      {!isBeach && (
-        <>
-          <mesh geometry={outerBeamGeo} material={outerBeamMaterial} renderOrder={4} />
-          <mesh geometry={innerBeamGeo} material={innerBeamMaterial} renderOrder={5} />
-          <mesh
-            position={[boothLensPos[0], boothLensPos[1], boothLensPos[2] - 0.04]}
-            material={lensFlareMaterial}
-            renderOrder={6}
-          >
-            <planeGeometry args={[0.46, 0.28]} />
-          </mesh>
-        </>
+      {/* Real-Time Video-Matched Volumetric Projector Frustum Beam + View-Angle Anamorphic Flare (Indoor Booth -> Screen) */}
+      {!isBeach && indoorBeamAssets && (
+        <group>
+          {indoorBeamAssets.frustums.map((frustum, fi) => (
+            <React.Fragment key={`indoor-beam-frustum-${fi}`}>
+              <mesh
+                geometry={frustum.outerGeo}
+                material={outerBeamMaterial}
+                renderOrder={4}
+              />
+              <mesh
+                geometry={frustum.innerGeo}
+                material={innerBeamMaterial}
+                renderOrder={5}
+              />
+              <mesh
+                position={[frustum.origin[0], frustum.origin[1], frustum.origin[2] - 0.035]}
+                material={lensFlareMaterial}
+                renderOrder={7}
+              >
+                <planeGeometry args={[isDualLaser ? 1.15 : 1.45, 0.56]} />
+              </mesh>
+            </React.Fragment>
+          ))}
+        </group>
       )}
 
-      {/* Outdoor Beach Theater Real-Time Video-Mapped Projector Beams */}
+      {/* Outdoor Beach Theater Real-Time Video-Mapped Projector Beams + Anamorphic Lens Flare */}
       {isBeach && beachBeamAssets && (
         <group>
           {beachBeamAssets.frustums.map((frustum, fi) => (
@@ -1737,9 +1835,9 @@ export const CinemaScreen: React.FC<CinemaScreenProps> = ({
               <mesh
                 position={[frustum.origin[0], frustum.origin[1], frustum.origin[2] - 0.025]}
                 material={lensFlareMaterial}
-                renderOrder={6}
+                renderOrder={7}
               >
-                <planeGeometry args={[0.26, 0.18]} />
+                <planeGeometry args={[0.85, 0.34]} />
               </mesh>
             </React.Fragment>
           ))}

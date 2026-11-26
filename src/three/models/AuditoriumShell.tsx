@@ -394,6 +394,7 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   isPlaying = false,
   fourDxTelemetryRef,
   screenBounceUniforms,
+  screenBounceRef,
 }) => {
   const {
     auditoriumWidth: W,
@@ -816,12 +817,16 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       roughness: 0.75,
       metalness: 0.2,
     });
-    const boothGlassMat = new THREE.MeshStandardMaterial({
+    const boothGlassMat = new THREE.MeshPhysicalMaterial({
       color: '#1b2638',
       transparent: true,
-      opacity: 0.22,
-      roughness: 0.08,
-      metalness: 0.25,
+      opacity: 0.18,
+      roughness: 0.04,
+      metalness: 0.05,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.03,
+      ior: 1.52,
+      reflectivity: 0.92,
       depthWrite: false,
     });
     const projectorBodyMat = new THREE.MeshStandardMaterial({
@@ -833,6 +838,48 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       color: '#5a6375',
       roughness: 0.2,
       metalness: 0.9,
+    });
+    const projectorAnodizedMat = new THREE.MeshStandardMaterial({
+      color: '#0d0f14',
+      roughness: 0.42,
+      metalness: 0.78,
+    });
+    const projectorInnerBaffleMat = new THREE.MeshStandardMaterial({
+      color: '#050608',
+      roughness: 0.95,
+      metalness: 0.04,
+    });
+    const projectorOpticGlassMat = new THREE.MeshPhysicalMaterial({
+      color: '#1b0f35',
+      emissive: '#2a0d45',
+      emissiveIntensity: 0.14,
+      roughness: 0.04,
+      metalness: 0.08,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.02,
+      ior: 1.66,
+      reflectivity: 0.96,
+      iridescence: 0.92,
+      iridescenceIOR: 1.38,
+      iridescenceThicknessRange: [190, 440],
+      transparent: true,
+      opacity: 0.56,
+      depthWrite: false,
+    });
+    const projectorCoreGlowMat = new THREE.MeshStandardMaterial({
+      color: '#dceeff',
+      emissive: '#93c5fd',
+      emissiveIntensity: 0.52,
+      roughness: 0.08,
+      metalness: 0.15,
+      toneMapped: false,
+    });
+    const projectorStatusPanelMat = new THREE.MeshStandardMaterial({
+      color: '#07111e',
+      emissive: '#38bdf8',
+      emissiveIntensity: 0.5,
+      roughness: 0.25,
+      metalness: 0.2,
     });
     const honedDarkStoneMat = applyScreenBounceToMaterial(
       new THREE.MeshStandardMaterial({
@@ -1035,6 +1082,11 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
       boothGlassMat,
       projectorBodyMat,
       projectorChromeMat,
+      projectorAnodizedMat,
+      projectorInnerBaffleMat,
+      projectorOpticGlassMat,
+      projectorCoreGlowMat,
+      projectorStatusPanelMat,
       honedDarkStoneMat,
       travertineMat,
       champagneBrassMat,
@@ -1130,8 +1182,27 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
   }, [kineticCeilingMats]);
 
   useFrame((_state, delta) => {
-    if (!isKinetic4dx || !kineticCeilingMats) return;
     const dt = Math.min(delta, 0.05);
+
+    // Live video-synced optical condenser aperture inside the projection booth lens barrel
+    if (isPlaying && screenBounceRef?.current) {
+      const s = screenBounceRef.current;
+      materials.projectorCoreGlowMat.emissive.setRGB(
+        Math.max(0.08, s.r * 1.4 + 0.06),
+        Math.max(0.08, s.g * 1.4 + 0.06),
+        Math.max(0.12, s.b * 1.4 + 0.09),
+      );
+      materials.projectorCoreGlowMat.emissiveIntensity =
+        (0.42 + Math.min(1.55, s.luminance * 2.5)) * (lightFactor < 0.25 ? 1.15 : 0.72);
+      materials.projectorOpticGlassMat.emissiveIntensity = 0.22;
+    } else {
+      materials.projectorCoreGlowMat.emissive.set('#8ab4f8');
+      materials.projectorCoreGlowMat.emissiveIntensity = lightFactor < 0.25 ? 0.5 : 0.24;
+      materials.projectorOpticGlassMat.emissiveIntensity = 0.09;
+    }
+    materials.projectorStatusPanelMat.emissiveIntensity = isPlaying ? 0.65 : 0.38;
+
+    if (!isKinetic4dx || !kineticCeilingMats) return;
     const scale = lightFactor * (0.2 + effectLightIntensity * 1.55);
 
     if (isPlaying && fourDxTelemetryRef) {
@@ -4012,76 +4083,192 @@ const IndoorAuditoriumShell: React.FC<AuditoriumShellProps> = ({
           ))}
         </group>
 
-        {/* Multi-Part 3D Digital Laser Cinema Projector Assembly */}
-        <group position={[0, boothY, backZ + 0.75]}>
-          {/* Floor Pedestal Column & Base Plate */}
-          <mesh
-            position={[0, -(boothY - boothFloorY) / 2 - 0.08, 0.15]}
-            material={materials.projectorBodyMat}
-          >
-            <boxGeometry args={[0.42, Math.max(0.4, boothY - boothFloorY - 0.12), 0.58]} />
-          </mesh>
-          <mesh
-            position={[0, -(boothY - boothFloorY) + 0.08, 0.15]}
-            material={materials.projectorChromeMat}
-          >
-            <boxGeometry args={[0.74, 0.06, 0.82]} />
-          </mesh>
+        {/* Multi-Part 3D Digital Laser Cinema Projector Assembly (Aimed Throw Pitch + Gimbal Yoke + Dual-Laser IMAX/Dolby Rig + Multi-Element AR-Coated Optical Glass Lenses) */}
+        {(() => {
+          const isDualLaser = config.categoryId === 'imax' || config.categoryId === 'dolby';
+          const projectorPivotZ = backZ + 0.78;
+          const throwPitch = Math.atan2(
+            boothY - screenPosition[1],
+            Math.max(2.0, projectorPivotZ - screenPosition[2]),
+          );
+          const lensOffsets = isDualLaser ? [-0.22, 0.22] : [0];
+          const chassisW = isDualLaser ? 0.98 : 0.78;
+          const yokeSpanX = isDualLaser ? 0.54 : 0.44;
+          const colHeight = Math.max(0.36, boothY - boothFloorY - 0.16);
 
-          {/* Main Projector Chassis */}
-          <mesh position={[0, 0, 0.18]} material={materials.projectorBodyMat}>
-            <boxGeometry args={[0.78, 0.48, 1.12]} />
-          </mesh>
-          {/* Upper Thermal Cooling Shroud */}
-          <mesh position={[0, 0.28, 0.2]} material={materials.projectorChromeMat}>
-            <boxGeometry args={[0.64, 0.1, 0.92]} />
-          </mesh>
-          {/* Overhead Exhaust Duct Collar */}
-          <mesh position={[0, 0.44, 0.25]} material={materials.projectorBodyMat}>
-            <cylinderGeometry args={[0.14, 0.16, 0.28, 16]} />
-          </mesh>
-          {/* Side Intake Louvre Plates */}
-          {[-0.4, 0.4].map((sx, si) => (
-            <mesh key={`proj-vent-${si}`} position={[sx, 0, 0.2]} material={materials.speakerMat}>
-              <boxGeometry args={[0.03, 0.36, 0.82]} />
-            </mesh>
-          ))}
-          {/* Optical Lens Turret Flange */}
-          <mesh
-            position={[0, 0, -0.4]}
-            rotation={[Math.PI / 2, 0, 0]}
-            material={materials.projectorChromeMat}
-          >
-            <cylinderGeometry args={[0.2, 0.22, 0.08, 24]} />
-          </mesh>
-          {/* Stepped Anodized Projection Lens Barrel */}
-          <mesh
-            position={[0, 0, -0.56]}
-            rotation={[Math.PI / 2, 0, 0]}
-            material={materials.projectorBodyMat}
-          >
-            <cylinderGeometry args={[0.15, 0.17, 0.28, 24]} />
-          </mesh>
-          {/* Focus Ring Trim */}
-          <mesh
-            position={[0, 0, -0.62]}
-            rotation={[Math.PI / 2, 0, 0]}
-            material={materials.trimMetalMat}
-          >
-            <cylinderGeometry args={[0.162, 0.162, 0.05, 24]} />
-          </mesh>
-          {/* Glowing Optical Front Projection Element */}
-          <mesh position={[0, 0, -0.7]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.125, 0.125, 0.02, 24]} />
-            <meshStandardMaterial
-              color="#c8e6ff"
-              emissive="#bfe2ff"
-              emissiveIntensity={lensEmissiveIntensity}
-              roughness={0.05}
-              metalness={0.2}
-            />
-          </mesh>
-        </group>
+          return (
+            <group position={[0, boothY, projectorPivotZ]}>
+              {/* Floor Base Plate & Vertical Steel Isolation Pedestal */}
+              <mesh
+                position={[0, -(boothY - boothFloorY) + 0.08, 0.12]}
+                material={materials.projectorChromeMat}
+              >
+                <boxGeometry args={[chassisW + 0.08, 0.06, 0.84]} />
+              </mesh>
+              <mesh
+                position={[0, -(boothY - boothFloorY) / 2 - 0.07, 0.12]}
+                material={materials.projectorBodyMat}
+              >
+                <boxGeometry args={[isDualLaser ? 0.54 : 0.42, colHeight, 0.56]} />
+              </mesh>
+
+              {/* Heavy-Duty Gimbal Cradle & Side Pitch Trunnions */}
+              <mesh position={[0, -0.32, 0.04]} material={materials.projectorChromeMat}>
+                <boxGeometry args={[yokeSpanX * 2 + 0.08, 0.06, 0.32]} />
+              </mesh>
+              {[-yokeSpanX, yokeSpanX].map((yx, yi) => (
+                <group key={`proj-yoke-${yi}`} position={[yx, -0.15, 0.02]}>
+                  <mesh material={materials.projectorBodyMat}>
+                    <boxGeometry args={[0.07, 0.36, 0.22]} />
+                  </mesh>
+                  <mesh
+                    position={[0, 0.15, -0.02]}
+                    rotation={[0, 0, Math.PI / 2]}
+                    material={materials.projectorChromeMat}
+                  >
+                    <cylinderGeometry args={[0.065, 0.065, 0.11, 16]} />
+                  </mesh>
+                </group>
+              ))}
+
+              {/* Tilted Optical Projector Head Aimed Along Exact Downward Throw Angle */}
+              <group rotation={[-throwPitch, 0, 0]}>
+                {/* Main Chassis */}
+                <mesh position={[0, 0, 0.14]} material={materials.projectorBodyMat}>
+                  <boxGeometry args={[chassisW, 0.48, 1.14]} />
+                </mesh>
+                {/* Upper Brushed Thermal Cooling Shroud */}
+                <mesh
+                  position={[0, 0.28, 0.16]}
+                  material={materials.projectorChromeMat}
+                >
+                  <boxGeometry args={[chassisW - 0.12, 0.095, 0.94]} />
+                </mesh>
+                {/* Overhead Exhaust Duct Collar(s) */}
+                {(isDualLaser ? [-0.22, 0.22] : [0]).map((ex, ei) => (
+                  <mesh
+                    key={`proj-exhaust-${ei}`}
+                    position={[ex, 0.42, 0.22]}
+                    material={materials.projectorAnodizedMat}
+                  >
+                    <cylinderGeometry args={[0.12, 0.145, 0.24, 16]} />
+                  </mesh>
+                ))}
+                {/* Rear Fiber-Optic Laser Chiller Conduits */}
+                {(isDualLaser ? [-0.24, 0.24] : [0]).map((fx, fi) => (
+                  <mesh
+                    key={`proj-fiber-${fi}`}
+                    position={[fx, -0.06, 0.76]}
+                    rotation={[Math.PI / 2, 0, 0]}
+                    material={materials.projectorChromeMat}
+                  >
+                    <cylinderGeometry args={[0.045, 0.055, 0.18, 12]} />
+                  </mesh>
+                ))}
+                {/* Side Intake Louvre Plates & Diagnostic Status Bezel */}
+                {[-chassisW / 2 - 0.014, chassisW / 2 + 0.014].map((sx, si) => (
+                  <mesh
+                    key={`proj-vent-${si}`}
+                    position={[sx, 0, 0.16]}
+                    material={materials.speakerMat}
+                  >
+                    <boxGeometry args={[0.028, 0.36, 0.82]} />
+                  </mesh>
+                ))}
+                <mesh
+                  position={[-chassisW / 2 - 0.022, 0.12, -0.18]}
+                  material={materials.projectorStatusPanelMat}
+                >
+                  <boxGeometry args={[0.016, 0.09, 0.18]} />
+                </mesh>
+                {/* Front Anodized Optical Head Plate */}
+                <mesh
+                  position={[0, 0, -0.42]}
+                  material={materials.projectorAnodizedMat}
+                >
+                  <boxGeometry args={[chassisW - 0.08, 0.38, 0.06]} />
+                </mesh>
+
+                {/* Single or Dual-Laser 4K Multi-Element Optical Lens Barrel(s) */}
+                {lensOffsets.map((lx, li) => (
+                  <group key={`proj-lens-barrel-${li}`} position={[lx, 0, -0.44]}>
+                    {/* Bayonet Turret Flange */}
+                    <mesh
+                      position={[0, 0, 0.02]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.projectorChromeMat}
+                    >
+                      <cylinderGeometry args={[0.175, 0.195, 0.07, 24]} />
+                    </mesh>
+                    {/* Stepped Dark Anodized Lens Barrel */}
+                    <mesh
+                      position={[0, 0, -0.11]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.projectorAnodizedMat}
+                    >
+                      <cylinderGeometry args={[0.148, 0.165, 0.22, 24]} />
+                    </mesh>
+                    {/* Knurled Chrome Motorized Zoom Ring */}
+                    <mesh
+                      position={[0, 0, -0.07]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.trimMetalMat}
+                    >
+                      <cylinderGeometry args={[0.17, 0.17, 0.036, 24]} />
+                    </mesh>
+                    {/* Knurled Chrome Fine Focus Ring */}
+                    <mesh
+                      position={[0, 0, -0.17]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.trimMetalMat}
+                    >
+                      <cylinderGeometry args={[0.158, 0.158, 0.032, 24]} />
+                    </mesh>
+                    {/* Forward Matte-Black Optical Shade Hood */}
+                    <mesh
+                      position={[0, 0, -0.24]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.projectorAnodizedMat}
+                    >
+                      <cylinderGeometry args={[0.158, 0.148, 0.08, 24, 1, true]} />
+                    </mesh>
+                    {/* Recessed Matte-Black Internal Light-Trap Baffle */}
+                    <mesh
+                      position={[0, 0, -0.19]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                      material={materials.projectorInnerBaffleMat}
+                    >
+                      <cylinderGeometry args={[0.132, 0.132, 0.12, 24, 1, true]} />
+                    </mesh>
+                    {/* Recessed Inner Video-Tinted Optical Condenser Aperture */}
+                    <mesh
+                      position={[0, 0, -0.13]}
+                      scale={[1, 1, 0.35]}
+                      material={materials.projectorCoreGlowMat}
+                    >
+                      <sphereGeometry args={[0.112, 20, 14]} />
+                    </mesh>
+                    {/* Concentric Machined Inner Optic Retainer Ring */}
+                    <mesh
+                      position={[0, 0, -0.215]}
+                      material={materials.projectorChromeMat}
+                    >
+                      <torusGeometry args={[0.124, 0.0085, 10, 28]} />
+                    </mesh>
+                    {/* Outer Convex Purple/Magenta Anti-Reflective Coated Meniscus Glass Lens */}
+                    <mesh
+                      position={[0, 0, -0.245]}
+                      scale={[1, 1, 0.28]}
+                      material={materials.projectorOpticGlassMat}
+                    >
+                      <sphereGeometry args={[0.132, 24, 16]} />
+                    </mesh>
+                  </group>
+                ))}
+              </group>
+            </group>
+          );
+        })()}
       </group>
 
       {/* Ceiling Slab + Recessed Acoustic Baffle Strips & HVAC Return Louvers */}
