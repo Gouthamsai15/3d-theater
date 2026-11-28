@@ -4,6 +4,7 @@ import { useCinemaStore } from '../../store/cinemaStore';
 import { StepProgressBar } from '../../components/common/StepProgressBar';
 import { formatDuration, formatFileSize } from '../../utils/formatters';
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
+import { enterMobileTheaterMode } from '../../utils/mobileOrientation';
 
 export const ConfirmationPage: React.FC = () => {
   const {
@@ -52,6 +53,8 @@ export const ConfirmationPage: React.FC = () => {
     cinemaAudioEngine
       .initialize(selectedTheaterConfig.audioProfile, seatOffsetRatio, selectedTheaterConfig)
       .catch(() => {});
+
+    void enterMobileTheaterMode();
 
     setShowState('AUDITORIUM_OPEN');
     setCurrentPlaybackIndex(0);

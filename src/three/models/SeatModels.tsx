@@ -1258,7 +1258,7 @@ const IndoorSeatModels: React.FC<SeatModelsProps> = ({
   const isDolbyCobaltSeat = config.theaterId === 'dolby_cobalt';
   const isDolbyVeilSeat = config.theaterId === 'dolby_cobalt_veil';
   const isDolbyKakatiyaSeat = config.theaterId === 'dolby_kakatiya';
-  const isDolbyDeccanSeat = config.theaterId === 'dolby_deccan';
+  const isDolbyDeccanSeat = config.sideLightStyle === 'deccan_basalt_monsoon';
   const isImaxVipTwoTone = isImaxAuroraSeat || isImaxSolarSeat;
 
   const upholsteryTex = useMemo(

@@ -35,6 +35,14 @@ import { useCinemaStore } from '../../store/cinemaStore';
 import { CinemaAuditoriumCanvas } from '../../three/scenes/CinemaAuditoriumCanvas';
 import { cinemaAudioEngine } from '../../services/audio/cinemaAudioEngine';
 import { formatDuration, isMobileDevice } from '../../utils/formatters';
+import {
+  exitAppFullscreen,
+  exitMobileTheaterMode,
+  getFullscreenElement,
+  isMobileTheaterModeActive,
+  lockMobileLandscape,
+  requestAppFullscreen,
+} from '../../utils/mobileOrientation';
 import { screenWakeLock } from '../../utils/wakeLock';
 import {
   AuditoriumLightingPreset,
@@ -128,7 +136,7 @@ export const VirtualCinemaPage: React.FC = () => {
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(getFullscreenElement()));
 
   const [hudVisible, setHudVisible] = useState(true);
   const hudVisibleRef = useRef(true);
@@ -1037,10 +1045,10 @@ export const VirtualCinemaPage: React.FC = () => {
         bumpHudActivity();
       } else if (e.code === 'KeyF') {
         e.preventDefault();
-        if (!document.fullscreenElement) {
-          containerRef.current?.requestFullscreen().catch(() => {});
+        if (!getFullscreenElement()) {
+          void requestAppFullscreen(document.documentElement);
         } else {
-          document.exitFullscreen().catch(() => {});
+          void exitAppFullscreen();
         }
         bumpHudActivity();
       } else if ((e.code === 'Digit1' || e.code === 'Numpad1') && entranceComplete) {
@@ -1121,12 +1129,20 @@ export const VirtualCinemaPage: React.FC = () => {
     };
 
     const onFsChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const fsActive = Boolean(getFullscreenElement());
+      setIsFullscreen(fsActive);
+      if (fsActive && isMobileTheaterModeActive()) {
+        void lockMobileLandscape();
+      }
       keepPlayingAfterFullscreen();
       window.setTimeout(keepPlayingAfterFullscreen, 120);
     };
     document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
   }, [showState, getActiveVideoEl]);
 
   if (!selectedTheaterConfig || !selectedSeat || playlist.length === 0) {
@@ -1229,10 +1245,13 @@ export const VirtualCinemaPage: React.FC = () => {
 
   const toggleFullscreen = async () => {
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current?.requestFullscreen();
+      if (!getFullscreenElement()) {
+        await requestAppFullscreen(document.documentElement);
+        if (isMobileTheaterModeActive()) {
+          await lockMobileLandscape();
+        }
       } else {
-        await document.exitFullscreen();
+        await exitAppFullscreen();
       }
     } catch {
       // Fullscreen denied or unsupported
@@ -1297,9 +1316,7 @@ export const VirtualCinemaPage: React.FC = () => {
     } catch {
       // Ignore fade-out error if audio context unavailable
     }
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
+    void exitMobileTheaterMode();
     leaveTimerRef.current = window.setTimeout(() => {
       try {
         cinemaAudioEngine.dispose();
@@ -1307,7 +1324,7 @@ export const VirtualCinemaPage: React.FC = () => {
         // Ignore audio disposal error
       }
       resetShowSession();
-    }, 250);
+    }, 320);
   };
 
   const handleEntranceComplete = useCallback(() => setEntranceComplete(true), []);
@@ -1718,13 +1735,7 @@ export const VirtualCinemaPage: React.FC = () => {
             [
               { id: 'overview', label: 'Overview' },
               { id: 'sweet_spot', label: 'Sweet Spot' },
-              {
-                id: 'side_wall',
-                label:
-                  selectedTheaterConfig.theaterId === 'imax_tree_of_life'
-                    ? 'Tree Wall'
-                    : 'Side Wall',
-              },
+              { id: 'side_wall', label: 'Side Wall' },
             ] as const
           ).map((item) => (
             <button

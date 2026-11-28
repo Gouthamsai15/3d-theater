@@ -1232,10 +1232,7 @@ export const FirstPersonCameraRig: React.FC<FirstPersonCameraRigProps> = ({
   });
 
   if (entranceComplete && viewMode === 'hall' && !isGlidingRef.current) {
-    const isLongHall =
-      config.theaterId === 'imax_tree_of_life' ||
-      config.theaterId === 'dolby_deccan' ||
-      config.theaterId === '4dx_kinetic_250';
+    const isLongHall = config.theaterId === '4dx_kinetic_250';
     const hallMaxDistance =
       config.environmentProfile.architectureStyle === 'beach'
         ? 24

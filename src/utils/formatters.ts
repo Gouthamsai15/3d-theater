@@ -48,7 +48,11 @@ export function detectWebGLSupport(): { supported: boolean; isSoftwareGl: boolea
 
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+  return (
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    window.innerWidth < 768 ||
+    (navigator.maxTouchPoints > 1 && Math.min(window.innerWidth, window.innerHeight) < 768)
+  );
 }
 
 export function isIosDevice(): boolean {

@@ -39,9 +39,7 @@ const PreviewOrbitRig: React.FC<{
     gl.domElement.style.touchAction = 'none';
   }, [gl]);
 
-  const isDeccan = config.theaterId === 'dolby_deccan';
   const isKinetic4dx = config.theaterId === '4dx_kinetic_250';
-  const isTreeOfLife = config.theaterId === 'imax_tree_of_life';
 
   useEffect(() => {
     const pose = getTheaterCameraPresetPose(config, preset);
@@ -59,12 +57,12 @@ const PreviewOrbitRig: React.FC<{
   useEffect(() => {
     const persp = camera as THREE.PerspectiveCamera;
     const baseFov = computeAdaptiveCinemaFov(config.categoryId, size.width, size.height);
-    const nextFov = isDeccan || isKinetic4dx ? Math.max(baseFov, 66) : baseFov;
+    const nextFov = isKinetic4dx ? Math.max(baseFov, 66) : baseFov;
     if (Math.abs(persp.fov - nextFov) > 0.05) {
       persp.fov = nextFov;
       persp.updateProjectionMatrix();
     }
-  }, [camera, config.categoryId, isDeccan, isKinetic4dx, size.width, size.height]);
+  }, [camera, config.categoryId, isKinetic4dx, size.width, size.height]);
 
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
 
@@ -155,7 +153,7 @@ const PreviewOrbitRig: React.FC<{
 
   const maxDist = isBeach
     ? 24
-    : isDeccan || isKinetic4dx || isTreeOfLife
+    : isKinetic4dx
       ? 25
       : Math.max(
           3.2,
@@ -195,8 +193,6 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
   }, [config.theaterId]);
 
   const isKinetic4dx = config.theaterId === '4dx_kinetic_250';
-  const isDeccan = config.theaterId === 'dolby_deccan';
-  const isTreeOfLife = config.theaterId === 'imax_tree_of_life';
 
   if (!webglInfo.supported) {
     return (
@@ -232,7 +228,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
         }}
         camera={{
           position: initialPose.position,
-          fov: isDeccan || isKinetic4dx ? Math.max(baseFov, 66) : baseFov,
+          fov: isKinetic4dx ? Math.max(baseFov, 66) : baseFov,
           near: 0.1,
           far: config.categoryId === 'beach' ? 2400 : 120,
         }}
@@ -289,7 +285,7 @@ export const TheaterPreviewCanvas: React.FC<TheaterPreviewCanvasProps> = ({ conf
           [
             { id: 'overview', label: 'Overview' },
             { id: 'sweet_spot', label: 'Sweet Spot' },
-            { id: 'side_wall', label: isTreeOfLife ? 'Tree Wall' : 'Side Wall' },
+            { id: 'side_wall', label: 'Side Wall' },
           ] as const
         ).map((item) => (
           <button

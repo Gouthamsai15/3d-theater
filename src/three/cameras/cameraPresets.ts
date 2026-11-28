@@ -9,35 +9,12 @@ export function getTheaterCameraPresetPose(
   config: TheaterConfiguration,
   preset: PreviewCameraPreset,
 ): CameraPresetPose {
-  const isTreeOfLife = config.theaterId === 'imax_tree_of_life';
-  const isDeccan = config.theaterId === 'dolby_deccan';
   const isKinetic4dx = config.theaterId === '4dx_kinetic_250';
   const isBeach = config.environmentProfile.architectureStyle === 'beach';
 
   const midRowIdx = Math.floor(Math.max(1, config.seatingRows) * 0.54);
   const midRowZ = config.firstRowZ + midRowIdx * config.rowSpacing;
   const midRowEyeY = midRowIdx * config.rowElevationStep + 1.32;
-
-  if (isTreeOfLife) {
-    switch (preset) {
-      case 'sweet_spot':
-        return {
-          position: [0, 5.18, 3.05],
-          target: [0, 6.1, -14.75],
-        };
-      case 'side_wall':
-        return {
-          position: [4.2, 5.25, 1.85],
-          target: [-10.9, 5.85, -4.6],
-        };
-      case 'overview':
-      default:
-        return {
-          position: [0, 7.35, 13.8],
-          target: [0, 5.05, -6.5],
-        };
-    }
-  }
 
   if (isBeach) {
     switch (preset) {
@@ -87,31 +64,25 @@ export function getTheaterCameraPresetPose(
   }
 
   // Default: 'overview'
-  const rearY = isDeccan
-    ? 6.05
-    : isKinetic4dx
-      ? 5.15
-      : Math.min(
-          config.auditoriumHeight - 1.1,
-          (config.seatingRows - 1) * config.rowElevationStep + 2.4,
-        );
-  const rearZ = isDeccan
-    ? 13.85
-    : isKinetic4dx
-      ? 9.6
-      : Math.min(config.auditoriumLength / 2 - 0.9, config.auditoriumLength * 0.3);
-  const initialCamX = isDeccan || isKinetic4dx ? 0 : config.auditoriumWidth * 0.22;
+  const rearY = isKinetic4dx
+    ? 5.15
+    : Math.min(
+        config.auditoriumHeight - 1.1,
+        (config.seatingRows - 1) * config.rowElevationStep + 2.4,
+      );
+  const rearZ = isKinetic4dx
+    ? 9.6
+    : Math.min(config.auditoriumLength / 2 - 0.9, config.auditoriumLength * 0.3);
+  const initialCamX = isKinetic4dx ? 0 : config.auditoriumWidth * 0.22;
 
   return {
     position: [initialCamX, rearY, rearZ],
-    target: isDeccan
-      ? [0, 4.75, -7.5]
-      : isKinetic4dx
-        ? [0, 4.75, -8.8]
-        : [
-            0,
-            Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
-            -config.auditoriumLength * 0.06,
-          ],
+    target: isKinetic4dx
+      ? [0, 4.75, -8.8]
+      : [
+          0,
+          Math.min(config.screenPosition[1] * 0.5, config.auditoriumHeight * 0.45),
+          -config.auditoriumLength * 0.06,
+        ],
   };
 }
